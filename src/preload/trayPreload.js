@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('trayAPI', {
   getEventLogFilePath: () => ipcRenderer.invoke('events:getLogFilePath'),
   deleteAllEvents: () => ipcRenderer.invoke('events:deleteAll'),
   checkFirewall: () => ipcRenderer.invoke('firewall:check'),
-  getFirewallInstructions: () => ipcRenderer.invoke('firewall:instructions')
+  getFirewallInstructions: () => ipcRenderer.invoke('firewall:instructions'),
+  checkForUpdates: () => ipcRenderer.invoke('updates:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
+  installUpdate: () => ipcRenderer.invoke('updates:install'),
+  getUpdateStatus: () => ipcRenderer.invoke('updates:status')
 });
 

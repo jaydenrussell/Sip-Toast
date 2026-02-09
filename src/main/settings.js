@@ -71,6 +71,19 @@ const schema = {
       launchAtLogin: true
     }
   },
+  updates: {
+    type: 'object',
+    properties: {
+      enabled: { type: 'boolean', default: true },
+      checkFrequency: { type: 'string', default: 'daily' }, // 'daily', 'weekly', 'monthly', 'never'
+      lastCheckTime: { type: ['string', 'null'], default: null }
+    },
+    default: {
+      enabled: true,
+      checkFrequency: 'daily',
+      lastCheckTime: null
+    }
+  },
   windows: {
     type: 'object',
     properties: {
@@ -158,6 +171,10 @@ const save = (payload = {}) => {
 
   if (payload.app) {
     store.set('app', mergeSection('app', payload.app));
+  }
+
+  if (payload.updates) {
+    store.set('updates', mergeSection('updates', payload.updates));
   }
 
   return getAll(); // Return decrypted data

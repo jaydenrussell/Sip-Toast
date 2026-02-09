@@ -296,6 +296,46 @@
                   <small class="field-hint">Font size in pixels (10-36px, default: 15) - Adjust to fit 10-digit numbers</small>
                 </div>
               </div>
+              
+              <div class="section-heading" style="margin-top: 24px; margin-bottom: 12px;">
+                <div>
+                  <h3>Auto-Update</h3>
+                  <p class="note">Configure automatic update checking from GitHub releases</p>
+                </div>
+              </div>
+              
+              <div class="options-grid">
+                <div class="toggle-group">
+                  <label>Enable Auto-Update</label>
+                  <button type="button" class="toggle" id="autoUpdateToggle" role="switch" aria-checked="true">
+                    <span></span>
+                  </button>
+                  <input type="hidden" name="updates.enabled" value="true" />
+                </div>
+                <div class="field-group">
+                  <label>Check Frequency</label>
+                  <select name="updates.checkFrequency" id="updateFrequencySelect">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="never">Never</option>
+                  </select>
+                  <small class="field-hint">How often to automatically check for updates</small>
+                </div>
+              </div>
+              
+              <div class="actions" style="margin-top: 16px;">
+                <button type="button" class="secondary" id="checkUpdatesBtn">Check for Updates</button>
+              </div>
+              
+              <div id="updateStatusContainer" style="margin-top: 16px; padding: 12px; background: var(--bg-secondary, rgba(0,0,0,0.02)); border-radius: 8px; display: none;">
+                <div id="updateStatusText" style="color: var(--text-primary);"></div>
+                <div id="updateStatusActions" style="margin-top: 8px; display: none;">
+                  <button type="button" class="primary" id="downloadUpdateBtn" style="margin-right: 8px;">Download Update</button>
+                  <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install & Restart</button>
+                </div>
+              </div>
+              
               <div class="actions">
                 <button type="button" class="primary" id="saveOptionsBtn">Save Settings</button>
                 <button type="button" class="ghost" id="restartSip">Restart SIP</button>

@@ -16,6 +16,7 @@ const getAcuityClient = () => {
 const { logger, logEmitter, getRecentLogs } = require('./services/logger');
 const { checkFirewallStatus, getFirewallInstructions } = require('./services/firewallChecker');
 const settings = require('./settings');
+const UpdateService = require('./services/updateService');
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -29,6 +30,7 @@ let sipManager;
 let flyoutWindow;
 // Removed unused mainWindow variable - flyoutWindow.window is used directly
 let latestSipStatus = { state: 'idle', timestamp: new Date().toISOString() };
+let updateService = null;
 
 // Cache settings to avoid repeated lookups (memory-optimized)
 let cachedSettings = settings.getAll();
@@ -38,6 +40,13 @@ settings.store.onDidChange('acuity', () => { cachedSettings.acuity = settings.ge
 settings.store.onDidChange('callerId', () => { cachedSettings.callerId = settings.get('callerId'); });
 settings.store.onDidChange('toast', () => { cachedSettings.toast = settings.get('toast'); });
 settings.store.onDidChange('app', () => { cachedSettings.app = settings.get('app'); });
+settings.store.onDidChange('updates', () => { 
+  cachedSettings.updates = settings.get('updates');
+  // Restart auto-check when update settings change
+  if (updateService) {
+    updateService.restartAutoCheck();
+  }
+});
 
 const simulateIncomingCall = async () => {
   const fakeCall = {
@@ -356,6 +365,14 @@ const wireIpc = () => {
       logger.info('💾 Toast settings saved');
       logger.info(`   Auto-dismiss timeout: ${saved.toast?.autoDismissMs || 20000}ms (${(saved.toast?.autoDismissMs || 20000) / 1000}s)`);
     }
+    if (payload.updates) {
+      logger.info('💾 Update settings saved');
+      logger.info(`   Auto-update enabled: ${saved.updates?.enabled ? 'Yes' : 'No'}, Frequency: ${saved.updates?.checkFrequency || 'daily'}`);
+      // Restart auto-check when update settings change
+      if (updateService) {
+        updateService.restartAutoCheck();
+      }
+    }
     return saved;
   });
 
@@ -588,6 +605,53 @@ const wireIpc = () => {
       logger.error(`❌ Failed to copy to clipboard: ${error.message}`);
       return false;
     }
+  });
+
+  // Update handlers
+  ipcMain.handle('updates:check', async () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    try {
+      const result = await updateService.checkForUpdates(true);
+      return result;
+    } catch (error) {
+      logger.error(`Update check failed: ${error.message}`);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('updates:download', async () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    try {
+      const result = await updateService.downloadUpdate();
+      return result;
+    } catch (error) {
+      logger.error(`Update download failed: ${error.message}`);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('updates:install', async () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    try {
+      const result = await updateService.installUpdate();
+      return result;
+    } catch (error) {
+      logger.error(`Update install failed: ${error.message}`);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('updates:status', () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    return updateService.getStatus();
   });
 };
 
@@ -860,6 +924,11 @@ app.whenReady().then(async () => {
   logger.info('✅ System tray icon created');
   wireIpc();
   logger.info('✅ IPC handlers registered');
+  
+  // Initialize update service
+  updateService = new UpdateService();
+  updateService.startAutoCheck();
+  logger.info('✅ Update service initialized');
   
   // Reload events from file after app is ready (ensures log directory is properly resolved)
   const eventLogger = require('./services/eventLogger');

@@ -54,6 +54,11 @@ navItems.forEach((item) => {
     if (section === 'firewall') {
       // Don't auto-check, let user click the button
     }
+    
+    // Load update status if options section is shown
+    if (section === 'options') {
+      loadUpdateStatus();
+    }
   });
 });
 
@@ -72,7 +77,9 @@ const fieldNames = [
   'toast.numberFont',
   'toast.numberFontSize',
   'toast.callerIdFont',
-  'toast.callerIdFontSize'
+  'toast.callerIdFontSize',
+  'updates.enabled',
+  'updates.checkFrequency'
 ];
 
 // Cache split results for field names (memory optimization)
@@ -150,6 +157,25 @@ const renderSettings = (settings) => {
     }
   }
 
+  // Handle Auto-update enabled toggle
+  const autoUpdateToggle = document.getElementById('autoUpdateToggle');
+  if (autoUpdateToggle) {
+    const updatesEnabled = settings.updates && typeof settings.updates.enabled === 'boolean'
+      ? settings.updates.enabled
+      : true;
+    autoUpdateToggle.setAttribute('aria-checked', updatesEnabled ? 'true' : 'false');
+    const autoUpdateInput = form.querySelector('[name="updates.enabled"]');
+    if (autoUpdateInput) {
+      autoUpdateInput.value = updatesEnabled ? 'true' : 'false';
+    }
+  }
+
+  // Handle update check frequency
+  const updateFrequencySelect = document.getElementById('updateFrequencySelect');
+  if (updateFrequencySelect && settings.updates) {
+    updateFrequencySelect.value = settings.updates.checkFrequency || 'daily';
+  }
+
 };
 
 const buildSipUri = (username, domain, server, transport) => {
@@ -171,7 +197,8 @@ const collectPayload = () => {
     sip: {},
     acuity: {},
     toast: {},
-    app: {}
+    app: {},
+    updates: {}
   };
 
   fieldNames.forEach((name) => {
@@ -218,6 +245,18 @@ const collectPayload = () => {
     payload.acuity.enabled = acuityEnabled;
   }
   
+  // Handle Auto-update enabled toggle
+  const autoUpdateToggle = document.getElementById('autoUpdateToggle');
+  if (autoUpdateToggle) {
+    const updatesEnabled = autoUpdateToggle.getAttribute('aria-checked') === 'true';
+    payload.updates.enabled = updatesEnabled;
+  }
+  
+  // Handle update check frequency
+  const updateFrequencySelect = document.getElementById('updateFrequencySelect');
+  if (updateFrequencySelect) {
+    payload.updates.checkFrequency = updateFrequencySelect.value || 'daily';
+  }
 
   // Set default port based on transport
   if (!payload.sip.port) {
@@ -279,7 +318,8 @@ const saveSettings = async (section = 'all') => {
   } else if (section === 'options') {
     const optionsPayload = { 
       toast: payload.toast,
-      app: payload.app
+      app: payload.app,
+      updates: payload.updates
     };
     const saved = await window.trayAPI.saveSettings(optionsPayload);
     currentSettings = saved;
@@ -449,6 +489,153 @@ if (acuityEnabledToggle) {
     }
   });
 }
+
+// Auto-update enabled toggle handler
+const autoUpdateToggle = document.getElementById('autoUpdateToggle');
+if (autoUpdateToggle) {
+  const autoUpdateInput = form.querySelector('[name="updates.enabled"]');
+  autoUpdateToggle.addEventListener('click', () => {
+    const current = autoUpdateToggle.getAttribute('aria-checked') === 'true';
+    const newState = !current;
+    autoUpdateToggle.setAttribute('aria-checked', newState ? 'true' : 'false');
+    if (autoUpdateInput) {
+      autoUpdateInput.value = newState ? 'true' : 'false';
+    }
+  });
+}
+
+// Update status display elements
+const updateStatusContainer = document.getElementById('updateStatusContainer');
+const updateStatusText = document.getElementById('updateStatusText');
+const updateStatusActions = document.getElementById('updateStatusActions');
+const checkUpdatesBtn = document.getElementById('checkUpdatesBtn');
+const downloadUpdateBtn = document.getElementById('downloadUpdateBtn');
+const installUpdateBtn = document.getElementById('installUpdateBtn');
+
+// Function to update status display
+const updateStatusDisplay = (status) => {
+  if (!updateStatusContainer || !updateStatusText) return;
+  
+  if (status.checking) {
+    updateStatusContainer.style.display = 'block';
+    updateStatusText.textContent = 'Checking for updates...';
+    updateStatusText.style.color = 'var(--text-primary)';
+    updateStatusActions.style.display = 'none';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
+  } else if (status.error) {
+    updateStatusContainer.style.display = 'block';
+    updateStatusText.textContent = `Error: ${status.error}`;
+    updateStatusText.style.color = '#ef4444';
+    updateStatusActions.style.display = 'none';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+  } else if (status.updateAvailable) {
+    updateStatusContainer.style.display = 'block';
+    updateStatusText.textContent = `Update available: Version ${status.version || 'Unknown'}`;
+    updateStatusText.style.color = '#10b981';
+    updateStatusActions.style.display = 'block';
+    if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'inline-block';
+    if (installUpdateBtn) installUpdateBtn.style.display = 'none';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+  } else if (status.updateDownloaded) {
+    updateStatusContainer.style.display = 'block';
+    updateStatusText.textContent = 'Update downloaded and ready to install';
+    updateStatusText.style.color = '#10b981';
+    updateStatusActions.style.display = 'block';
+    if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'none';
+    if (installUpdateBtn) installUpdateBtn.style.display = 'inline-block';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+  } else {
+    updateStatusContainer.style.display = 'block';
+    updateStatusText.textContent = `No updates available. Current version: ${status.currentVersion || 'Unknown'}`;
+    updateStatusText.style.color = 'var(--text-muted)';
+    updateStatusActions.style.display = 'none';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+  }
+};
+
+// Check for updates button handler
+if (checkUpdatesBtn) {
+  checkUpdatesBtn.addEventListener('click', async () => {
+    try {
+      updateStatusDisplay({ checking: true });
+      const result = await window.trayAPI.checkForUpdates();
+      
+      if (result.error) {
+        updateStatusDisplay({ error: result.error });
+      } else {
+        // Get current status
+        const status = await window.trayAPI.getUpdateStatus();
+        updateStatusDisplay({
+          checking: false,
+          updateAvailable: result.updateAvailable || false,
+          version: result.version || status.currentVersion,
+          currentVersion: status.currentVersion
+        });
+      }
+    } catch (error) {
+      updateStatusDisplay({ error: error.message });
+    }
+  });
+}
+
+// Download update button handler
+if (downloadUpdateBtn) {
+  downloadUpdateBtn.addEventListener('click', async () => {
+    try {
+      updateStatusDisplay({ checking: true });
+      const result = await window.trayAPI.downloadUpdate();
+      
+      if (result.error) {
+        updateStatusDisplay({ error: result.error });
+      } else {
+        // Get updated status
+        const status = await window.trayAPI.getUpdateStatus();
+        updateStatusDisplay({
+          checking: false,
+          updateDownloaded: status.updateDownloaded || false,
+          currentVersion: status.currentVersion
+        });
+      }
+    } catch (error) {
+      updateStatusDisplay({ error: error.message });
+    }
+  });
+}
+
+// Install update button handler
+if (installUpdateBtn) {
+  installUpdateBtn.addEventListener('click', async () => {
+    if (!confirm('This will install the update and restart the application. Continue?')) {
+      return;
+    }
+    
+    try {
+      const result = await window.trayAPI.installUpdate();
+      if (result.error) {
+        alert(`Failed to install update: ${result.error}`);
+      }
+      // App will restart, so no need to update UI
+    } catch (error) {
+      alert(`Failed to install update: ${error.message}`);
+    }
+  });
+}
+
+// Function to load update status
+const loadUpdateStatus = async () => {
+  try {
+    const status = await window.trayAPI.getUpdateStatus();
+    updateStatusDisplay({
+      checking: false,
+      updateAvailable: status.updateAvailable || false,
+      updateDownloaded: status.updateDownloaded || false,
+      currentVersion: status.currentVersion
+    });
+  } catch (error) {
+    // Silently fail - update status is optional
+    console.error('Failed to load update status:', error);
+  }
+};
 
 if (saveAllBtn) {
   saveAllBtn.addEventListener('click', async () => {
