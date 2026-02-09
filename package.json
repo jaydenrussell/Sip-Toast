@@ -6,6 +6,10 @@
   "main": "src/main/main.js",
   "author": "Jayden Russell",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jaydenrussell/Sip-Toast.git"
+  },
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
@@ -18,11 +22,14 @@
     "package:msi": "electron-builder --win --config.win.target=msi",
     "package:both": "electron-builder --win",
     "package:msi-unsigned": "electron-builder --win --config.win.target=msi --config.win.sign=null",
-    "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1"
+    "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
+    "release": "node scripts/create-release.js",
+    "build-and-release": "npm run package && npm run release"
   },
   "dependencies": {
     "axios": "^1.6.8",
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.7.3",
     "eventemitter3": "^5.0.1",
     "sip": "^0.0.6",
     "winston": "^3.11.0"
@@ -88,6 +95,11 @@
     "npmRebuild": false,
     "nodeGypRebuild": false,
     "compression": "maximum",
-    "removePackageScripts": true
+    "removePackageScripts": true,
+    "publish": {
+      "provider": "github",
+      "owner": "jaydenrussell",
+      "repo": "Sip-Toast"
+    }
   }
 }
