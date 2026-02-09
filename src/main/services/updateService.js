@@ -72,10 +72,15 @@ class UpdateService {
       settings.set('updates', updateSettings);
       
       const result = await autoUpdater.checkForUpdates();
+      // Derive from result: event handlers may not have run yet, so don't rely on this.updateAvailable
+      const updateAvailable = !!(result && result.updateInfo);
+      const version = result?.updateInfo?.version || null;
+      this.updateAvailable = updateAvailable;
+      this.isChecking = false;
       return {
         checking: false,
-        updateAvailable: this.updateAvailable,
-        version: result?.updateInfo?.version || null
+        updateAvailable,
+        version
       };
     } catch (error) {
       logger.error(`❌ Failed to check for updates: ${error.message}`);

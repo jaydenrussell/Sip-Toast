@@ -1,0 +1,112 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    # Only trigger on version changes (when package.json version changes)
+    paths:
+      - 'package.json'
+  workflow_dispatch:
+    # Allow manual triggering
+    inputs:
+      version:
+        description: 'Version to release (leave empty to use package.json version)'
+        required: false
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for tags
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Get version from package.json
+      id: get_version
+      run: |
+        $version = (Get-Content package.json | ConvertFrom-Json).version
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+
+    - name: Set release version
+      id: release_version
+      run: |
+        if ("${{ github.event.inputs.version }}" -ne "") {
+          echo "VERSION=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
+          echo "Using manual version: ${{ github.event.inputs.version }}"
+        } else {
+          echo "VERSION=${{ steps.get_version.outputs.VERSION }}" >> $env:GITHUB_OUTPUT
+          echo "Using package.json version: ${{ steps.get_version.outputs.VERSION }}"
+        }
+
+    - name: Update package.json version if manual
+      if: ${{ github.event.inputs.version != '' }}
+      run: |
+        $packageJson = Get-Content package.json | ConvertFrom-Json
+        $packageJson.version = "${{ github.event.inputs.version }}"
+        $packageJson.buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+        $packageJson | ConvertTo-Json -Depth 10 | Set-Content package.json
+
+    - name: Build application
+      run: npm run package
+      env:
+        # Add your signing certificate environment variables if needed
+        # CSC_LINK: ${{ secrets.CSC_LINK }}
+        # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+    - name: Find MSI installer
+      id: find_msi
+      run: |
+        $msiFile = Get-ChildItem -Path dist -Filter "*.msi" | Select-Object -First 1
+        if ($msiFile) {
+          echo "MSI_PATH=$($msiFile.FullName)" >> $env:GITHUB_OUTPUT
+          echo "MSI_NAME=$($msiFile.Name)" >> $env:GITHUB_OUTPUT
+          echo "Found MSI: $($msiFile.Name)"
+        } else {
+          echo "❌ No MSI file found in dist directory"
+          exit 1
+        }
+
+    - name: Create GitHub Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.release_version.outputs.VERSION }}
+        name: Release v${{ steps.release_version.outputs.VERSION }}
+        body: |
+          ## SIP Toast v${{ steps.release_version.outputs.VERSION }}
+          
+          ### Changes
+          - See commit history for details
+          
+          ### Installation
+          Download the MSI installer below and run it to install or update SIP Toast.
+          
+          ### Auto-Update
+          If you have SIP Toast installed, it will automatically check for this update based on your update settings.
+        draft: false
+        prerelease: false
+        files: ${{ steps.find_msi.outputs.MSI_PATH }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload MSI as artifact (backup)
+      uses: actions/upload-artifact@v4
+      with:
+        name: sip-toast-installer-v${{ steps.release_version.outputs.VERSION }}
+        path: ${{ steps.find_msi.outputs.MSI_PATH }}
+        retention-days: 30
