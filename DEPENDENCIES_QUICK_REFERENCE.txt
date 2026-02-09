@@ -1,0 +1,83 @@
+================================================================================
+SIP Toast - Quick Dependency Reference
+================================================================================
+
+REQUIRED SYSTEM DEPENDENCIES (Must be installed on target computer):
+--------------------------------------------------------------------------------
+
+1. Windows 10 or later (Windows 11 recommended)
+   - Windows 7/8/8.1 are NOT supported
+   - Check: Settings > System > About
+
+2. Microsoft Visual C++ Redistributable 2015-2022 (x64)
+   - Download: https://aka.ms/vs/17/release/vc_redist.x64.exe
+   - Most Windows 10/11 systems already have this
+   - Required if you see: "VCRUNTIME140.dll was not found"
+
+3. 64-bit (x64) processor
+   - Application is built for x64 only
+
+4. Internet connectivity
+   - Required for SIP server connections
+   - Required for Acuity Scheduling API
+   - Required for Caller ID lookups
+
+
+BUNDLED DEPENDENCIES (Included in MSI - No installation needed):
+--------------------------------------------------------------------------------
+
+✓ Electron 31.3.0 runtime (complete)
+✓ All npm packages (axios, electron-store, sip, winston, etc.)
+✓ All application code and resources
+✓ Everything needed to run the application
+
+
+INSTALLATION LOCATIONS:
+--------------------------------------------------------------------------------
+
+Application:     %LOCALAPPDATA%\Programs\sip-toast\
+Settings:        %APPDATA%\sip-toast\config.json
+Logs:            %APPDATA%\sip-toast\logs\
+
+
+TROUBLESHOOTING:
+--------------------------------------------------------------------------------
+
+Problem: Application won't start
+Solution:
+  1. Check Windows version (must be Windows 10+)
+  2. Install Visual C++ Redistributable
+  3. Check logs: %APPDATA%\sip-toast\logs\sip-toast.log
+
+Problem: "VCRUNTIME140.dll was not found"
+Solution:
+  Install: https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+Problem: Works on one computer but not another
+Solution:
+  1. Run check-dependencies.ps1 on the target computer
+  2. Compare Windows versions
+  3. Check if Visual C++ Redistributable is installed
+  4. Verify network connectivity
+
+Problem: SIP connection fails
+Solution:
+  1. Check internet connectivity
+  2. Verify firewall allows outbound connections
+  3. Check SIP server credentials in settings
+  4. Review logs for specific error messages
+
+
+VERIFICATION:
+--------------------------------------------------------------------------------
+
+Run the dependency checker script:
+  PowerShell: .\check-dependencies.ps1
+
+Or manually check:
+  - Windows version: Settings > System > About
+  - Visual C++: Control Panel > Programs > Programs and Features
+  - Application logs: %APPDATA%\sip-toast\logs\sip-toast.log
+
+
+For detailed information, see: DEPENDENCIES.md

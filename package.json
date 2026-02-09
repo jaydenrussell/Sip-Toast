@@ -1,0 +1,93 @@
+{
+  "name": "sip-toast",
+  "version": "0.67.71",
+  "buildDate": "2026-01-15T23:43:33.291Z",
+  "description": "Windows 11-ready SIP caller ID toast that looks up clients via Acuity Scheduling.",
+  "main": "src/main/main.js",
+  "author": "Jayden Russell",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electronmon .",
+    "lint": "eslint \"src/**/*.js\"",
+    "prepackage": "node scripts/increment-version.js",
+    "package": "electron-builder --win --config.win.target=msi",
+    "build": "npm run package",
+    "package:appx": "electron-builder --win --config.win.target=appx",
+    "package:msi": "electron-builder --win --config.win.target=msi",
+    "package:both": "electron-builder --win",
+    "package:msi-unsigned": "electron-builder --win --config.win.target=msi --config.win.sign=null",
+    "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "electron-store": "^8.1.0",
+    "eventemitter3": "^5.0.1",
+    "sip": "^0.0.6",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3",
+    "electronmon": "^2.0.2",
+    "eslint": "^9.12.0"
+  },
+  "build": {
+    "appId": "com.yoursolution.siptoast",
+    "productName": "SIP Toast",
+    "files": [
+      "src/**/*",
+      "Images/**/*",
+      "package.json"
+    ],
+    "fileAssociations": [],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "extraFiles": [],
+    "extraResources": [],
+    "win": {
+      "target": [
+        {
+          "target": "msi",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "Images/app.ico",
+      "publisherName": "Jayden Russell",
+      "signingHashAlgorithms": [
+        "sha256"
+      ],
+      "timeStampServer": "http://timestamp.digicert.com",
+      "artifactName": "${productName} ${version}.${ext}"
+    },
+    "appx": {
+      "identityName": "YourSolution.SIPToast",
+      "publisher": "CN=Jayden Russell",
+      "publisherDisplayName": "Jayden Russell",
+      "applicationId": "SIPToast",
+      "displayName": "SIP Toast",
+      "backgroundColor": "#f8f9fc"
+    },
+    "msi": {
+      "oneClick": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SIP Toast",
+      "menuCategory": "Utilities",
+      "warningsAsErrors": false
+    },
+    "msiProjectCreated": "scripts/inject-wix-fragment.js",
+    "afterPack": "scripts/optimize-build.js",
+    "asar": true,
+    "asarUnpack": [],
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "compression": "maximum",
+    "removePackageScripts": true
+  }
+}

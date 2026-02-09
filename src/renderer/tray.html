@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SIP Toast Control Center</title>
+    <link rel="stylesheet" href="../styles/tray.css" />
+  </head>
+  <body>
+    <div class="title-bar">
+      <div class="title-bar-content">
+        <span class="title-text">SIP Toast</span>
+        <div class="title-bar-controls">
+          <button class="title-bar-button minimize" id="minimizeBtn" title="Minimize">─</button>
+          <button class="title-bar-button close" id="closeBtn" title="Close">✕</button>
+        </div>
+      </div>
+    </div>
+    <div class="app-container">
+      <aside class="sidebar">
+        <nav class="sidebar-nav">
+          <button class="nav-item active" data-section="sip">
+            <span class="nav-icon">📞</span>
+            <span class="nav-label">SIP Provider</span>
+          </button>
+          <button class="nav-item" data-section="acuity">
+            <span class="nav-icon">📅</span>
+            <span class="nav-label">Acuity Scheduler</span>
+          </button>
+          <button class="nav-item" data-section="options">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-label">Options</span>
+          </button>
+          <button class="nav-item" data-section="firewall">
+            <span class="nav-icon">🔥</span>
+            <span class="nav-label">Firewall</span>
+          </button>
+          <button class="nav-item" data-section="logs">
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">Event Logs</span>
+          </button>
+          <button class="nav-item" data-section="about">
+            <span class="nav-icon">ℹ️</span>
+            <span class="nav-label">About</span>
+          </button>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="status-chip" id="sipStatus">Initializing…</div>
+        </div>
+      </aside>
+      <main class="main-content">
+        <header class="content-header">
+          <h1 id="sectionTitle">SIP Provider</h1>
+          <p class="subhead" id="sectionSubtitle">Configure your SIP connection settings</p>
+        </header>
+
+        <form id="settingsForm">
+          <!-- SIP Provider Section -->
+          <section class="content-section active" id="section-sip">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>SIP Connection</h2>
+                  <p class="note">Enter your SIP server credentials to receive calls</p>
+                </div>
+              </div>
+
+              <div class="grid two-col">
+                <div class="field-group">
+                  <label>Server</label>
+                  <input type="text" name="sip.server" placeholder="server.example.com" />
+                  <small class="field-hint">SIP server hostname or IP address</small>
+                </div>
+                <div class="field-group">
+                  <label>Port</label>
+                  <input type="number" name="sip.port" placeholder="5060" value="5060" />
+                  <small class="field-hint">Default: 5060 (UDP/TCP), 5061 (TLS)</small>
+                </div>
+              </div>
+
+              <div class="field-group">
+                <label>Transport</label>
+                <select name="sip.transport" id="sipTransport">
+                  <option value="udp">UDP</option>
+                  <option value="tcp">TCP</option>
+                  <option value="tls">TLS</option>
+                </select>
+                <small class="field-hint">SIP transport protocol (TLS uses port 5061 by default)</small>
+              </div>
+
+              <div class="field-group">
+                <label>Domain/Realm</label>
+                <input type="text" name="sip.domain" placeholder="example.com" />
+                <small class="field-hint">SIP domain for authentication (often same as server, but may differ)</small>
+              </div>
+
+              <div class="grid two-col">
+                <div class="field-group">
+                  <label>Username</label>
+                  <input type="text" name="sip.username" placeholder="" />
+                  <small class="field-hint">SIP username or extension</small>
+                </div>
+                <div class="field-group">
+                  <label>Password</label>
+                  <input type="password" name="sip.password" placeholder="••••••••" autocomplete="new-password" />
+                  <small class="field-hint">SIP authentication password</small>
+                </div>
+              </div>
+              <div class="actions">
+                <button type="button" class="primary" id="saveSipBtn">Save & Connect</button>
+                <button type="button" class="secondary" id="testSipBtn">Test Connection</button>
+              </div>
+
+              <div class="debug-section" id="sipDebugSection" style="display: none;">
+                <div class="section-heading">
+                  <h3>Connection Diagnostics</h3>
+                </div>
+                <div class="debug-info" id="sipDebugInfo">
+                  <div class="debug-item">
+                    <strong>Status:</strong> <span id="debugStatus">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Server:</strong> <span id="debugServer">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Port:</strong> <span id="debugPort">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Transport:</strong> <span id="debugTransport">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>DNS Lookup:</strong> <span id="debugDns">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>IP Address:</strong> <span id="debugIp">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Username:</strong> <span id="debugUsername">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>SIP URI:</strong> <span id="debugUri">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Error:</strong> <span id="debugError">-</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Acuity Scheduler Section -->
+          <section class="content-section" id="section-acuity">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>Acuity Scheduling API</h2>
+                  <p class="note">Configure API credentials for client lookups</p>
+                </div>
+              </div>
+              <div class="toggle-group" style="margin-bottom: 16px;">
+                <label>Enable Acuity Scheduler</label>
+                <button type="button" class="toggle" id="acuityEnabledToggle" role="switch" aria-checked="false">
+                  <span></span>
+                </button>
+                <input type="hidden" name="acuity.enabled" value="false" />
+              </div>
+              <div class="grid two-col">
+                <div class="field-group">
+                  <label>Acuity user ID</label>
+                  <input type="text" name="acuity.userId" placeholder="user@example.com" />
+                </div>
+                <div class="field-group">
+                  <label>Acuity API key</label>
+                  <input type="password" name="acuity.apiKey" placeholder="API key" autocomplete="new-password" />
+                </div>
+              </div>
+              <div class="actions">
+                <button type="button" class="primary" id="saveAcuityBtn">Save</button>
+                <button type="button" class="secondary" id="testAcuityBtn">Test Connection</button>
+              </div>
+
+              <div class="debug-section" id="acuityDebugSection" style="display: none;">
+                <div class="section-heading">
+                  <h3>Connection Test Results</h3>
+                </div>
+                <div class="debug-info" id="acuityDebugInfo">
+                  <div class="debug-item">
+                    <strong>Overall Status:</strong> <span id="debugAcuityStatus">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Message:</strong> <span id="debugAcuityMessage">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Error:</strong> <span id="debugAcuityError">-</span>
+                  </div>
+                  <div class="debug-item" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <strong>Acuity API:</strong> <span id="debugAcuityApiStatus">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Acuity Message:</strong> <span id="debugAcuityApiMessage">-</span>
+                  </div>
+                  <div class="debug-item">
+                    <strong>Acuity Error:</strong> <span id="debugAcuityApiError">-</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Options Section -->
+          <section class="content-section" id="section-options">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>Options</h2>
+                  <p class="note">Application settings and controls</p>
+                </div>
+              </div>
+              <div class="options-grid">
+                <div class="toggle-group">
+                  <label>Run at Windows startup</label>
+                  <button type="button" class="toggle" id="autoLaunchToggle" role="switch" aria-checked="true">
+                    <span></span>
+                  </button>
+                  <input type="hidden" name="app.launchAtLogin" value="true" />
+                </div>
+                <div class="field-group">
+                  <label>Toast Notification Timeout</label>
+                  <input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
+                  <small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
+                </div>
+              </div>
+              
+              <div class="section-heading" style="margin-top: 24px; margin-bottom: 12px;">
+                <div>
+                  <h3>Toast Notification Fonts</h3>
+                  <p class="note">Customize font and size for Caller ID and caller number</p>
+                </div>
+              </div>
+              
+              <div class="grid two-col">
+                <div class="field-group">
+                  <label>Caller ID Font</label>
+                  <select name="toast.callerIdFont" id="callerIdFontInput">
+                    <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
+                    <option value="Segoe UI, sans-serif">Segoe UI</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                    <option value="Calibri, sans-serif">Calibri</option>
+                    <option value="Consolas, monospace">Consolas</option>
+                    <option value="Courier New, monospace">Courier New</option>
+                    <option value="Georgia, serif">Georgia</option>
+                    <option value="Helvetica, sans-serif">Helvetica</option>
+                    <option value="Impact, sans-serif">Impact</option>
+                    <option value="Lucida Console, monospace">Lucida Console</option>
+                    <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
+                    <option value="Tahoma, sans-serif">Tahoma</option>
+                    <option value="Times New Roman, serif">Times New Roman</option>
+                    <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+                    <option value="Verdana, sans-serif">Verdana</option>
+                  </select>
+                  <small class="field-hint">Font family for the Caller ID name/label</small>
+                </div>
+                <div class="field-group">
+                  <label>Caller ID Font Size</label>
+                  <input type="number" name="toast.callerIdFontSize" placeholder="20" min="10" max="36" step="1" id="callerIdFontSizeInput" />
+                  <small class="field-hint">Font size in pixels (10-36px, default: 20)</small>
+                </div>
+              </div>
+              
+              <div class="grid two-col">
+                <div class="field-group">
+                  <label>Caller Number Font</label>
+                  <select name="toast.numberFont" id="numberFontInput">
+                    <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
+                    <option value="Segoe UI, sans-serif">Segoe UI</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                    <option value="Calibri, sans-serif">Calibri</option>
+                    <option value="Consolas, monospace">Consolas</option>
+                    <option value="Courier New, monospace">Courier New</option>
+                    <option value="Georgia, serif">Georgia</option>
+                    <option value="Helvetica, sans-serif">Helvetica</option>
+                    <option value="Impact, sans-serif">Impact</option>
+                    <option value="Lucida Console, monospace">Lucida Console</option>
+                    <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
+                    <option value="Tahoma, sans-serif">Tahoma</option>
+                    <option value="Times New Roman, serif">Times New Roman</option>
+                    <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+                    <option value="Verdana, sans-serif">Verdana</option>
+                  </select>
+                  <small class="field-hint">Font family for the phone number</small>
+                </div>
+                <div class="field-group">
+                  <label>Caller Number Font Size</label>
+                  <input type="number" name="toast.numberFontSize" placeholder="15" min="10" max="36" step="1" id="numberFontSizeInput" />
+                  <small class="field-hint">Font size in pixels (10-36px, default: 15) - Adjust to fit 10-digit numbers</small>
+                </div>
+              </div>
+              <div class="actions">
+                <button type="button" class="primary" id="saveOptionsBtn">Save Settings</button>
+                <button type="button" class="ghost" id="restartSip">Restart SIP</button>
+                <button type="button" class="ghost" id="simulateCall">Test SIP Call</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Firewall Section -->
+          <section class="content-section" id="section-firewall">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>Firewall Status</h2>
+                  <p class="note">Check Windows Firewall configuration for SIP Toast</p>
+                </div>
+              </div>
+              
+              <div class="actions" style="margin-bottom: 16px;">
+                <button type="button" class="primary" id="checkFirewallBtn">Check Firewall Status</button>
+                <button type="button" class="secondary" id="refreshFirewallBtn" style="display: none;">Refresh</button>
+              </div>
+
+              <div id="firewallStatusContainer" style="display: none; max-height: 500px; overflow-y: auto; overflow-x: hidden; padding-right: 8px;">
+                <div class="debug-section">
+                  <div class="section-heading">
+                    <h3>Firewall Status</h3>
+                  </div>
+                  <div class="debug-info" id="firewallStatusInfo">
+                    <div class="debug-item">
+                      <strong>Status:</strong> <span id="firewallStatusText">-</span>
+                    </div>
+                    <div class="debug-item">
+                      <strong>Firewall Enabled:</strong> <span id="firewallEnabledText">-</span>
+                    </div>
+                    <div class="debug-item">
+                      <strong>Outbound Allowed:</strong> <span id="outboundAllowedText">-</span>
+                    </div>
+                    <div class="debug-item">
+                      <strong>Application Rules:</strong> <span id="appRulesText">-</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="firewallRecommendations" style="margin-top: 16px;"></div>
+
+                <div class="debug-section" id="firewallInstructionsSection" style="margin-top: 16px; display: none;">
+                  <div class="section-heading">
+                    <h3>Configuration Instructions</h3>
+                  </div>
+                  <div id="firewallInstructionsContent"></div>
+                </div>
+              </div>
+
+              <div id="firewallLoading" style="display: none; padding: 20px; text-align: center; color: var(--text-muted);">
+                Checking firewall status...
+              </div>
+
+              <div id="firewallError" style="display: none; padding: 20px; text-align: center; color: #ef4444;"></div>
+            </div>
+          </section>
+
+          <!-- Event Logs Section -->
+          <section class="content-section" id="section-logs">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>Event Logs</h2>
+                  <p class="note">View SIP calls, toast notifications, and user interactions</p>
+                </div>
+              </div>
+              
+              <div class="log-controls" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <select id="logFilterType" style="padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary);">
+                  <option value="">All Events</option>
+                  <option value="sip_incoming">SIP Incoming Calls</option>
+                  <option value="toast_deployed">Toast Deployed</option>
+                  <option value="toast_timeout">Toast Timeout</option>
+                  <option value="toast_click">Toast Clicks</option>
+                </select>
+                <button type="button" class="secondary" id="refreshLogsBtn" style="margin-left: auto;">Refresh</button>
+                <button type="button" class="ghost" id="clearLogsBtn" style="color: #ef4444;">Delete Logs</button>
+              </div>
+
+              <div class="log-card">
+                <div class="log-stream" id="eventLogStream" style="max-height: 500px; overflow-y: auto;">
+                  <div style="padding: 20px; text-align: center; color: var(--text-muted);">
+                    Loading events...
+                  </div>
+                </div>
+              </div>
+              
+              <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                <small style="color: var(--text-muted);">
+                  Log file location: <span id="logFilePath" style="font-family: monospace; font-size: 10px;"></span>
+                </small>
+              </div>
+            </div>
+          </section>
+
+          <!-- About Section -->
+          <section class="content-section" id="section-about">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>About</h2>
+                  <p class="note">Application information</p>
+                </div>
+              </div>
+              <div class="about-info" id="aboutInfo">
+                <div class="about-item">
+                  <strong>Application Name:</strong> <span id="aboutAppName">-</span>
+                </div>
+                <div class="about-item">
+                  <strong>Version:</strong> <span id="aboutVersion">-</span>
+                </div>
+                <div class="about-item">
+                  <strong>Build Date:</strong> <span id="aboutBuildDate">-</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </form>
+
+        <div class="save-status-container">
+          <p class="save-status" id="saveStatus"></p>
+        </div>
+      </main>
+    </div>
+
+    <script src="./tray.js" type="module"></script>
+  </body>
+</html>

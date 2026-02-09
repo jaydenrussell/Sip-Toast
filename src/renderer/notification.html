@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SIP Toast</title>
+    <link rel="stylesheet" href="../styles/notification.css" />
+  </head>
+  <body>
+    <div id="toast" class="toast" role="status" aria-live="polite">
+      <div class="accent"></div>
+      <div class="content">
+        <div class="label">Caller ID</div>
+        <div id="caller" class="caller"></div>
+        <div id="number" class="number"></div>
+        <div id="callerIdInfo" class="caller-id-info" style="display: none;"></div>
+        <div id="clientInfo" class="client-info" style="display: none;"></div>
+        <div id="note" class="note"></div>
+      </div>
+      <div id="copiedBadge" class="copied-badge">Copied!</div>
+    </div>
+    <script src="./notification.js" type="module"></script>
+  </body>
+</html>
+
