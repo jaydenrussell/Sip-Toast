@@ -707,15 +707,15 @@ if (saveAllBtn) {
 
 if (simulateButton) {
   simulateButton.addEventListener('click', async () => {
-    setSaveStatus('Simulating SIP call and Acuity API query…');
+    setSaveStatus('Simulating toast notification with current settings…');
     try {
-      await window.trayAPI.logAction('Test SIP call initiated');
+      await window.trayAPI.logAction('Test toast notification initiated');
       await window.trayAPI.simulateCall();
-      setSaveStatus('Test call simulated - check toast notification', 'success');
-      await window.trayAPI.logAction('Test SIP call completed - toast notification shown');
+      setSaveStatus('Test toast notification shown', 'success');
+      await window.trayAPI.logAction('Test toast notification completed');
     } catch (error) {
       setSaveStatus('Simulation failed', 'error');
-      await window.trayAPI.logAction(`Test SIP call failed: ${error.message}`);
+      await window.trayAPI.logAction(`Test toast notification failed: ${error.message}`);
     }
   });
 }
