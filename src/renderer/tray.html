@@ -222,12 +222,12 @@
                 </div>
               </div>
 
-              <!-- Startup & Behavior Section -->
+              <!-- Startup Section -->
               <div class="card-section">
                 <div class="section-heading">
                   <div>
-                    <h3>Startup & Behavior</h3>
-                    <p class="note">Configure how the application starts and behaves</p>
+                    <h3>Startup</h3>
+                    <p class="note">Configure how the application starts</p>
                   </div>
                 </div>
                 <div class="options-grid">
@@ -238,22 +238,23 @@
                     </button>
                     <input type="hidden" name="app.launchAtLogin" value="true" />
                   </div>
-                  <div class="field-group">
-                    <label>Toast Notification Timeout</label>
-                    <input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
-                    <small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
-                  </div>
                 </div>
               </div>
 
               <!-- Toast Appearance Section -->
               <div class="card-section">
-              <div class="section-heading">
-                <div>
-                  <h3>Toast Notification & Behavior</h3>
-                  <p class="note">Customize the look, feel, and behavior of toast notifications</p>
+                <div class="section-heading">
+                  <div>
+                    <h3>Toast Notification & Behavior</h3>
+                    <p class="note">Customize the look, feel, and behavior of toast notifications</p>
+                  </div>
                 </div>
-              </div>
+                
+                <div class="field-group">
+                  <label>Toast Notification Timeout</label>
+                  <input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
+                  <small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
+                </div>
                 
                 <div class="grid two-col">
                   <div class="field-group">

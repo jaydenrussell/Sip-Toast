@@ -137,7 +137,8 @@ const renderSettings = (settings) => {
       }
     }
     
-    input.value = value || '';
+    // Ensure we always set a value, even if empty string
+    input.value = value !== null && value !== undefined ? value : '';
   });
 
   const launchAtLogin =
