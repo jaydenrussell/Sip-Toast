@@ -50,7 +50,7 @@ body {
 }
 
 .title-bar {
-  height: 40px;
+  height: 32px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   -webkit-app-region: drag;
@@ -113,7 +113,7 @@ body {
 }
 
 .sidebar {
-  width: 180px;
+  width: 140px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -123,7 +123,7 @@ body {
 
 .sidebar-nav {
   flex: 1;
-  padding: 8px 4px;
+  padding: 4px 2px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -132,15 +132,15 @@ body {
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 5px 6px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: all 0.2s ease;
   text-align: left;
   font-family: inherit;
@@ -181,28 +181,28 @@ body {
 }
 
 .content-header {
-  padding: 24px 28px 16px;
+  padding: 12px 16px 8px;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
 .content-header h1 {
-  margin: 0 0 4px;
-  font-size: 28px;
+  margin: 0 0 2px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .content-header .subhead {
   margin: 0;
-  font-size: 14px;
+  font-size: 12px;
   color: var(--text-tertiary);
 }
 
 .content-section {
   display: none;
   flex: 1;
-  padding: 24px 28px;
+  padding: 12px 16px;
   overflow-y: auto;
   overflow-x: hidden;
   flex-direction: column;
@@ -214,34 +214,34 @@ body {
 
 .card {
   background: var(--bg-secondary);
-  border-radius: 12px;
-  padding: 20px 24px;
+  border-radius: 8px;
+  padding: 12px 16px;
   border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
   width: 100%;
   box-sizing: border-box;
 }
 
 .card-section {
-  padding: 16px;
+  padding: 10px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--bg-tertiary);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .card-section:not(:last-child) {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .card-section .section-heading {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -280,7 +280,7 @@ body {
 
 .grid {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .two-col {
@@ -290,7 +290,7 @@ body {
 .options-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .field-group {
@@ -352,9 +352,9 @@ input[type='password'],
 input[type='number'],
 select {
   border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 14px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
   background: var(--input-bg);
   color: var(--text-primary);
   transition: border 0.2s ease, box-shadow 0.2s ease;
@@ -430,12 +430,12 @@ input:focus {
 
 button {
   border: none;
-  border-radius: 8px;
-  padding: 10px 20px;
+  border-radius: 6px;
+  padding: 8px 16px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12px;
   transition: all 0.2s ease;
 }
 
@@ -474,9 +474,9 @@ button.ghost:hover {
 }
 
 .status-chip {
-  padding: 6px 14px;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 10px;
   text-transform: capitalize;
   background: #94a3b8;
   color: #fff;
@@ -504,7 +504,7 @@ button.ghost:hover {
 
 .log-card {
   flex: 1;
-  min-height: 400px;
+  min-height: 200px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -512,22 +512,22 @@ button.ghost:hover {
 
 .log-stream {
   flex: 1;
-  min-height: 300px;
+  min-height: 150px;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   padding-right: 4px;
 }
 
 .log-entry {
-  font-size: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
   background: var(--bg-tertiary);
   display: flex;
-  gap: 10px;
+  gap: 8px;
   border-left: 3px solid var(--text-muted);
 }
 
@@ -560,14 +560,14 @@ button.ghost:hover {
 }
 
 .save-status-container {
-  padding: 12px 28px;
+  padding: 8px 16px;
   border-top: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
 .save-status {
   min-height: 18px;
-  font-size: 13px;
+  font-size: 12px;
   margin: 0;
   color: var(--text-tertiary);
 }
@@ -579,15 +579,15 @@ button.ghost:hover {
 .about-info {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 0;
+  gap: 8px;
+  padding: 8px 0;
 }
 
 .about-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--border-light);
 }
 
