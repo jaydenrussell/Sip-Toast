@@ -170,6 +170,9 @@ class UpdateService {
       
       if (versionComparison < 0) {
         logger.info(`✅ Update available: ${latestRelease.version}`);
+        // Update internal state to match the result
+        this.updateAvailable = true;
+        this.isChecking = false;
         return {
           updateAvailable: true,
           version: latestRelease.version,
@@ -181,6 +184,9 @@ class UpdateService {
         };
       } else {
         logger.info(`ℹ️ No update available. Current version is up to date.`);
+        // Update internal state to match the result
+        this.updateAvailable = false;
+        this.isChecking = false;
         return {
           updateAvailable: false,
           version: currentVersion,
@@ -189,6 +195,8 @@ class UpdateService {
       }
     } catch (error) {
       logger.error(`❌ GitHub update check failed: ${error.message}`);
+      // Update internal state to reflect error state
+      this.isChecking = false;
       return {
         updateAvailable: false,
         error: error.message,
@@ -221,8 +229,7 @@ class UpdateService {
       if (githubResult.error) {
         logger.warn(`GitHub API failed, falling back to electron-updater: ${githubResult.error}`);
       } else {
-        this.updateAvailable = githubResult.updateAvailable;
-        this.isChecking = false;
+        // GitHub API succeeded - state is already set in checkForUpdatesWithGitHub()
         return {
           checking: false,
           updateAvailable: githubResult.updateAvailable,
