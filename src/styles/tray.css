@@ -15,6 +15,10 @@
   --input-bg: #f8fafc;
   --nav-hover: rgba(37, 99, 235, 0.1);
   --nav-active: rgba(37, 99, 235, 0.15);
+  --sidebar-width: 140px;
+  --title-bar-height: 32px;
+  --header-height: 40px;
+  --min-content-height: 400px;
 }
 
 [data-theme='dark'] {
@@ -113,12 +117,13 @@ body {
 }
 
 .sidebar {
-  width: 140px;
+  width: var(--sidebar-width);
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  min-width: var(--sidebar-width);
 }
 
 .sidebar-nav {
@@ -178,34 +183,41 @@ body {
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-primary);
+  min-width: 0; /* Allow shrinking */
 }
 
 .content-header {
   padding: 12px 16px 8px;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .content-header h1 {
   margin: 0 0 2px;
-  font-size: 20px;
+  font-size: clamp(16px, 2.5vw, 20px);
   font-weight: 600;
   color: var(--text-primary);
+  line-height: 1.2;
 }
 
 .content-header .subhead {
   margin: 0;
-  font-size: 12px;
+  font-size: clamp(10px, 1.5vw, 12px);
   color: var(--text-tertiary);
+  line-height: 1.3;
 }
 
 .content-section {
   display: none;
   flex: 1;
   padding: 12px 16px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden; /* Prevent scrolling within sections */
   flex-direction: column;
+  min-height: 0; /* Allow shrinking */
 }
 
 .content-section.active {
@@ -222,6 +234,8 @@ body {
   gap: 12px;
   width: 100%;
   box-sizing: border-box;
+  overflow: hidden; /* Prevent card overflow */
+  min-height: 0; /* Allow shrinking */
 }
 
 .card-section {
@@ -281,10 +295,25 @@ body {
 .grid {
   display: grid;
   gap: 12px;
+  width: 100%;
 }
 
 .two-col {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Responsive grid for smaller screens */
+@media (max-width: 900px) {
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Ensure proper spacing on very small screens */
+@media (max-width: 600px) {
+  .grid {
+    gap: 8px;
+  }
 }
 
 .options-grid {
@@ -297,54 +326,62 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0; /* Allow shrinking */
 }
 
 label {
-  font-size: 13px;
+  font-size: clamp(11px, 1.4vw, 13px);
   color: var(--text-secondary);
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .field-hint {
-  font-size: 11px;
+  font-size: clamp(10px, 1.2vw, 11px);
   color: var(--text-tertiary);
   margin-top: -4px;
   line-height: 1.4;
+  word-wrap: break-word;
 }
 
 .debug-section {
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--border-color);
 }
 
 .debug-section h3 {
-  font-size: 14px;
+  font-size: clamp(12px, 1.6vw, 14px);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 12px;
+  line-height: 1.3;
 }
 
 .debug-info {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 12px;
+  font-size: clamp(10px, 1.2vw, 12px);
 }
 
 .debug-item {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .debug-item strong {
   color: var(--text-secondary);
-  min-width: 100px;
+  min-width: 120px;
+  flex-shrink: 0;
 }
 
 .debug-item span {
   color: var(--text-primary);
-  word-break: break-all;
+  word-break: break-word;
+  flex: 1;
+  min-width: 0;
 }
 
 input[type='text'],
@@ -354,12 +391,14 @@ select {
   border: 1px solid var(--border-light);
   border-radius: 6px;
   padding: 8px 10px;
-  font-size: 13px;
+  font-size: clamp(11px, 1.4vw, 13px);
   background: var(--input-bg);
   color: var(--text-primary);
   transition: border 0.2s ease, box-shadow 0.2s ease;
   font-family: inherit;
   width: 100%;
+  box-sizing: border-box;
+  min-width: 0; /* Allow shrinking */
 }
 
 select {
@@ -382,10 +421,13 @@ input:focus {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  width: 100%;
 }
 
 .toggle-group label {
   flex: 1;
+  font-size: clamp(11px, 1.4vw, 13px);
+  line-height: 1.2;
 }
 
 .toggle {
@@ -426,6 +468,8 @@ input:focus {
   justify-content: flex-end;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap; /* Allow buttons to wrap on small screens */
+  margin-top: 8px;
 }
 
 button {
@@ -435,8 +479,9 @@ button {
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  font-size: 12px;
+  font-size: clamp(10px, 1.3vw, 12px);
   transition: all 0.2s ease;
+  min-height: 32px;
 }
 
 button.primary {
@@ -473,6 +518,14 @@ button.ghost:hover {
   border-color: var(--border-light);
 }
 
+/* Responsive button sizing */
+@media (max-width: 600px) {
+  button {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+}
+
 .status-chip {
   padding: 4px 10px;
   border-radius: 999px;
@@ -504,7 +557,7 @@ button.ghost:hover {
 
 .log-card {
   flex: 1;
-  min-height: 200px;
+  min-height: var(--min-content-height);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -522,19 +575,21 @@ button.ghost:hover {
 }
 
 .log-entry {
-  font-size: 11px;
+  font-size: clamp(10px, 1.1vw, 11px);
   padding: 6px 10px;
   border-radius: 6px;
   background: var(--bg-tertiary);
   display: flex;
   gap: 8px;
   border-left: 3px solid var(--text-muted);
+  flex-wrap: wrap;
 }
 
 .log-entry span {
   color: var(--text-muted);
-  min-width: 70px;
+  min-width: 100px;
   flex-shrink: 0;
+  font-size: clamp(9px, 1vw, 10px);
 }
 
 .log-entry p {
@@ -542,6 +597,7 @@ button.ghost:hover {
   flex: 1;
   color: var(--text-primary);
   word-break: break-word;
+  font-size: clamp(10px, 1.1vw, 11px);
 }
 
 .log-entry.log-error {
@@ -563,13 +619,15 @@ button.ghost:hover {
   padding: 8px 16px;
   border-top: 1px solid var(--border-color);
   flex-shrink: 0;
+  min-height: 24px;
 }
 
 .save-status {
   min-height: 18px;
-  font-size: 12px;
+  font-size: clamp(10px, 1.2vw, 12px);
   margin: 0;
   color: var(--text-tertiary);
+  line-height: 1.4;
 }
 
 .save-status[data-tone='success'] {
@@ -589,6 +647,8 @@ button.ghost:hover {
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--border-light);
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .about-item:last-child {
@@ -598,16 +658,19 @@ button.ghost:hover {
 .about-item strong {
   color: var(--text-secondary);
   font-weight: 600;
-  font-size: 14px;
-  min-width: 140px;
+  font-size: clamp(12px, 1.4vw, 14px);
+  min-width: 120px;
+  flex-shrink: 0;
 }
 
 .about-item span {
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: clamp(12px, 1.4vw, 14px);
   font-weight: 500;
   text-align: right;
   flex: 1;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .save-status[data-tone='error'] {
@@ -636,4 +699,63 @@ button.ghost:hover {
 
 #firewallStatusContainer::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* Responsive adjustments for very small screens */
+@media (max-width: 800px) {
+  :root {
+    --sidebar-width: 120px;
+    --title-bar-height: 32px;
+    --header-height: 36px;
+    --min-content-height: 300px;
+  }
+  
+  .sidebar {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+  }
+  
+  .content-header {
+    height: var(--header-height);
+    padding: 10px 12px;
+  }
+  
+  .content-section {
+    padding: 10px 12px;
+  }
+  
+  .card {
+    padding: 10px 12px;
+  }
+  
+  .log-card {
+    min-height: var(--min-content-height);
+  }
+}
+
+/* Ensure no horizontal scrolling at any size */
+@media (max-width: 768px) {
+  .app-container {
+    width: 100vw;
+    max-width: 100%;
+  }
+  
+  .main-content {
+    min-width: 400px; /* Ensure minimum usable width */
+  }
+}
+
+/* Optimize for 800x600 specifically */
+@media (max-width: 800px) and (max-height: 600px) {
+  .content-section {
+    overflow: hidden; /* Prevent any scrolling */
+  }
+  
+  .card {
+    max-height: calc(100vh - 200px); /* Ensure cards fit within viewport */
+  }
+  
+  .log-card {
+    min-height: 200px;
+  }
 }
