@@ -726,11 +726,67 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     loadAboutInfo();
     setupWindowControls();
+    setupResponsiveLayout();
   });
 } else {
   loadAboutInfo();
   setupWindowControls();
+  setupResponsiveLayout();
 }
+
+// Responsive layout management
+const setupResponsiveLayout = () => {
+  // Handle window resize events from main process
+  window.addEventListener('resize', () => {
+    adjustLayoutForSize();
+  });
+  
+  // Handle custom resize events from main process
+  if (window.trayAPI && window.trayAPI.onWindowResized) {
+    window.trayAPI.onWindowResized((event, bounds) => {
+      adjustLayoutForSize(bounds);
+    });
+  }
+  
+  // Initial layout adjustment
+  adjustLayoutForSize();
+};
+
+const adjustLayoutForSize = (bounds = null) => {
+  const width = bounds ? bounds.width : window.innerWidth;
+  const height = bounds ? bounds.height : window.innerHeight;
+  
+  // Apply responsive classes based on window size
+  const body = document.body;
+  
+  if (width <= 800) {
+    body.classList.add('responsive-small');
+  } else {
+    body.classList.remove('responsive-small');
+  }
+  
+  if (width <= 600) {
+    body.classList.add('responsive-xs');
+  } else {
+    body.classList.remove('responsive-xs');
+  }
+  
+  // Ensure content fits without scrolling at 800x600
+  if (width <= 800 && height <= 600) {
+    body.classList.add('compact-layout');
+    // Force content to fit
+    const contentSection = document.querySelector('.content-section.active');
+    if (contentSection) {
+      const card = contentSection.querySelector('.card');
+      if (card) {
+        // Adjust card padding for compact layout
+        card.style.padding = '8px 12px';
+      }
+    }
+  } else {
+    body.classList.remove('compact-layout');
+  }
+};
 
 // Event Log functionality
 const eventLogStream = document.getElementById('eventLogStream');
