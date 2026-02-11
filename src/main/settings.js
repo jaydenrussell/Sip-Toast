@@ -1,4 +1,4 @@
-const Store = require('electron-store');
+const { default: Store } = require('electron-store');
 const { encrypt, decrypt } = require('./services/encryption');
 
 // Fields that should be encrypted at rest
