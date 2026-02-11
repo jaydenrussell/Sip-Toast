@@ -254,8 +254,8 @@ class UpdateService {
    * Download the available update
    */
   async downloadUpdate() {
-    if (!this.updateAvailable) {
-      throw new Error('No update available to download');
+    if (!this.updateAvailable && !this.updateDownloaded) {
+      throw new Error('Please check for updates first');
     }
 
     try {
