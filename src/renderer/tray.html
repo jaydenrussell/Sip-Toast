@@ -32,6 +32,10 @@
             <span class="nav-icon">⚙️</span>
             <span class="nav-label">Options</span>
           </button>
+          <button class="nav-item" data-section="updates">
+            <span class="nav-icon">🔄</span>
+            <span class="nav-label">Updates</span>
+          </button>
           <button class="nav-item" data-section="firewall">
             <span class="nav-icon">🔥</span>
             <span class="nav-label">Firewall</span>
@@ -214,7 +218,7 @@
               <div class="section-heading">
                 <div>
                   <h2>Application Options</h2>
-                  <p class="note">Configure startup behavior, notifications, and updates</p>
+                  <p class="note">Configure startup behavior, notifications, and appearance</p>
                 </div>
               </div>
 
@@ -310,12 +314,39 @@
                 </div>
               </div>
 
-              <!-- Auto-Update Section -->
+              <!-- Actions Section -->
               <div class="card-section">
                 <div class="section-heading">
                   <div>
-                    <h3>Auto-Update</h3>
-                    <p class="note">Configure automatic update checking from GitHub releases</p>
+                    <h3>Actions</h3>
+                    <p class="note">Quick actions for testing and maintenance</p>
+                  </div>
+                </div>
+                <div class="actions">
+                  <button type="button" class="primary" id="saveOptionsBtn">Save Settings</button>
+                  <button type="button" class="ghost" id="restartSip">Restart SIP</button>
+                  <button type="button" class="ghost" id="simulateCall">Test SIP Call</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Updates Section -->
+          <section class="content-section" id="section-updates">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>Application Updates</h2>
+                  <p class="note">Check for and install updates from GitHub releases</p>
+                </div>
+              </div>
+
+              <!-- Auto-Update Configuration Section -->
+              <div class="card-section">
+                <div class="section-heading">
+                  <div>
+                    <h3>Auto-Update Settings</h3>
+                    <p class="note">Configure automatic update checking behavior</p>
                   </div>
                 </div>
                 
@@ -338,13 +369,23 @@
                     <small class="field-hint">How often to automatically check for updates</small>
                   </div>
                 </div>
-                
-                <div class="actions" style="margin-top: 16px;">
-                  <button type="button" class="secondary" id="checkUpdatesBtn">Check for Updates</button>
+              </div>
+
+              <!-- Manual Update Section -->
+              <div class="card-section">
+                <div class="section-heading">
+                  <div>
+                    <h3>Manual Update Check</h3>
+                    <p class="note">Manually check for updates and manage installation</p>
+                  </div>
                 </div>
                 
-                <div id="updateStatusContainer" style="margin-top: 16px; padding: 12px; background: var(--bg-secondary, rgba(0,0,0,0.02)); border-radius: 8px; display: none;">
-                  <div id="updateStatusText" style="color: var(--text-primary);"></div>
+                <div class="actions" style="margin-bottom: 16px;">
+                  <button type="button" class="primary" id="checkUpdatesBtn">Check for Updates</button>
+                </div>
+                
+                <div id="updateStatusContainer" style="padding: 12px; background: var(--bg-secondary, rgba(0,0,0,0.02)); border-radius: 8px;">
+                  <div id="updateStatusText" style="color: var(--text-primary);">No update check performed yet</div>
                   <div id="updateStatusActions" style="margin-top: 8px; display: none;">
                     <button type="button" class="primary" id="downloadUpdateBtn" style="margin-right: 8px;">Download Update</button>
                     <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install & Restart</button>
@@ -352,18 +393,63 @@
                 </div>
               </div>
 
-              <!-- Actions Section -->
+              <!-- Update Information Section -->
               <div class="card-section">
                 <div class="section-heading">
                   <div>
-                    <h3>Actions</h3>
-                    <p class="note">Quick actions for testing and maintenance</p>
+                    <h3>Update Information</h3>
+                    <p class="note">Current version and update details</p>
                   </div>
                 </div>
-                <div class="actions">
-                  <button type="button" class="primary" id="saveOptionsBtn">Save Settings</button>
-                  <button type="button" class="ghost" id="restartSip">Restart SIP</button>
-                  <button type="button" class="ghost" id="simulateCall">Test SIP Call</button>
+                
+                <div class="debug-section">
+                  <div class="debug-info">
+                    <div class="debug-item">
+                      <strong>Current Version:</strong> <span id="currentVersionInfo">-</span>
+                    </div>
+                    <div class="debug-item">
+                      <strong>Latest Available:</strong> <span id="latestVersionInfo">-</span>
+                    </div>
+                    <div class="debug-item">
+                      <strong>Last Check:</strong> <span id="lastCheckInfo">-</span>
+                    </div>
+                    <div class="debug-item">
+                      <strong>Update Status:</strong> <span id="updateStatusInfo">-</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- GitHub Integration Section -->
+              <div class="card-section">
+                <div class="section-heading">
+                  <div>
+                    <h3>GitHub Integration</h3>
+                    <p class="note">Updates are fetched from the official GitHub repository</p>
+                  </div>
+                </div>
+                
+                <div class="debug-section">
+                  <div class="debug-info">
+                    <div class="debug-item">
+                      <strong>Repository:</strong> <span style="font-family: monospace;">jaydenrussell/Sip-Toast</span>
+                    </div>
+                    <div class="debug-item">
+                      <strong>Release Channel:</strong> <span>Stable releases</span>
+                    </div>
+                    <div class="debug-item">
+                      <strong>Update Method:</strong> <span>Automatic download and install</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div style="margin-top: 12px; padding: 12px; background: var(--bg-secondary, rgba(0,0,0,0.02)); border-radius: 8px;">
+                  <small style="color: var(--text-muted); display: block; margin-bottom: 8px;">
+                    <strong>Note:</strong> Updates are automatically downloaded in the background and installed when you restart the application.
+                  </small>
+                  <small style="color: var(--text-muted); display: block;">
+                    <strong>Security:</strong> All updates are verified using digital signatures to ensure authenticity.
+                  </small>
                 </div>
               </div>
             </div>

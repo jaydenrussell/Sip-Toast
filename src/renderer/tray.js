@@ -16,6 +16,7 @@ const sections = {
   sip: { title: 'SIP Provider', subtitle: 'Configure your SIP connection settings' },
   acuity: { title: 'Acuity Scheduler', subtitle: 'Configure API credentials for client lookups' },
   options: { title: 'Options', subtitle: 'Application settings and controls' },
+  updates: { title: 'Updates', subtitle: 'Check for and install application updates' },
   firewall: { title: 'Firewall', subtitle: 'Check Windows Firewall configuration' },
   logs: { title: 'Event Logs', subtitle: 'View SIP calls, toast notifications, and user interactions' },
   about: { title: 'About', subtitle: 'Application information' }
@@ -55,9 +56,10 @@ navItems.forEach((item) => {
       // Don't auto-check, let user click the button
     }
     
-    // Load update status if options section is shown
-    if (section === 'options') {
+    // Load update status if updates section is shown
+    if (section === 'updates') {
       loadUpdateStatus();
+      loadUpdateInformation();
     }
   });
 });
@@ -558,7 +560,14 @@ if (checkUpdatesBtn) {
   checkUpdatesBtn.addEventListener('click', async () => {
     try {
       updateStatusDisplay({ checking: true });
-      const result = await window.trayAPI.checkForUpdates();
+      // Try GitHub API first, fall back to electron-updater
+      let result;
+      try {
+        result = await window.trayAPI.checkForUpdatesGithub();
+      } catch (githubError) {
+        console.warn('GitHub API check failed, falling back to electron-updater:', githubError);
+        result = await window.trayAPI.checkForUpdates();
+      }
       
       if (result.error) {
         updateStatusDisplay({ error: result.error });
@@ -634,6 +643,59 @@ const loadUpdateStatus = async () => {
   } catch (error) {
     // Silently fail - update status is optional
     console.error('Failed to load update status:', error);
+  }
+};
+
+// Function to load detailed update information
+const loadUpdateInformation = async () => {
+  try {
+    const status = await window.trayAPI.getUpdateStatus();
+    const settings = await window.trayAPI.getSettings();
+    
+    // Update current version info
+    const currentVersionInfo = document.getElementById('currentVersionInfo');
+    if (currentVersionInfo) {
+      currentVersionInfo.textContent = status.currentVersion || 'Unknown';
+    }
+    
+    // Update latest version info
+    const latestVersionInfo = document.getElementById('latestVersionInfo');
+    if (latestVersionInfo) {
+      latestVersionInfo.textContent = status.updateAvailable ? (status.version || 'Unknown') : 'Up to date';
+    }
+    
+    // Update last check info
+    const lastCheckInfo = document.getElementById('lastCheckInfo');
+    if (lastCheckInfo) {
+      const updateSettings = settings.updates || {};
+      const lastCheckTime = updateSettings.lastCheckTime;
+      if (lastCheckTime) {
+        const date = new Date(lastCheckTime);
+        lastCheckInfo.textContent = date.toLocaleString();
+      } else {
+        lastCheckInfo.textContent = 'Never';
+      }
+    }
+    
+    // Update update status info
+    const updateStatusInfo = document.getElementById('updateStatusInfo');
+    if (updateStatusInfo) {
+      if (status.checking) {
+        updateStatusInfo.textContent = 'Checking for updates...';
+        updateStatusInfo.style.color = '#f59e0b';
+      } else if (status.updateAvailable) {
+        updateStatusInfo.textContent = 'Update available';
+        updateStatusInfo.style.color = '#10b981';
+      } else if (status.updateDownloaded) {
+        updateStatusInfo.textContent = 'Update downloaded';
+        updateStatusInfo.style.color = '#10b981';
+      } else {
+        updateStatusInfo.textContent = 'Up to date';
+        updateStatusInfo.style.color = '#10b981';
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load update information:', error);
   }
 };
 
