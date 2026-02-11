@@ -213,133 +213,158 @@
             <div class="card">
               <div class="section-heading">
                 <div>
-                  <h2>Options</h2>
-                  <p class="note">Application settings and controls</p>
+                  <h2>Application Options</h2>
+                  <p class="note">Configure startup behavior, notifications, and updates</p>
                 </div>
               </div>
-              <div class="options-grid">
-                <div class="toggle-group">
-                  <label>Run at Windows startup</label>
-                  <button type="button" class="toggle" id="autoLaunchToggle" role="switch" aria-checked="true">
-                    <span></span>
-                  </button>
-                  <input type="hidden" name="app.launchAtLogin" value="true" />
+
+              <!-- Startup & Behavior Section -->
+              <div class="card-section">
+                <div class="section-heading">
+                  <div>
+                    <h3>Startup & Behavior</h3>
+                    <p class="note">Configure how the application starts and behaves</p>
+                  </div>
                 </div>
-                <div class="field-group">
-                  <label>Toast Notification Timeout</label>
-                  <input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
-                  <small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
-                </div>
-              </div>
-              
-              <div class="section-heading" style="margin-top: 24px; margin-bottom: 12px;">
-                <div>
-                  <h3>Toast Notification Fonts</h3>
-                  <p class="note">Customize font and size for Caller ID and caller number</p>
-                </div>
-              </div>
-              
-              <div class="grid two-col">
-                <div class="field-group">
-                  <label>Caller ID Font</label>
-                  <select name="toast.callerIdFont" id="callerIdFontInput">
-                    <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
-                    <option value="Segoe UI, sans-serif">Segoe UI</option>
-                    <option value="Arial, sans-serif">Arial</option>
-                    <option value="Calibri, sans-serif">Calibri</option>
-                    <option value="Consolas, monospace">Consolas</option>
-                    <option value="Courier New, monospace">Courier New</option>
-                    <option value="Georgia, serif">Georgia</option>
-                    <option value="Helvetica, sans-serif">Helvetica</option>
-                    <option value="Impact, sans-serif">Impact</option>
-                    <option value="Lucida Console, monospace">Lucida Console</option>
-                    <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
-                    <option value="Tahoma, sans-serif">Tahoma</option>
-                    <option value="Times New Roman, serif">Times New Roman</option>
-                    <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
-                    <option value="Verdana, sans-serif">Verdana</option>
-                  </select>
-                  <small class="field-hint">Font family for the Caller ID name/label</small>
-                </div>
-                <div class="field-group">
-                  <label>Caller ID Font Size</label>
-                  <input type="number" name="toast.callerIdFontSize" placeholder="20" min="10" max="36" step="1" id="callerIdFontSizeInput" />
-                  <small class="field-hint">Font size in pixels (10-36px, default: 20)</small>
+                <div class="options-grid">
+                  <div class="toggle-group">
+                    <label>Run at Windows startup</label>
+                    <button type="button" class="toggle" id="autoLaunchToggle" role="switch" aria-checked="true">
+                      <span></span>
+                    </button>
+                    <input type="hidden" name="app.launchAtLogin" value="true" />
+                  </div>
+                  <div class="field-group">
+                    <label>Toast Notification Timeout</label>
+                    <input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
+                    <small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
+                  </div>
                 </div>
               </div>
-              
-              <div class="grid two-col">
-                <div class="field-group">
-                  <label>Caller Number Font</label>
-                  <select name="toast.numberFont" id="numberFontInput">
-                    <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
-                    <option value="Segoe UI, sans-serif">Segoe UI</option>
-                    <option value="Arial, sans-serif">Arial</option>
-                    <option value="Calibri, sans-serif">Calibri</option>
-                    <option value="Consolas, monospace">Consolas</option>
-                    <option value="Courier New, monospace">Courier New</option>
-                    <option value="Georgia, serif">Georgia</option>
-                    <option value="Helvetica, sans-serif">Helvetica</option>
-                    <option value="Impact, sans-serif">Impact</option>
-                    <option value="Lucida Console, monospace">Lucida Console</option>
-                    <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
-                    <option value="Tahoma, sans-serif">Tahoma</option>
-                    <option value="Times New Roman, serif">Times New Roman</option>
-                    <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
-                    <option value="Verdana, sans-serif">Verdana</option>
-                  </select>
-                  <small class="field-hint">Font family for the phone number</small>
+
+              <!-- Toast Appearance Section -->
+              <div class="card-section">
+                <div class="section-heading">
+                  <div>
+                    <h3>Toast Appearance</h3>
+                    <p class="note">Customize the look and feel of toast notifications</p>
+                  </div>
                 </div>
-                <div class="field-group">
-                  <label>Caller Number Font Size</label>
-                  <input type="number" name="toast.numberFontSize" placeholder="15" min="10" max="36" step="1" id="numberFontSizeInput" />
-                  <small class="field-hint">Font size in pixels (10-36px, default: 15) - Adjust to fit 10-digit numbers</small>
+                
+                <div class="grid two-col">
+                  <div class="field-group">
+                    <label>Caller ID Font</label>
+                    <select name="toast.callerIdFont" id="callerIdFontInput">
+                      <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
+                      <option value="Segoe UI, sans-serif">Segoe UI</option>
+                      <option value="Arial, sans-serif">Arial</option>
+                      <option value="Calibri, sans-serif">Calibri</option>
+                      <option value="Consolas, monospace">Consolas</option>
+                      <option value="Courier New, monospace">Courier New</option>
+                      <option value="Georgia, serif">Georgia</option>
+                      <option value="Helvetica, sans-serif">Helvetica</option>
+                      <option value="Impact, sans-serif">Impact</option>
+                      <option value="Lucida Console, monospace">Lucida Console</option>
+                      <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
+                      <option value="Tahoma, sans-serif">Tahoma</option>
+                      <option value="Times New Roman, serif">Times New Roman</option>
+                      <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+                      <option value="Verdana, sans-serif">Verdana</option>
+                    </select>
+                    <small class="field-hint">Font family for the Caller ID name/label</small>
+                  </div>
+                  <div class="field-group">
+                    <label>Caller ID Font Size</label>
+                    <input type="number" name="toast.callerIdFontSize" placeholder="20" min="10" max="36" step="1" id="callerIdFontSizeInput" />
+                    <small class="field-hint">Font size in pixels (10-36px, default: 20)</small>
+                  </div>
+                </div>
+                
+                <div class="grid two-col">
+                  <div class="field-group">
+                    <label>Caller Number Font</label>
+                    <select name="toast.numberFont" id="numberFontInput">
+                      <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
+                      <option value="Segoe UI, sans-serif">Segoe UI</option>
+                      <option value="Arial, sans-serif">Arial</option>
+                      <option value="Calibri, sans-serif">Calibri</option>
+                      <option value="Consolas, monospace">Consolas</option>
+                      <option value="Courier New, monospace">Courier New</option>
+                      <option value="Georgia, serif">Georgia</option>
+                      <option value="Helvetica, sans-serif">Helvetica</option>
+                      <option value="Impact, sans-serif">Impact</option>
+                      <option value="Lucida Console, monospace">Lucida Console</option>
+                      <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
+                      <option value="Tahoma, sans-serif">Tahoma</option>
+                      <option value="Times New Roman, serif">Times New Roman</option>
+                      <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+                      <option value="Verdana, sans-serif">Verdana</option>
+                    </select>
+                    <small class="field-hint">Font family for the phone number</small>
+                  </div>
+                  <div class="field-group">
+                    <label>Caller Number Font Size</label>
+                    <input type="number" name="toast.numberFontSize" placeholder="15" min="10" max="36" step="1" id="numberFontSizeInput" />
+                    <small class="field-hint">Font size in pixels (10-36px, default: 15) - Adjust to fit 10-digit numbers</small>
+                  </div>
                 </div>
               </div>
-              
-              <div class="section-heading" style="margin-top: 24px; margin-bottom: 12px;">
-                <div>
-                  <h3>Auto-Update</h3>
-                  <p class="note">Configure automatic update checking from GitHub releases</p>
+
+              <!-- Auto-Update Section -->
+              <div class="card-section">
+                <div class="section-heading">
+                  <div>
+                    <h3>Auto-Update</h3>
+                    <p class="note">Configure automatic update checking from GitHub releases</p>
+                  </div>
+                </div>
+                
+                <div class="options-grid">
+                  <div class="toggle-group">
+                    <label>Enable Auto-Update</label>
+                    <button type="button" class="toggle" id="autoUpdateToggle" role="switch" aria-checked="true">
+                      <span></span>
+                    </button>
+                    <input type="hidden" name="updates.enabled" value="true" />
+                  </div>
+                  <div class="field-group">
+                    <label>Check Frequency</label>
+                    <select name="updates.checkFrequency" id="updateFrequencySelect">
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="never">Never</option>
+                    </select>
+                    <small class="field-hint">How often to automatically check for updates</small>
+                  </div>
+                </div>
+                
+                <div class="actions" style="margin-top: 16px;">
+                  <button type="button" class="secondary" id="checkUpdatesBtn">Check for Updates</button>
+                </div>
+                
+                <div id="updateStatusContainer" style="margin-top: 16px; padding: 12px; background: var(--bg-secondary, rgba(0,0,0,0.02)); border-radius: 8px; display: none;">
+                  <div id="updateStatusText" style="color: var(--text-primary);"></div>
+                  <div id="updateStatusActions" style="margin-top: 8px; display: none;">
+                    <button type="button" class="primary" id="downloadUpdateBtn" style="margin-right: 8px;">Download Update</button>
+                    <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install & Restart</button>
+                  </div>
                 </div>
               </div>
-              
-              <div class="options-grid">
-                <div class="toggle-group">
-                  <label>Enable Auto-Update</label>
-                  <button type="button" class="toggle" id="autoUpdateToggle" role="switch" aria-checked="true">
-                    <span></span>
-                  </button>
-                  <input type="hidden" name="updates.enabled" value="true" />
+
+              <!-- Actions Section -->
+              <div class="card-section">
+                <div class="section-heading">
+                  <div>
+                    <h3>Actions</h3>
+                    <p class="note">Quick actions for testing and maintenance</p>
+                  </div>
                 </div>
-                <div class="field-group">
-                  <label>Check Frequency</label>
-                  <select name="updates.checkFrequency" id="updateFrequencySelect">
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="never">Never</option>
-                  </select>
-                  <small class="field-hint">How often to automatically check for updates</small>
+                <div class="actions">
+                  <button type="button" class="primary" id="saveOptionsBtn">Save Settings</button>
+                  <button type="button" class="ghost" id="restartSip">Restart SIP</button>
+                  <button type="button" class="ghost" id="simulateCall">Test SIP Call</button>
                 </div>
-              </div>
-              
-              <div class="actions" style="margin-top: 16px;">
-                <button type="button" class="secondary" id="checkUpdatesBtn">Check for Updates</button>
-              </div>
-              
-              <div id="updateStatusContainer" style="margin-top: 16px; padding: 12px; background: var(--bg-secondary, rgba(0,0,0,0.02)); border-radius: 8px; display: none;">
-                <div id="updateStatusText" style="color: var(--text-primary);"></div>
-                <div id="updateStatusActions" style="margin-top: 8px; display: none;">
-                  <button type="button" class="primary" id="downloadUpdateBtn" style="margin-right: 8px;">Download Update</button>
-                  <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install & Restart</button>
-                </div>
-              </div>
-              
-              <div class="actions">
-                <button type="button" class="primary" id="saveOptionsBtn">Save Settings</button>
-                <button type="button" class="ghost" id="restartSip">Restart SIP</button>
-                <button type="button" class="ghost" id="simulateCall">Test SIP Call</button>
               </div>
             </div>
           </section>
