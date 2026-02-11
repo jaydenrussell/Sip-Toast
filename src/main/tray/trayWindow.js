@@ -25,8 +25,7 @@ class TrayWindow {
       resizable: true,
       minWidth: 800,
       minHeight: 600,
-      maxWidth: 1600,
-      maxHeight: 1200,
+      // Remove maximum size restrictions
       skipTaskbar: false,
       transparent: false,
       backgroundColor: '#f8f9fc',
@@ -135,7 +134,7 @@ class TrayWindow {
     this.window.setAlwaysOnTop(false);
     this.window.setResizable(true);
     this.window.setMinimumSize(800, 600);
-    this.window.setMaximumSize(1600, 1200);
+    // Remove maximum size restrictions
     this.window.setSkipTaskbar(false);
     
     // Memory optimization: Restore normal frame rate when shown
