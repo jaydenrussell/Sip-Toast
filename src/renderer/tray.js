@@ -126,6 +126,24 @@ const renderSettings = (settings) => {
       value = 'udp';
     }
     
+    // Set default toast timeout if not set
+    if (key === 'autoDismissMs' && (value === null || value === undefined || value === '')) {
+      value = 20000; // Default 20 seconds
+    }
+    
+    // Set default font sizes if not set
+    if (key === 'numberFontSize' && (value === null || value === undefined || value === '')) {
+      value = 15;
+    }
+    if (key === 'callerIdFontSize' && (value === null || value === undefined || value === '')) {
+      value = 20;
+    }
+    
+    // Set default fonts if not set
+    if ((key === 'numberFont' || key === 'callerIdFont') && (value === null || value === undefined || value === '')) {
+      value = 'Segoe UI Variable, Segoe UI, sans-serif';
+    }
+    
     // Handle select elements - check if value exists in options
     if (input.tagName === 'SELECT' && value) {
       const optionExists = Array.from(input.options).some(opt => opt.value === value);
@@ -215,7 +233,18 @@ const collectPayload = () => {
     
     // Convert numeric fields
     if (key === 'port' || key === 'autoDismissMs' || key === 'numberFontSize' || key === 'callerIdFontSize') {
-      value = value ? Number(value) : (key === 'port' ? 5060 : null);
+      if (key === 'port') {
+        value = value ? Number(value) : 5060;
+      } else if (key === 'autoDismissMs') {
+        const numValue = value ? Number(value) : 0;
+        value = numValue >= 1000 ? numValue : 20000; // Default 20s if invalid
+      } else if (key === 'numberFontSize') {
+        const numValue = value ? Number(value) : 0;
+        value = numValue >= 10 ? numValue : 15; // Default 15px if invalid
+      } else if (key === 'callerIdFontSize') {
+        const numValue = value ? Number(value) : 0;
+        value = numValue >= 10 ? numValue : 20; // Default 20px if invalid
+      }
     }
     
     payload[section][key] = value;

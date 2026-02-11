@@ -159,19 +159,28 @@ async function checkApplicationRules() {
 
     // Also check using PowerShell for more detailed info
     try {
-      const psCommand = `Get-NetFirewallRule | Where-Object { $_.DisplayName -like "*${appName}*" -or $_.Program -like "*${appName}*" } | Select-Object DisplayName, Enabled, Direction, Action | ConvertTo-Json`;
-      const { stdout: psOutput } = await execAsync(`powershell -Command "${psCommand}"`);
+      // Escape the appName for PowerShell (handle quotes and special chars)
+      const escapedAppName = appName.replace(/'/g, "''");
+      const psCommand = `Get-NetFirewallRule | Where-Object { $_.DisplayName -like '*${escapedAppName}*' -or $_.Program -like '*${escapedAppName}*' } | Select-Object DisplayName, Enabled, Direction, Action | ConvertTo-Json -Compress`;
+      const { stdout: psOutput } = await execAsync(`powershell -ExecutionPolicy Bypass -Command "${psCommand}"`, { timeout: 10000 });
       
       if (psOutput && psOutput.trim()) {
-        const psRules = JSON.parse(psOutput);
-        const ruleArray = Array.isArray(psRules) ? psRules : [psRules];
-        
-        return ruleArray.map(rule => ({
-          name: rule.DisplayName || 'Unknown',
-          enabled: rule.Enabled === true,
-          direction: rule.Direction?.toLowerCase() || 'outbound',
-          action: rule.Action?.toLowerCase() || 'allow'
-        }));
+        try {
+          const psRules = JSON.parse(psOutput);
+          // Handle both single object and array results
+          const ruleArray = Array.isArray(psRules) ? psRules : (psRules ? [psRules] : []);
+          
+          if (ruleArray.length > 0 && ruleArray[0].DisplayName) {
+            return ruleArray.map(rule => ({
+              name: rule.DisplayName || 'Unknown',
+              enabled: rule.Enabled === true || rule.Enabled === 'True',
+              direction: (rule.Direction || 'Outbound').toLowerCase(),
+              action: (rule.Action || 'Allow').toLowerCase()
+            }));
+          }
+        } catch (parseError) {
+          logger.debug(`Failed to parse PowerShell output: ${parseError.message}`);
+        }
       }
     } catch (psError) {
       // PowerShell check failed, use netsh results

@@ -204,10 +204,12 @@ const loadEventsFromFile = (clearBuffer = false) => {
     // Clear buffer if requested (to avoid duplicates on reload)
     if (clearBuffer) {
       eventLogBuffer.length = 0;
+      console.log('Event log buffer cleared for reload');
     }
     
     // Use current log directory (in case it changed)
     const jsonFilePath = getEventJsonFilePath();
+    console.log(`Loading events from: ${jsonFilePath}`);
     
     // First try to load from JSON file (preferred format)
     if (fs.existsSync(jsonFilePath)) {
@@ -215,37 +217,45 @@ const loadEventsFromFile = (clearBuffer = false) => {
       if (jsonContent.trim()) {
         const lines = jsonContent.split('\n').filter(line => line.trim());
         let loadedCount = 0;
+        let duplicateCount = 0;
         lines.forEach(line => {
           try {
             const event = JSON.parse(line);
             // Validate event structure
             if (event && event.type && event.timestamp && event.data) {
               // Only add if not already in buffer (avoid duplicates)
+              // Use a more robust comparison that handles different property orders
               const exists = eventLogBuffer.some(e => 
                 e.type === event.type && 
-                e.timestamp === event.timestamp &&
-                JSON.stringify(e.data) === JSON.stringify(event.data)
+                e.timestamp === event.timestamp
               );
               if (!exists) {
                 eventLogBuffer.push(event);
                 loadedCount++;
+              } else {
+                duplicateCount++;
               }
             }
           } catch (error) {
             // Skip invalid JSON lines
+            console.debug(`Skipping invalid JSON line: ${error.message}`);
           }
         });
-        if (loadedCount > 0) {
-          console.log(`Loaded ${loadedCount} events from JSON file (total: ${eventLogBuffer.length})`);
-        }
+        console.log(`Loaded ${loadedCount} events from JSON file (duplicates skipped: ${duplicateCount}, total in buffer: ${eventLogBuffer.length})`);
         return;
+      } else {
+        console.log('JSON file exists but is empty');
       }
+    } else {
+      console.log('JSON file does not exist yet');
     }
     
     // Fallback: Try to parse winston log format if JSON file doesn't exist
     if (fs.existsSync(eventLogFilePath)) {
+      console.log(`Attempting to load from winston log file: ${eventLogFilePath}`);
       const fileContent = fs.readFileSync(eventLogFilePath, 'utf8');
       if (!fileContent.trim()) {
+        console.log('Winston log file is empty');
         return;
       }
       
@@ -267,9 +277,15 @@ const loadEventsFromFile = (clearBuffer = false) => {
               try {
                 const parsed = JSON.parse(jsonStr);
                 if (parsed.type && parsed.timestamp && parsed.data) {
-                  // This is our structured event
-                  eventLogBuffer.push(parsed);
-                  loadedCount++;
+                  // This is our structured event - check for duplicates
+                  const exists = eventLogBuffer.some(e => 
+                    e.type === parsed.type && 
+                    e.timestamp === parsed.timestamp
+                  );
+                  if (!exists) {
+                    eventLogBuffer.push(parsed);
+                    loadedCount++;
+                  }
                   return;
                 }
               } catch (e) {
@@ -281,21 +297,30 @@ const loadEventsFromFile = (clearBuffer = false) => {
             const typeMatch = message.match(/^(SIP_INCOMING|TOAST_DEPLOYED|TOAST_TIMEOUT|TOAST_CLICK):/);
             if (typeMatch) {
               const type = typeMatch[1].toLowerCase().replace(/_/g, '_');
-              eventLogBuffer.push({
-                type,
-                timestamp: isoTimestamp,
-                data: { rawMessage: message }
-              });
-              loadedCount++;
+              const exists = eventLogBuffer.some(e => 
+                e.type === type && 
+                e.timestamp === isoTimestamp
+              );
+              if (!exists) {
+                eventLogBuffer.push({
+                  type,
+                  timestamp: isoTimestamp,
+                  data: { rawMessage: message }
+                });
+                loadedCount++;
+              }
             }
           }
         } catch (error) {
           // Skip lines that can't be parsed
+          console.debug(`Skipping unparseable log line: ${error.message}`);
         }
       });
       if (loadedCount > 0) {
-        console.log(`Loaded ${loadedCount} events from winston log file`);
+        console.log(`Loaded ${loadedCount} events from winston log file (total: ${eventLogBuffer.length})`);
       }
+    } else {
+      console.log('No existing log files found, starting with empty event buffer');
     }
   } catch (error) {
     // If file reading fails, just continue with empty buffer
