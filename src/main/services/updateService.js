@@ -227,16 +227,27 @@ class UpdateService {
       
       // First try GitHub API for more reliable results
       const githubResult = await this.checkForUpdatesWithGitHub();
-      if (githubResult.error) {
-        logger.warn(`GitHub API failed, falling back to electron-updater: ${githubResult.error}`);
-      } else {
-        // GitHub API succeeded - state is already set in checkForUpdatesWithGitHub()
+      if (githubResult.updateAvailable) {
+        // If GitHub found an update, manually trigger electron-updater's flow
+        autoUpdater.setFeedURL({
+          provider: 'github',
+          owner: this.githubConfig.owner,
+          repo: this.githubConfig.repo,
+          releaseType: 'release'
+        });
+        
+        // Force electron-updater to check against the GitHub release
+        const result = await autoUpdater.checkForUpdates();
         return {
           checking: false,
-          updateAvailable: githubResult.updateAvailable,
-          version: githubResult.version,
+          updateAvailable: true,
+          version: result?.updateInfo?.version || githubResult.version,
           message: githubResult.message
         };
+      }
+      
+      if (githubResult.error) {
+        logger.warn(`GitHub API failed: ${githubResult.error}`);
       }
       
       // Fallback to electron-updater
