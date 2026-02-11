@@ -1,6 +1,8 @@
 const { autoUpdater } = require('electron-updater');
 const { logger } = require('./logger');
 const settings = require('../settings');
+const https = require('https');
+const http = require('http');
 
 class UpdateService {
   constructor() {
@@ -12,6 +14,14 @@ class UpdateService {
     // Configure autoUpdater
     autoUpdater.autoDownload = false; // We'll handle downloads manually
     autoUpdater.autoInstallOnAppQuit = true;
+    
+    // GitHub repository configuration
+    this.githubConfig = {
+      owner: 'jaydenrussell',
+      repo: 'Sip-Toast',
+      apiUrl: 'https://api.github.com',
+      releasesUrl: 'https://github.com/jaydenrussell/Sip-Toast/releases'
+    };
     
     // Set up event listeners
     this.setupEventListeners();
@@ -50,6 +60,141 @@ class UpdateService {
       this.updateDownloaded = true;
       this.updateAvailable = false;
     });
+  }
+
+  /**
+   * Get the latest release information from GitHub API
+   */
+  async getLatestReleaseFromGitHub() {
+    return new Promise((resolve, reject) => {
+      const url = `${this.githubConfig.apiUrl}/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/releases/latest`;
+      
+      const options = {
+        headers: {
+          'User-Agent': 'SIP-Toast-Update-Service',
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      };
+
+      const request = https.request(url, options, (response) => {
+        let data = '';
+        
+        response.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        response.on('end', () => {
+          try {
+            if (response.statusCode === 200) {
+              const release = JSON.parse(data);
+              resolve({
+                version: release.tag_name.replace('v', ''), // Remove 'v' prefix if present
+                name: release.name,
+                body: release.body,
+                publishedAt: release.published_at,
+                htmlUrl: release.html_url,
+                assets: release.assets || []
+              });
+            } else {
+              reject(new Error(`GitHub API returned status ${response.statusCode}: ${data}`));
+            }
+          } catch (error) {
+            reject(new Error(`Failed to parse GitHub API response: ${error.message}`));
+          }
+        });
+      });
+
+      request.on('error', (error) => {
+        reject(new Error(`GitHub API request failed: ${error.message}`));
+      });
+
+      request.setTimeout(10000, () => {
+        request.destroy();
+        reject(new Error('GitHub API request timed out'));
+      });
+
+      request.end();
+    });
+  }
+
+  /**
+   * Get current application version
+   */
+  getCurrentVersion() {
+    try {
+      const packageJson = require('../../../package.json');
+      return packageJson.version || 'Unknown';
+    } catch (error) {
+      logger.error(`Failed to get current version: ${error.message}`);
+      return 'Unknown';
+    }
+  }
+
+  /**
+   * Compare versions (semantic versioning)
+   */
+  compareVersions(current, latest) {
+    if (!current || !latest) return 0;
+    
+    // Remove 'v' prefix if present
+    const cleanCurrent = current.replace('v', '');
+    const cleanLatest = latest.replace('v', '');
+    
+    const currentParts = cleanCurrent.split('.').map(Number);
+    const latestParts = cleanLatest.split('.').map(Number);
+    
+    for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
+      const currentPart = currentParts[i] || 0;
+      const latestPart = latestParts[i] || 0;
+      
+      if (currentPart < latestPart) return -1;
+      if (currentPart > latestPart) return 1;
+    }
+    
+    return 0;
+  }
+
+  /**
+   * Check for updates using GitHub API as fallback
+   */
+  async checkForUpdatesWithGitHub() {
+    try {
+      logger.info('🔍 Checking for updates via GitHub API...');
+      const latestRelease = await this.getLatestReleaseFromGitHub();
+      const currentVersion = this.getCurrentVersion();
+      
+      logger.info(`📦 Current version: ${currentVersion}`);
+      logger.info(`📦 Latest version: ${latestRelease.version}`);
+      
+      const versionComparison = this.compareVersions(currentVersion, latestRelease.version);
+      
+      if (versionComparison < 0) {
+        logger.info(`✅ Update available: ${latestRelease.version}`);
+        return {
+          updateAvailable: true,
+          version: latestRelease.version,
+          name: latestRelease.name,
+          body: latestRelease.body,
+          publishedAt: latestRelease.publishedAt,
+          htmlUrl: latestRelease.html_url,
+          assets: latestRelease.assets
+        };
+      } else {
+        logger.info(`ℹ️ No update available. Current version is up to date.`);
+        return {
+          updateAvailable: false,
+          version: currentVersion,
+          message: 'You are using the latest version.'
+        };
+      }
+    } catch (error) {
+      logger.error(`❌ GitHub update check failed: ${error.message}`);
+      return {
+        updateAvailable: false,
+        error: error.message,
+        message: 'Failed to check for updates via GitHub API'
+      };
+    }
   }
 
   /**

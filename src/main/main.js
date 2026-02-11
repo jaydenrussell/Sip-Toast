@@ -621,6 +621,19 @@ const wireIpc = () => {
     }
   });
 
+  ipcMain.handle('updates:check-github', async () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    try {
+      const result = await updateService.checkForUpdatesWithGitHub();
+      return result;
+    } catch (error) {
+      logger.error(`GitHub update check failed: ${error.message}`);
+      return { error: error.message };
+    }
+  });
+
   ipcMain.handle('updates:download', async () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
