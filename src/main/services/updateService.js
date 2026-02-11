@@ -216,6 +216,22 @@ class UpdateService {
       updateSettings.lastCheckTime = new Date().toISOString();
       settings.set('updates', updateSettings);
       
+      // First try GitHub API for more reliable results
+      const githubResult = await this.checkForUpdatesWithGitHub();
+      if (githubResult.error) {
+        logger.warn(`GitHub API failed, falling back to electron-updater: ${githubResult.error}`);
+      } else {
+        this.updateAvailable = githubResult.updateAvailable;
+        this.isChecking = false;
+        return {
+          checking: false,
+          updateAvailable: githubResult.updateAvailable,
+          version: githubResult.version,
+          message: githubResult.message
+        };
+      }
+      
+      // Fallback to electron-updater
       const result = await autoUpdater.checkForUpdates();
       // Derive from result: event handlers may not have run yet, so don't rely on this.updateAvailable
       const updateAvailable = !!(result && result.updateInfo);

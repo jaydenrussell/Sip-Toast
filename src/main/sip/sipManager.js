@@ -23,6 +23,11 @@ class SipManager extends EventEmitter {
   async updateConfig(nextConfig) {
     logger.info('SIP configuration updated');
     this.config = nextConfig;
+    // Rebuild SIP URI from updated config
+    const transport = this.config.transport || 'udp';
+    const domain = this.config.domain || this.serverHost;
+    const scheme = transport === 'tls' ? 'sips' : 'sip';
+    this.config.uri = `${scheme}:${this.config.username}@${domain}`;
     await this.start();
   }
 
