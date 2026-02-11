@@ -33,8 +33,12 @@ let latestSipStatus = { state: 'idle', timestamp: new Date().toISOString() };
 let updateService = null;
 
 // Cache settings to avoid repeated lookups (memory-optimized)
-let cachedSettings = settings.getAll();
-// Use individual listeners for each section (electron-store doesn't have onDidChangeAny)
+// Initialize after store is ready - will be populated in wireIpc()
+let cachedSettings = null;
+
+const refreshCachedSettings = () => {
+  cachedSettings = settings.getAll();
+};
 settings.store.onDidChange('sip', () => { cachedSettings.sip = settings.get('sip'); });
 settings.store.onDidChange('acuity', () => { cachedSettings.acuity = settings.get('acuity'); });
 settings.store.onDidChange('callerId', () => { cachedSettings.callerId = settings.get('callerId'); });
@@ -282,6 +286,9 @@ const createTray = () => {
 };
 
 const wireIpc = () => {
+  // Initialize cached settings first (after store is ready)
+  refreshCachedSettings();
+  
   ipcMain.handle('app:info', () => {
     const appName = app.getName() || 'SIP Toast';
     // Use app.getVersion() which works in both dev and production

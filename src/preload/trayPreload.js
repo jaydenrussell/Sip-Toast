@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('trayAPI', {
   checkFirewall: () => ipcRenderer.invoke('firewall:check'),
   getFirewallInstructions: () => ipcRenderer.invoke('firewall:instructions'),
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
+  checkForUpdatesGithub: () => ipcRenderer.invoke('updates:check-github'),
   downloadUpdate: () => ipcRenderer.invoke('updates:download'),
   installUpdate: () => ipcRenderer.invoke('updates:install'),
   getUpdateStatus: () => ipcRenderer.invoke('updates:status')
