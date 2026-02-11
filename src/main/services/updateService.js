@@ -2,7 +2,6 @@ const { autoUpdater } = require('electron-updater');
 const { logger } = require('./logger');
 const settings = require('../settings');
 const https = require('https');
-const http = require('http');
 
 class UpdateService {
   constructor() {
@@ -180,7 +179,8 @@ class UpdateService {
           body: latestRelease.body,
           publishedAt: latestRelease.publishedAt,
           htmlUrl: latestRelease.html_url,
-          assets: latestRelease.assets
+          assets: latestRelease.assets,
+          message: `Update available: ${latestRelease.version}`
         };
       } else {
         logger.info(`ℹ️ No update available. Current version is up to date.`);
@@ -197,6 +197,7 @@ class UpdateService {
       logger.error(`❌ GitHub update check failed: ${error.message}`);
       // Update internal state to reflect error state
       this.isChecking = false;
+      // Return error without throwing - caller handles gracefully
       return {
         updateAvailable: false,
         error: error.message,

@@ -53,7 +53,8 @@ navItems.forEach((item) => {
     
     // Load firewall status if firewall section is shown
     if (section === 'firewall') {
-      // Don't auto-check, let user click the button
+      // Auto-check firewall status when navigating to the section
+      checkFirewall();
     }
     
     // Load update status if updates section is shown
