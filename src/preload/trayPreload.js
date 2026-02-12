@@ -1,39 +1,49 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('trayAPI', {
+  // Settings
   getSettings: () => ipcRenderer.invoke('settings:getAll'),
   saveSettings: (payload) => ipcRenderer.invoke('settings:save', payload),
+  
+  // Logs
   getLogs: (count) => ipcRenderer.invoke('logs:tail', count),
+  logAction: (message) => ipcRenderer.invoke('log:action', message),
+  
+  // SIP
   restartSip: () => ipcRenderer.invoke('sip:restart'),
   getSipStatus: () => ipcRenderer.invoke('sip:status:get'),
   testSipConnection: () => ipcRenderer.invoke('sip:test'),
   testAcuityConnection: () => ipcRenderer.invoke('acuity:test'),
   simulateCall: () => ipcRenderer.invoke('sim:incoming'),
+  
+  // Window
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
-  logAction: (message) => ipcRenderer.invoke('log:action', message),
-  onLogEntry: (callback) => {
-    ipcRenderer.on('logs:entry', (_event, entry) => callback(entry));
-  },
-  onSipStatus: (callback) => {
-    ipcRenderer.on('sip:status', (_event, status) => callback(status));
-  },
-  onThemeChanged: (callback) => {
-    ipcRenderer.on('theme:changed', (_event, theme) => callback(theme));
-  },
+  
+  // App
   getAppInfo: () => ipcRenderer.invoke('app:info'),
-  getRecentEvents: (count, filterType) => ipcRenderer.invoke('events:getRecent', count, filterType),
-  getEventsByType: (type) => ipcRenderer.invoke('events:getByType', type),
-  getAllEvents: (filterType) => ipcRenderer.invoke('events:getAll', filterType),
-  getEventsInRange: (startDate, endDate) => ipcRenderer.invoke('events:getInRange', startDate, endDate),
-  getEventLogFilePath: () => ipcRenderer.invoke('events:getLogFilePath'),
-  deleteAllEvents: () => ipcRenderer.invoke('events:deleteAll'),
+  
+  // Events (consolidated)
+  getRecentEvents: (count, filterType) => ipcRenderer.invoke('events:query', 'recent', count, filterType),
+  getEventsByType: (type) => ipcRenderer.invoke('events:query', 'type', type),
+  getAllEvents: (filterType) => ipcRenderer.invoke('events:query', 'all', filterType),
+  getEventsInRange: (startDate, endDate) => ipcRenderer.invoke('events:query', 'range', startDate, endDate),
+  getEventLogFilePath: () => ipcRenderer.invoke('events:query', 'path'),
+  deleteAllEvents: () => ipcRenderer.invoke('events:query', 'delete'),
+  
+  // Firewall
   checkFirewall: () => ipcRenderer.invoke('firewall:check'),
   getFirewallInstructions: () => ipcRenderer.invoke('firewall:instructions'),
-  checkForUpdates: () => ipcRenderer.invoke('updates:check'),
-  checkForUpdatesGithub: () => ipcRenderer.invoke('updates:check-github'),
-  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
-  installUpdate: () => ipcRenderer.invoke('updates:install'),
-  getUpdateStatus: () => ipcRenderer.invoke('updates:status')
+  
+  // Updates (consolidated)
+  checkForUpdates: () => ipcRenderer.invoke('updates:action', 'check'),
+  checkForUpdatesGithub: () => ipcRenderer.invoke('updates:action', 'checkGithub'),
+  downloadUpdate: () => ipcRenderer.invoke('updates:action', 'download'),
+  installUpdate: () => ipcRenderer.invoke('updates:action', 'install'),
+  getUpdateStatus: () => ipcRenderer.invoke('updates:action', 'status'),
+  
+  // Event listeners
+  onLogEntry: (callback) => ipcRenderer.on('logs:entry', (_event, entry) => callback(entry)),
+  onSipStatus: (callback) => ipcRenderer.on('sip:status', (_event, status) => callback(status)),
+  onThemeChanged: (callback) => ipcRenderer.on('theme:changed', (_event, theme) => callback(theme))
 });
-

@@ -10,8 +10,34 @@ const sectionSubtitle = document.getElementById('sectionSubtitle');
 
 let currentSettings = null;
 
-// Sidebar navigation
-const navItems = document.querySelectorAll('.nav-item');
+// DOM Cache - Cache frequently accessed elements
+const $ = (selector) => {
+  const cache = $.cache || ($.cache = new Map());
+  if (!cache.has(selector)) {
+    const el = document.querySelector(selector);
+    if (el) cache.set(selector, el);
+  }
+  return cache.get(selector);
+};
+
+// Cache field names split to avoid repeated string operations
+const fieldNames = [
+  'sip.server', 'sip.port', 'sip.transport', 'sip.domain', 'sip.username', 'sip.password',
+  'acuity.enabled', 'acuity.userId', 'acuity.apiKey',
+  'toast.autoDismissMs', 'toast.numberFont', 'toast.numberFontSize', 'toast.callerIdFont', 'toast.callerIdFontSize',
+  'updates.enabled', 'updates.checkFrequency'
+];
+
+// Optimized field parts cache
+const fieldPartsCache = new Map();
+const getFieldParts = (name) => {
+  if (!fieldPartsCache.has(name)) {
+    fieldPartsCache.set(name, name.split('.'));
+  }
+  return fieldPartsCache.get(name);
+};
+
+// Section data cache
 const sections = {
   sip: { title: 'SIP Provider', subtitle: 'Configure your SIP connection settings' },
   acuity: { title: 'Acuity Scheduler', subtitle: 'Configure API credentials for client lookups' },
@@ -22,80 +48,37 @@ const sections = {
   about: { title: 'About', subtitle: 'Application information' }
 };
 
-navItems.forEach((item) => {
-  item.addEventListener('click', () => {
-    const section = item.dataset.section;
+// Optimized navigation with event delegation
+const initNavigation = () => {
+  const navContainer = document.querySelector('.nav-container') || document.body;
+  navContainer.addEventListener('click', (e) => {
+    const item = e.target.closest('.nav-item');
+    if (!item) return;
     
-    // Update active nav item
-    navItems.forEach((nav) => nav.classList.remove('active'));
+    const section = item.dataset.section;
+    if (!section || !sections[section]) return;
+    
+    // Update nav state
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     item.classList.add('active');
     
-    // Show/hide sections
-    document.querySelectorAll('.content-section').forEach((sec) => {
-      sec.classList.remove('active');
-    });
+    // Update sections
+    document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
     const targetSection = document.getElementById(`section-${section}`);
-    if (targetSection) {
-      targetSection.classList.add('active');
-    }
+    if (targetSection) targetSection.classList.add('active');
     
     // Update header
-    if (sections[section]) {
-      sectionTitle.textContent = sections[section].title;
-      sectionSubtitle.textContent = sections[section].subtitle;
-    }
+    $('#sectionTitle').textContent = sections[section].title;
+    $('#sectionSubtitle').textContent = sections[section].subtitle;
     
-    // Load event logs if logs section is shown
-    if (section === 'logs') {
-      loadEventLogs();
-      loadLogFilePath();
-    }
-    
-    // Load firewall status if firewall section is shown
-    if (section === 'firewall') {
-      // Auto-check firewall status when navigating to the section
-      checkFirewall();
-    }
-    
-    // Load update status if updates section is shown
-    if (section === 'updates') {
-      loadUpdateStatus();
-      loadUpdateInformation();
-    }
+    // Lazy load section data
+    const loaders = {
+      logs: () => { loadEventLogs(); loadLogFilePath(); },
+      firewall: checkFirewall,
+      updates: () => { loadUpdateStatus(); loadUpdateInformation(); }
+    };
+    loaders[section]?.();
   });
-});
-
-// Cache field names split to avoid repeated string operations
-const fieldNames = [
-  'sip.server',
-  'sip.port',
-  'sip.transport',
-  'sip.domain',
-  'sip.username',
-  'sip.password',
-  'acuity.enabled',
-  'acuity.userId',
-  'acuity.apiKey',
-  'toast.autoDismissMs',
-  'toast.numberFont',
-  'toast.numberFontSize',
-  'toast.callerIdFont',
-  'toast.callerIdFontSize',
-  'updates.enabled',
-  'updates.checkFrequency'
-];
-
-// Cache split results for field names (memory optimization)
-const fieldNameCache = new Map();
-const getFieldParts = (name) => {
-  let parts = fieldNameCache.get(name);
-  if (!parts) {
-    parts = name.split('.');
-    if (fieldNameCache.size < 50) { // Limit cache size
-      fieldNameCache.set(name, parts);
-    }
-  }
-  return parts;
 };
 
 const getInput = (name) => form.querySelector(`[name="${name}"]`);
@@ -611,19 +594,17 @@ if (checkUpdatesBtn) {
       let result;
       try {
         result = await window.trayAPI.checkForUpdatesGithub();
-      } catch (githubError) {
-        console.warn('GitHub API check failed, falling back to electron-updater:', githubError);
+      } catch {
         result = await window.trayAPI.checkForUpdates();
       }
       
       if (result.error) {
         updateStatusDisplay({ error: result.error });
       } else {
-        // Get current status
         const status = await window.trayAPI.getUpdateStatus();
         updateStatusDisplay({
           checking: false,
-          updateAvailable: result.updateAvailable || false,
+          updateAvailable: result.updateAvailable || status.updateAvailable || false,
           version: result.version || status.currentVersion,
           currentVersion: status.currentVersion
         });
@@ -640,15 +621,13 @@ if (downloadUpdateBtn) {
     try {
       updateStatusDisplay({ checking: true });
       const result = await window.trayAPI.downloadUpdate();
-      
       if (result.error) {
         updateStatusDisplay({ error: result.error });
       } else {
-        // Get updated status
         const status = await window.trayAPI.getUpdateStatus();
         updateStatusDisplay({
           checking: false,
-          updateDownloaded: status.updateDownloaded || false,
+          updateDownloaded: status.updateDownloaded || true,
           currentVersion: status.currentVersion
         });
       }
@@ -670,7 +649,6 @@ if (installUpdateBtn) {
       if (result.error) {
         alert(`Failed to install update: ${result.error}`);
       }
-      // App will restart, so no need to update UI
     } catch (error) {
       alert(`Failed to install update: ${error.message}`);
     }

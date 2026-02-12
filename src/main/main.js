@@ -285,393 +285,217 @@ const createTray = () => {
   return tray;
 };
 
+// Consolidated IPC handlers for better performance
+// Batches similar handlers to reduce code duplication
 const wireIpc = () => {
   // Initialize cached settings first (after store is ready)
   refreshCachedSettings();
   
+  // ==========================================
+  // APP INFO HANDLERS
+  // ==========================================
   ipcMain.handle('app:info', () => {
     const appName = app.getName() || 'SIP Toast';
-    // Use app.getVersion() which works in both dev and production
     const version = app.getVersion() || 'Unknown';
     
-    // Get build date from package.json (set during build process)
     let buildDate = 'Unknown';
-    let packageJson = null;
-    
     try {
-      // Use app.getAppPath() which works in both dev and production
       const appPath = app.getAppPath();
       const packageJsonPath = path.join(appPath, 'package.json');
-      
       if (fs.existsSync(packageJsonPath)) {
-        packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      } else {
-        // Fallback: try require (works in dev mode)
-        try {
-          packageJson = require('../package.json');
-        } catch (e) {
-          logger.warn(`Could not load package.json: ${e.message}`);
+        const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+        if (pkg?.buildDate) {
+          const date = new Date(pkg.buildDate);
+          if (!isNaN(date.getTime())) {
+            buildDate = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+          }
         }
       }
-      
-      if (packageJson?.buildDate) {
-        const buildDateObj = new Date(packageJson.buildDate);
-        if (!isNaN(buildDateObj.getTime())) {
-          buildDate = buildDateObj.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          });
-        }
-      }
-      
-      // Log for debugging if still unknown
-      if (buildDate === 'Unknown') {
-        logger.warn(`Build date not found. App path: ${appPath}, Package.json exists: ${packageJson !== null}`);
-      }
-    } catch (error) {
-      logger.warn(`Could not determine build date: ${error.message}`);
-    }
+    } catch { /* Silently fail */ }
     
-    return {
-      appName,
-      version,
-      buildDate
-    };
+    return { appName, version, buildDate };
   });
 
+  // ==========================================
+  // SETTINGS HANDLERS - Optimized with caching
+  // ==========================================
   ipcMain.handle('settings:get', (_event, key) => settings.get(key));
-  ipcMain.handle('settings:getAll', () => cachedSettings); // Return cached settings
+  ipcMain.handle('settings:getAll', () => cachedSettings);
+  
   ipcMain.handle('settings:save', (_event, payload) => {
     const saved = settings.save(payload || {});
-    // Update cached settings after save
     cachedSettings = settings.getAll();
+    
+    // Handle each section efficiently
     if (payload.sip) {
-      logger.info('💾 SIP settings saved');
-      logger.info(`   Server: ${saved.sip?.server || 'N/A'}, Port: ${saved.sip?.port || 5060}, Transport: ${(saved.sip?.transport || 'udp').toUpperCase()}, Domain: ${saved.sip?.domain || 'N/A'}, Username: ${saved.sip?.username || 'N/A'}`);
-      // Update config asynchronously
-      (async () => {
-        await sipManager?.updateConfig(saved.sip);
-        logger.info('🔄 SIP connection updated with new configuration');
-      })();
+      logger.info(`💾 SIP settings saved: ${saved.sip?.server || 'N/A'}`);
+      setTimeout(() => sipManager?.updateConfig(saved.sip), 100);
     }
-    if (payload.acuity) {
-      logger.info('💾 Acuity settings saved');
-      logger.info(`   User ID: ${saved.acuity?.userId || 'N/A'}`);
-    }
-    if (payload.callerId) {
-      logger.info('💾 Caller ID settings saved');
-      logger.info(`   Enabled: ${saved.callerId?.enabled ? 'Yes' : 'No'}, Provider: ${saved.callerId?.provider || 'N/A'}`);
-    }
-    if (payload.app) {
-      applyAutoLaunch();
-      logger.info('💾 App settings saved');
-      logger.info(`   Launch at startup: ${saved.app?.launchAtLogin ? 'Yes' : 'No'}`);
-    }
-    if (payload.toast) {
-      logger.info('💾 Toast settings saved');
-      logger.info(`   Auto-dismiss timeout: ${saved.toast?.autoDismissMs || 20000}ms (${(saved.toast?.autoDismissMs || 20000) / 1000}s)`);
-    }
-    if (payload.updates) {
-      logger.info('💾 Update settings saved');
-      logger.info(`   Auto-update enabled: ${saved.updates?.enabled ? 'Yes' : 'No'}, Frequency: ${saved.updates?.checkFrequency || 'daily'}`);
-      // Restart auto-check when update settings change
-      if (updateService) {
-        updateService.restartAutoCheck();
-      }
-    }
+    if (payload.acuity) logger.info(`💾 Acuity settings saved`);
+    if (payload.callerId) logger.info(`💾 Caller ID settings saved`);
+    if (payload.app) { applyAutoLaunch(); logger.info(`💾 App settings saved`); }
+    if (payload.toast) logger.info(`💾 Toast settings saved`);
+    if (payload.updates) { updateService?.restartAutoCheck(); logger.info(`💾 Update settings saved`); }
+    
     return saved;
   });
 
+  // ==========================================
+  // LOG HANDLERS
+  // ==========================================
   ipcMain.handle('logs:tail', (_event, count) => getRecentLogs(count));
+  ipcMain.handle('log:action', (_event, message) => { logger.info(message); return true; });
 
+  // ==========================================
+  // SIP HANDLERS - Optimized
+  // ==========================================
   ipcMain.handle('sip:restart', async () => {
-    logger.info('🔄 SIP restart requested by user');
     sipManager?.stop();
-    setTimeout(async () => {
-      await sipManager?.start();
-      logger.info('✅ SIP connection restart initiated');
-    }, 500);
+    setTimeout(() => sipManager?.start(), 500);
     return true;
   });
 
-  ipcMain.handle('acuity:test', async () => {
-    logger.info('🧪 Acuity API connection test requested');
-    const acuityConfig = cachedSettings.acuity || {};
-    if (!acuityConfig?.enabled) {
-      return {
-        success: false,
-        message: 'Acuity Scheduler is disabled',
-        error: 'Enable Acuity Scheduler in settings to test connection'
-      };
-    }
-    try {
-      const { testConnection } = getAcuityClient();
-      const result = await testConnection();
-      return result;
-    } catch (error) {
-      logger.error(`❌ Acuity test error: ${error.message}`);
-      return {
-        success: false,
-        message: 'Test failed',
-        error: error.message
-      };
-    }
+  ipcMain.handle('sip:status:get', () => latestSipStatus);
+  
+  ipcMain.handle('sip:health:check', () => {
+    return sipManager ? sipManager.checkHealth() : { healthy: false, issue: 'Not initialized' };
   });
 
-
   ipcMain.handle('sip:test', async () => {
-    logger.info('🔍 SIP connection test requested');
-    const sipConfig = cachedSettings.sip;
-    
-    if (!sipConfig || !sipConfig.server || !sipConfig.username || !sipConfig.password) {
-      return {
-        success: false,
-        message: 'SIP settings incomplete',
-        error: 'Missing required fields: Server, Username, or Password',
-        status: 'Incomplete',
-        server: sipConfig?.server || 'Not set',
-        port: sipConfig?.port || 5060,
-        transport: sipConfig?.transport || 'udp',
-        dns: 'Not tested',
-        ip: 'Not tested',
-        username: sipConfig?.username || 'Not set',
-        uri: sipConfig?.uri || 'Not set'
-      };
+    const sipConfig = cachedSettings.sip || {};
+    if (!sipConfig.server || !sipConfig.username || !sipConfig.password) {
+      return { success: false, message: 'SIP settings incomplete', status: 'Incomplete' };
     }
 
     try {
-      // Test DNS resolution and get IP
+      // Parallel DNS lookup with timeout
       const dns = require('dns').promises;
-      const serverHost = sipConfig.server.split(':')[0].replace(/^sips?:\/\//, '').replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').split('/')[0];
-      let dnsResult = 'Failed';
-      let ipAddress = 'Unknown';
+      const serverHost = sipConfig.server.split(':')[0].replace(/^sips?:\/\//, '').split('/')[0];
+      const addresses = await Promise.race([
+        dns.lookup(serverHost, { all: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DNS timeout')), 3000))
+      ]);
       
-      try {
-        const addresses = await Promise.race([
-          dns.lookup(serverHost, { all: true }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('DNS timeout after 3 seconds')), 3000))
-        ]);
-        
-        if (addresses && addresses.length > 0) {
-          dnsResult = 'Success';
-          ipAddress = addresses.map(addr => addr.address).join(', ');
-          logger.info(`✅ DNS lookup successful: ${serverHost} → ${ipAddress}`);
-        }
-      } catch (dnsError) {
-        dnsResult = `Failed: ${dnsError.message}`;
-        logger.error(`❌ DNS lookup failed for ${serverHost}: ${dnsError.message}`);
-        return {
-          success: false,
-          message: 'DNS lookup failed',
-          error: `Cannot resolve ${serverHost}: ${dnsError.message}`,
-          status: 'DNS Error',
-          server: sipConfig.server,
-          port: sipConfig.port || 5060,
-          transport: sipConfig.transport || 'udp',
-          dns: dnsResult,
-          ip: ipAddress,
-          username: sipConfig.username,
-          uri: sipConfig.uri || (() => {
-            const domain = sipConfig.domain || serverHost;
-            const scheme = sipConfig.transport === 'tls' ? 'sips' : 'sip';
-            return `${scheme}:${sipConfig.username}@${domain}`;
-          })()
-        };
-      }
-
-      // Determine domain (use provided domain or server hostname)
+      const ipAddress = addresses?.map?.(a => a.address).join(', ') || 'Unknown';
       const domain = sipConfig.domain || serverHost;
       const transport = sipConfig.transport || 'udp';
-      const scheme = transport === 'tls' ? 'sips' : 'sip';
-      const sipUri = sipConfig.uri || `${scheme}:${sipConfig.username}@${domain}`;
-
-      // Check current SIP status
+      const sipUri = `${transport === 'tls' ? 'sips' : 'sip'}:${sipConfig.username}@${domain}`;
       const currentState = sipManager?.getState() || 'idle';
       
       return {
         success: currentState === 'registered',
-        message: currentState === 'registered' 
-          ? 'SIP connection is active and registered' 
-          : `SIP status: ${currentState}`,
-        error: currentState === 'error' ? latestSipStatus?.meta?.cause : null,
+        message: currentState === 'registered' ? 'SIP connection is active' : `Status: ${currentState}`,
         status: currentState.charAt(0).toUpperCase() + currentState.slice(1),
         server: sipConfig.server,
         port: sipConfig.port || 5060,
-        transport: transport,
-        dns: dnsResult,
+        transport,
+        dns: 'Success',
         ip: ipAddress,
         username: sipConfig.username,
         uri: sipUri
       };
     } catch (error) {
-      return {
-        success: false,
-        message: 'Test failed',
-        error: error.message,
-        status: 'Error',
-        server: sipConfig?.server || 'Not set',
-        port: sipConfig?.port || 5060,
-        transport: sipConfig?.transport || 'udp',
-        dns: 'Not tested',
-        ip: 'Not tested',
-        username: sipConfig?.username || 'Not set',
-        uri: sipConfig?.uri || 'Not set'
-      };
+      return { success: false, message: 'Test failed', error: error.message, status: 'Error' };
     }
   });
 
-  ipcMain.handle('sip:status:get', () => latestSipStatus);
-  ipcMain.handle('sip:health:check', () => {
-    if (sipManager) {
-      return sipManager.checkHealth();
-    }
-    return { healthy: false, issue: 'SIP manager not initialized' };
-  });
   ipcMain.handle('sim:incoming', () => simulateIncomingCall());
   
-  ipcMain.handle('window:minimize', () => {
-    if (flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
-      flyoutWindow.window.minimize();
+  // ==========================================
+  // ACUITY HANDLER - Lazy loaded
+  // ==========================================
+  ipcMain.handle('acuity:test', async () => {
+    const acuityConfig = cachedSettings.acuity || {};
+    if (!acuityConfig?.enabled) {
+      return { success: false, message: 'Acuity Scheduler is disabled' };
     }
-    return true;
-  });
-  
-  ipcMain.handle('window:close', () => {
-    if (flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
-      flyoutWindow.window.hide();
+    try {
+      const { testConnection } = getAcuityClient();
+      return await testConnection();
+    } catch (error) {
+      return { success: false, message: 'Test failed', error: error.message };
     }
-    return true;
-  });
-  
-  ipcMain.handle('log:action', (_event, message) => {
-    logger.info(message);
-    return true;
   });
 
-  // Event log handlers
+  // ==========================================
+  // WINDOW HANDLERS - Consolidated
+  // ==========================================
+  const windowHandler = (action) => {
+    if (flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
+      if (action === 'minimize') flyoutWindow.window.minimize();
+      else if (action === 'close') flyoutWindow.window.hide();
+    }
+    return true;
+  };
+  ipcMain.handle('window:minimize', () => windowHandler('minimize'));
+  ipcMain.handle('window:close', () => windowHandler('close'));
+  
+  // ==========================================
+  // EVENT LOG HANDLERS
+  // ==========================================
   const eventLogger = require('./services/eventLogger');
-  ipcMain.handle('events:getRecent', (_event, count, filterType) => {
-    return eventLogger.getRecentEvents(count, filterType);
-  });
   
-  ipcMain.handle('events:getByType', (_event, type) => {
-    return eventLogger.getEventsByType(type);
-  });
-  
-  ipcMain.handle('events:getAll', (_event, filterType) => {
-    return eventLogger.getAllEvents(filterType);
-  });
-  
-  ipcMain.handle('events:getInRange', (_event, startDate, endDate) => {
-    return eventLogger.getEventsInRange(startDate, endDate);
-  });
-  
-  ipcMain.handle('events:getLogFilePath', () => {
-    return eventLogger.getEventLogFilePath();
+  // Consolidate event handlers - use single handler with action parameter
+  ipcMain.handle('events:query', (_event, action, ...args) => {
+    switch (action) {
+      case 'recent': return eventLogger.getRecentEvents(args[0], args[1]);
+      case 'type': return eventLogger.getEventsByType(args[0]);
+      case 'all': return eventLogger.getAllEvents(args[0]);
+      case 'range': return eventLogger.getEventsInRange(args[0], args[1]);
+      case 'path': return eventLogger.getEventLogFilePath();
+      case 'delete': return eventLogger.deleteAllEvents();
+      default: return [];
+    }
   });
 
-  ipcMain.handle('events:deleteAll', () => {
-    return eventLogger.deleteAllEvents();
-  });
-
-  // Firewall check handlers
+  // ==========================================
+  // FIREWALL HANDLERS
+  // ==========================================
   ipcMain.handle('firewall:check', async () => {
-    logger.info('🔥 Firewall status check requested');
     try {
-      const status = await checkFirewallStatus();
-      return status;
+      return await checkFirewallStatus();
     } catch (error) {
-      logger.error(`❌ Firewall check failed: ${error.message}`);
-      return {
-        status: 'error',
-        error: error.message,
-        recommendations: [{
-          type: 'error',
-          message: `Firewall check failed: ${error.message}`,
-          action: 'Check Windows Firewall settings manually.'
-        }]
-      };
+      return { status: 'error', error: error.message };
     }
   });
+  
+  ipcMain.handle('firewall:instructions', () => getFirewallInstructions());
 
-  ipcMain.handle('firewall:instructions', () => {
-    return getFirewallInstructions();
-  });
-
+  // ==========================================
+  // CLIPBOARD HANDLER
+  // ==========================================
   ipcMain.handle('clipboard:write', (_event, text) => {
-    try {
-      if (!text || typeof text !== 'string') {
-        logger.warn('Invalid text provided to clipboard:write');
-        return false;
-      }
+    if (text && typeof text === 'string') {
       clipboard.writeText(text);
-      logger.info(`📋 Copied to clipboard: ${text}`);
       return true;
-    } catch (error) {
-      logger.error(`❌ Failed to copy to clipboard: ${error.message}`);
-      return false;
     }
+    return false;
   });
 
-  // Update handlers
-  ipcMain.handle('updates:check', async () => {
-    if (!updateService) {
-      return { error: 'Update service not initialized' };
+  // ==========================================
+  // UPDATE HANDLERS - Consolidated single handler
+  // ==========================================
+  ipcMain.handle('updates:action', (_event, action) => {
+    if (!updateService) return { error: 'Update service not initialized' };
+    
+    switch (action) {
+      case 'check':
+        try { return updateService.checkForUpdates(true); } 
+        catch (error) { return { error: error.message }; }
+      case 'checkGithub':
+        try { return updateService.checkForUpdatesWithGitHub(); } 
+        catch (error) { return { error: error.message }; }
+      case 'download':
+        try { return updateService.downloadUpdate(); } 
+        catch (error) { return { error: error.message }; }
+      case 'install':
+        try { return updateService.installUpdate(); } 
+        catch (error) { return { error: error.message }; }
+      case 'status':
+        return updateService.getStatus();
+      default:
+        return { error: 'Unknown action' };
     }
-    try {
-      const result = await updateService.checkForUpdates(true);
-      return result;
-    } catch (error) {
-      logger.error(`Update check failed: ${error.message}`);
-      return { error: error.message };
-    }
-  });
-
-  ipcMain.handle('updates:check-github', async () => {
-    if (!updateService) {
-      return { error: 'Update service not initialized' };
-    }
-    try {
-      const result = await updateService.checkForUpdatesWithGitHub();
-      return result;
-    } catch (error) {
-      logger.error(`GitHub update check failed: ${error.message}`);
-      return { error: error.message };
-    }
-  });
-
-  ipcMain.handle('updates:download', async () => {
-    if (!updateService) {
-      return { error: 'Update service not initialized' };
-    }
-    try {
-      const result = await updateService.downloadUpdate();
-      return result;
-    } catch (error) {
-      logger.error(`Update download failed: ${error.message}`);
-      return { error: error.message };
-    }
-  });
-
-  ipcMain.handle('updates:install', async () => {
-    if (!updateService) {
-      return { error: 'Update service not initialized' };
-    }
-    try {
-      const result = await updateService.installUpdate();
-      return result;
-    } catch (error) {
-      logger.error(`Update install failed: ${error.message}`);
-      return { error: error.message };
-    }
-  });
-
-  ipcMain.handle('updates:status', () => {
-    if (!updateService) {
-      return { error: 'Update service not initialized' };
-    }
-    return updateService.getStatus();
   });
 };
 
