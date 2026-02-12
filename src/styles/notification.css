@@ -36,6 +36,18 @@ body.compact {
   display: none;
 }
 
+/* Drag area at top of toast */
+.drag-area {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  cursor: move;
+  -webkit-app-region: drag;
+  z-index: 100;
+}
+
 body[data-theme='light'] {
   color: #111;
 }
@@ -57,8 +69,6 @@ body[data-theme='dark'] {
   opacity: 0;
   transform: translateY(24px) scale(0.98);
   transition: opacity 160ms ease, transform 220ms ease;
-  -webkit-app-region: drag;
-  cursor: move;
   position: relative;
   box-sizing: border-box;
 }
@@ -66,6 +76,7 @@ body[data-theme='dark'] {
 .toast .content {
   -webkit-app-region: no-drag;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 /* Make the accent bar a drag handle for better UX */
