@@ -8,6 +8,7 @@ class UpdateService {
     this.updateCheckInterval = null;
     this.isChecking = false;
     this.updateAvailable = false;
+    this.updateAvailableVersion = null;
     this.updateDownloaded = false;
     
     // Configure autoUpdater
@@ -124,10 +125,17 @@ class UpdateService {
       
       if (comparison < 0) {
         this.updateAvailable = true;
+        this.updateAvailableVersion = latestRelease.version;
         this.isChecking = false;
-        return { updateAvailable: true, version: latestRelease.version, message: `Update available: ${latestRelease.version}` };
+        return { 
+          updateAvailable: true, 
+          version: latestRelease.version, 
+          message: `Update available: ${latestRelease.version}`,
+          release: latestRelease
+        };
       } else {
         this.updateAvailable = false;
+        this.updateAvailableVersion = null;
         this.isChecking = false;
         return { updateAvailable: false, version: currentVersion, message: 'You are using the latest version.' };
       }
@@ -177,10 +185,13 @@ class UpdateService {
   }
 
   async downloadUpdate() {
-    if (!this.updateAvailable && !this.updateDownloaded) {
-      throw new Error('Please check for updates first');
+    // Allow download if updateAvailable is true OR if updateDownloaded is true (already downloaded)
+    // Also check if we have a pending version from GitHub check
+    if (!this.updateAvailable && !this.updateDownloaded && !this.updateAvailableVersion) {
+      throw new Error('Please check for updates first to find an available update');
     }
 
+    // Set the feed URL for GitHub provider
     autoUpdater.setFeedURL({
       provider: 'github',
       owner: this.githubConfig.owner,
@@ -189,10 +200,17 @@ class UpdateService {
     });
     
     logger.info('📥 Starting update download...');
-    await autoUpdater.downloadUpdate();
-    this.updateDownloaded = true;
-    this.updateAvailable = false;
-    return { success: true };
+    
+    try {
+      const result = await autoUpdater.downloadUpdate();
+      this.updateDownloaded = true;
+      this.updateAvailable = false;
+      logger.info('✅ Update download initiated successfully');
+      return { success: true, message: 'Update download started' };
+    } catch (error) {
+      logger.error(`❌ Update download failed: ${error.message}`);
+      throw new Error(`Download failed: ${error.message}`);
+    }
   }
 
   async installUpdate() {
@@ -209,7 +227,8 @@ class UpdateService {
       checking: this.isChecking,
       updateAvailable: this.updateAvailable,
       updateDownloaded: this.updateDownloaded,
-      currentVersion: this.getCurrentVersion()
+      currentVersion: this.getCurrentVersion(),
+      version: this.updateAvailableVersion || this.getCurrentVersion()
     };
   }
 

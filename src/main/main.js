@@ -33,8 +33,16 @@ let latestSipStatus = { state: 'idle', timestamp: new Date().toISOString() };
 let updateService = null;
 
 // Cache settings to avoid repeated lookups (memory-optimized)
-// Initialize after store is ready - will be populated in wireIpc()
-let cachedSettings = null;
+// Initialize with empty structure to prevent null reference errors
+let cachedSettings = {
+  sip: {},
+  acuity: {},
+  callerId: {},
+  toast: {},
+  app: {},
+  updates: {},
+  windows: {}
+};
 
 const refreshCachedSettings = () => {
   cachedSettings = settings.getAll();

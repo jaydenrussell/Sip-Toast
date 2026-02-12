@@ -146,7 +146,7 @@ const decryptSensitiveFields = (section, data) => {
 };
 
 const mergeSection = (section, patch = {}) => {
-  const existing = store.get(section);
+  const existing = store.get(section) || {};
   const decrypted = decryptSensitiveFields(section, existing);
   return {
     ...decrypted,
@@ -225,16 +225,21 @@ module.exports = {
     return value;
   },
   getAll() {
-    const all = store.store;
-    // Decrypt all sensitive fields
-    const decrypted = { ...all };
-    if (decrypted.sip) {
-      decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
+    try {
+      const all = store.store || {};
+      // Decrypt all sensitive fields
+      const decrypted = { ...all };
+      if (decrypted.sip) {
+        decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
+      }
+      if (decrypted.acuity) {
+        decrypted.acuity = decryptSensitiveFields('acuity', decrypted.acuity);
+      }
+      return decrypted;
+    } catch (error) {
+      logger.error('Error getting all settings:', error);
+      return { sip: {}, acuity: {}, toast: {}, app: {}, updates: {} };
     }
-    if (decrypted.acuity) {
-      decrypted.acuity = decryptSensitiveFields('acuity', decrypted.acuity);
-    }
-    return decrypted;
   },
   set(key, value) {
     // Encrypt if this is a sensitive field
