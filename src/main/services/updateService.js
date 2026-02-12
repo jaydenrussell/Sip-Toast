@@ -227,45 +227,64 @@ class UpdateService {
       
       // First try GitHub API for more reliable results
       const githubResult = await this.checkForUpdatesWithGitHub();
+      
+      if (githubResult.error && !githubResult.updateAvailable) {
+        // GitHub API failed completely, fall back to electron-updater
+        logger.warn(`GitHub API failed: ${githubResult.error}, falling back to electron-updater`);
+        try {
+          const result = await autoUpdater.checkForUpdates();
+          const updateAvailable = !!(result && result.updateInfo);
+          const version = result?.updateInfo?.version || null;
+          this.updateAvailable = updateAvailable;
+          this.isChecking = false;
+          return {
+            checking: false,
+            updateAvailable,
+            version
+          };
+        } catch (updaterError) {
+          // electron-updater also failed
+          logger.error(`electron-updater failed: ${updaterError.message}`);
+          this.isChecking = false;
+          return {
+            checking: false,
+            updateAvailable: false,
+            error: `Both GitHub API and electron-updater failed: ${updaterError.message}`
+          };
+        }
+      }
+      
       if (githubResult.updateAvailable) {
-        // If GitHub found an update, manually trigger electron-updater's flow
-        autoUpdater.setFeedURL({
-          provider: 'github',
-          owner: this.githubConfig.owner,
-          repo: this.githubConfig.repo,
-          releaseType: 'release'
-        });
-        
-        // Force electron-updater to check against the GitHub release
-        const result = await autoUpdater.checkForUpdates();
+        // GitHub found an update, set internal state and return success
+        logger.info(`✅ Update available from GitHub: ${githubResult.version}`);
+        this.updateAvailable = true;
+        this.isChecking = false;
         return {
           checking: false,
           updateAvailable: true,
-          version: result?.updateInfo?.version || githubResult.version,
+          version: githubResult.version,
           message: githubResult.message
         };
       }
       
-      if (githubResult.error) {
-        logger.warn(`GitHub API failed: ${githubResult.error}`);
-      }
-      
-      // Fallback to electron-updater
-      const result = await autoUpdater.checkForUpdates();
-      // Derive from result: event handlers may not have run yet, so don't rely on this.updateAvailable
-      const updateAvailable = !!(result && result.updateInfo);
-      const version = result?.updateInfo?.version || null;
-      this.updateAvailable = updateAvailable;
+      // No update available from GitHub
+      logger.info(`ℹ️ No update available. Current version is up to date.`);
+      this.updateAvailable = false;
       this.isChecking = false;
       return {
         checking: false,
-        updateAvailable,
-        version
+        updateAvailable: false,
+        version: this.getCurrentVersion(),
+        message: 'You are using the latest version.'
       };
     } catch (error) {
       logger.error(`❌ Failed to check for updates: ${error.message}`);
       this.isChecking = false;
-      throw error;
+      return {
+        checking: false,
+        updateAvailable: false,
+        error: error.message
+      };
     }
   }
 
@@ -278,12 +297,22 @@ class UpdateService {
     }
 
     try {
+      // Set up feed URL before downloading
+      autoUpdater.setFeedURL({
+        provider: 'github',
+        owner: this.githubConfig.owner,
+        repo: this.githubConfig.repo,
+        releaseType: 'release'
+      });
+      
       logger.info('📥 Starting update download...');
       await autoUpdater.downloadUpdate();
+      this.updateDownloaded = true;
+      this.updateAvailable = false;
       return { success: true };
     } catch (error) {
       logger.error(`❌ Failed to download update: ${error.message}`);
-      throw error;
+      throw new Error(`Download failed: ${error.message}`);
     }
   }
 
@@ -292,16 +321,17 @@ class UpdateService {
    */
   async installUpdate() {
     if (!this.updateDownloaded) {
-      throw new Error('No update downloaded to install');
+      throw new Error('No update has been downloaded yet. Please download the update first.');
     }
 
     try {
       logger.info('🚀 Installing update and restarting...');
       autoUpdater.quitAndInstall(false, true);
-      return { success: true };
+      // This point is rarely reached as the app exits immediately
+      return { success: true, message: 'Update installed. Application will restart.' };
     } catch (error) {
       logger.error(`❌ Failed to install update: ${error.message}`);
-      throw error;
+      throw new Error(`Install failed: ${error.message}`);
     }
   }
 
