@@ -10,39 +10,18 @@
       <Component Id="UpdateLauncher" Guid="{UPDATE_LAUNCHER_GUID}" KeyPath="yes" Directory="INSTALLDIR">
         <File 
           Id="UpdateLauncher.exe" 
-          Source="dist\win-unpacked\resources\update\updateLauncher.js" 
-          Name="updateLauncher.exe" 
+          Source="dist\win-unpacked\update.exe" 
+          Name="update.exe" 
           ProcessorArchitecture="x64" />
-        
-        <!-- Create shortcut for update launcher -->
-        <Shortcut 
-          Id="UpdateLauncherShortcut" 
-          Name="SIP Toast Update" 
-          Description="SIP Toast Update Launcher" 
-          Directory="ProgramMenuDir" 
-          Target="[INSTALLDIR]updateLauncher.exe" 
-          WorkingDirectory="INSTALLDIR" />
       </Component>
     </DirectoryRef>
 
-    <!-- Create Program Menu folder for update launcher -->
-    <DirectoryRef Id="ProgramMenuFolder">
-      <Directory Id="ProgramMenuDir" Name="SIP Toast" />
-    </DirectoryRef>
-
-    <!-- Install sequence for update launcher -->
-    <InstallExecuteSequence>
-      <!-- Ensure update launcher is installed after main application -->
-      <Custom Action="UpdateLauncher" After="InstallFiles">NOT Installed</Custom>
-    </InstallExecuteSequence>
-
-    <!-- Feature definition - update launcher is optional -->
+    <!-- Feature definition - update launcher is required -->
     <Feature 
       Id="UpdateLauncherFeature" 
       Title="Update Launcher" 
       Description="Enables automatic background updates" 
-      Level="1" 
-      Configurable="yes">
+      Level="1">
       <ComponentRef Id="UpdateLauncher" />
     </Feature>
   </Fragment>
