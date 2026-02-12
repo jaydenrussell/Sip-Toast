@@ -11,14 +11,14 @@ const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 
 /**
- * Get cached result or compute new one
+ * Get cached result or compute new one (handles async properly)
  */
-const getCachedResult = (key, computeFn) => {
+const getCachedResult = async (key, computeFn) => {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.value;
   }
-  const result = computeFn();
+  const result = await computeFn();
   cache.set(key, { value: result, timestamp: Date.now() });
   return result;
 };
@@ -28,7 +28,7 @@ const getCachedResult = (key, computeFn) => {
  * Optimized: parallel execution and caching
  */
 async function checkFirewallStatus() {
-  return getCachedResult('firewallStatus', async () => {
+  return await getCachedResult('firewallStatus', async () => {
     const results = {
       firewallEnabled: false,
       outboundAllowed: true,

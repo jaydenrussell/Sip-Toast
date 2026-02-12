@@ -548,19 +548,42 @@ const installUpdateBtn = document.getElementById('installUpdateBtn');
 const updateStatusDisplay = (status) => {
   if (!updateStatusContainer || !updateStatusText) return;
   
+  // Handle checking state
   if (status.checking) {
     updateStatusContainer.style.display = 'block';
-    updateStatusText.textContent = 'Checking for updates...';
+    updateStatusText.textContent = status.checkingMessage || 'Checking for updates...';
     updateStatusText.style.color = 'var(--text-primary)';
     updateStatusActions.style.display = 'none';
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-  } else if (status.error) {
+    if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'none';
+    if (installUpdateBtn) installUpdateBtn.style.display = 'none';
+    return;
+  }
+  
+  // Handle error state
+  if (status.error) {
     updateStatusContainer.style.display = 'block';
     updateStatusText.textContent = `Error: ${status.error}`;
     updateStatusText.style.color = '#ef4444';
     updateStatusActions.style.display = 'none';
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-  } else if (status.updateAvailable) {
+    return;
+  }
+  
+  // Handle update downloaded state
+  if (status.updateDownloaded) {
+    updateStatusContainer.style.display = 'block';
+    updateStatusText.textContent = status.message || 'Update downloaded and ready to install';
+    updateStatusText.style.color = '#10b981';
+    updateStatusActions.style.display = 'block';
+    if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'none';
+    if (installUpdateBtn) installUpdateBtn.style.display = 'inline-block';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+    return;
+  }
+  
+  // Handle update available state
+  if (status.updateAvailable) {
     updateStatusContainer.style.display = 'block';
     updateStatusText.textContent = `Update available: Version ${status.version || 'Unknown'}`;
     updateStatusText.style.color = '#10b981';
@@ -568,21 +591,15 @@ const updateStatusDisplay = (status) => {
     if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'inline-block';
     if (installUpdateBtn) installUpdateBtn.style.display = 'none';
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-  } else if (status.updateDownloaded) {
-    updateStatusContainer.style.display = 'block';
-    updateStatusText.textContent = 'Update downloaded and ready to install';
-    updateStatusText.style.color = '#10b981';
-    updateStatusActions.style.display = 'block';
-    if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'none';
-    if (installUpdateBtn) installUpdateBtn.style.display = 'inline-block';
-    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-  } else {
-    updateStatusContainer.style.display = 'block';
-    updateStatusText.textContent = `No updates available. Current version: ${status.currentVersion || 'Unknown'}`;
-    updateStatusText.style.color = 'var(--text-muted)';
-    updateStatusActions.style.display = 'none';
-    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+    return;
   }
+  
+  // Handle no updates state
+  updateStatusContainer.style.display = 'block';
+  updateStatusText.textContent = status.message || `No updates available. Current version: ${status.currentVersion || 'Unknown'}`;
+  updateStatusText.style.color = 'var(--text-muted)';
+  updateStatusActions.style.display = 'none';
+  if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
 };
 
 // Check for updates button handler
@@ -619,7 +636,7 @@ if (checkUpdatesBtn) {
 if (downloadUpdateBtn) {
   downloadUpdateBtn.addEventListener('click', async () => {
     try {
-      updateStatusDisplay({ checking: true });
+      updateStatusDisplay({ checking: true, checkingMessage: 'Downloading update...' });
       const result = await window.trayAPI.downloadUpdate();
       if (result.error) {
         updateStatusDisplay({ error: result.error });
@@ -627,12 +644,18 @@ if (downloadUpdateBtn) {
         const status = await window.trayAPI.getUpdateStatus();
         updateStatusDisplay({
           checking: false,
-          updateDownloaded: status.updateDownloaded || true,
-          currentVersion: status.currentVersion
+          checkingMessage: null,
+          updateDownloaded: true,
+          updateAvailable: false,
+          currentVersion: status.currentVersion,
+          message: result.message || 'Update downloaded successfully'
         });
+        // Refresh update info display
+        loadUpdateInformation();
       }
     } catch (error) {
-      updateStatusDisplay({ error: error.message });
+      console.error('Download update error:', error);
+      updateStatusDisplay({ error: error.message || 'Failed to download update' });
     }
   });
 }
@@ -1093,6 +1116,7 @@ const checkFirewall = async () => {
     if (errorEl) errorEl.style.display = 'none';
     if (loadingEl) loadingEl.style.display = 'block';
     checkFirewallBtn.disabled = true;
+    checkFirewallBtn.textContent = 'Checking...';
     
     // Check firewall status
     const status = await window.trayAPI.checkFirewall();
@@ -1100,6 +1124,7 @@ const checkFirewall = async () => {
     // Hide loading
     if (loadingEl) loadingEl.style.display = 'none';
     checkFirewallBtn.disabled = false;
+    checkFirewallBtn.textContent = 'Check Firewall Status';
     if (refreshBtn) refreshBtn.style.display = 'inline-block';
     
     // Display results
@@ -1109,6 +1134,9 @@ const checkFirewall = async () => {
     const instructions = await window.trayAPI.getFirewallInstructions();
     displayFirewallInstructions(instructions);
     
+    // Ensure container is visible
+    if (statusContainerEl) statusContainerEl.style.display = 'block';
+    
   } catch (error) {
     console.error('Failed to check firewall:', error);
     if (loadingEl) loadingEl.style.display = 'none';
@@ -1117,11 +1145,30 @@ const checkFirewall = async () => {
       errorEl.textContent = `Error checking firewall: ${error.message}`;
     }
     checkFirewallBtn.disabled = false;
+    checkFirewallBtn.textContent = 'Check Firewall Status';
+    // Show status container even on error with default message
+    if (statusContainerEl) {
+      statusContainerEl.style.display = 'block';
+      if (firewallStatusText) {
+        firewallStatusText.textContent = 'Error';
+        firewallStatusText.style.color = '#ef4444';
+      }
+    }
   }
 };
 
 const displayFirewallStatus = (status) => {
-  if (!firewallStatusContainer) return;
+  // Guard against null status
+  if (!status) {
+    console.error('Firewall status is null');
+    return;
+  }
+  
+  // Ensure container exists
+  if (!firewallStatusContainer) {
+    console.error('Firewall status container not found');
+    return;
+  }
   
   // Status text with color coding
   const statusColors = {
@@ -1264,6 +1311,9 @@ const bootstrap = async () => {
   await loadSettings();
   const status = await window.trayAPI.getSipStatus();
   updateSipStatus(status);
+  
+  // Initialize navigation system
+  initNavigation();
   
   // Apply initial theme
   const initialTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
