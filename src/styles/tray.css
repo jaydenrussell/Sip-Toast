@@ -109,6 +109,219 @@ body {
   color: #fff;
 }
 
+/* Update Button Styles - Discord-style */
+.title-bar-button.update-button {
+  color: var(--text-secondary);
+}
+
+.title-bar-button.update-button:hover {
+  background: var(--bg-tertiary);
+  color: #2563eb;
+}
+
+.title-bar-button.update-button.update-available {
+  color: #2563eb;
+  animation: pulse-update 2s ease-in-out infinite;
+}
+
+.title-bar-button.update-button.update-downloaded {
+  color: #10b981;
+}
+
+@keyframes pulse-update {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Update Dropdown Styles - Discord-style */
+.update-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 9998;
+  pointer-events: auto;
+}
+
+.update-dropdown {
+  position: fixed;
+  top: 36px;
+  right: 12px;
+  width: 320px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--shadow);
+  z-index: 9999;
+  overflow: hidden;
+  font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+}
+
+.update-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: white;
+}
+
+.update-dropdown-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.update-dropdown-close {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: background 0.2s ease;
+}
+
+.update-dropdown-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.update-dropdown-content {
+  padding: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.update-version-info {
+  margin-bottom: 12px;
+}
+
+.update-version-info h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.update-version-info p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.update-release-notes {
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 12px;
+  max-height: 150px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.6;
+}
+
+.update-progress-container {
+  margin-top: 12px;
+}
+
+.update-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.update-progress-bar {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #7c3aed);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.update-downloaded-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 6px;
+  color: #10b981;
+  font-size: 13px;
+}
+
+.update-dropdown-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.update-action-button {
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.update-action-button.primary {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: white;
+}
+
+.update-action-button.primary:hover {
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  transform: translateY(-1px);
+}
+
+.update-action-button.success {
+  background: #10b981;
+  color: white;
+}
+
+.update-action-button.success:hover {
+  background: #059669;
+}
+
+.update-action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.update-error {
+  color: #ef4444;
+  font-size: 12px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 4px;
+}
+
 .app-container {
   display: flex;
   flex: 1;

@@ -789,6 +789,28 @@ app.whenReady().then(async () => {
   updateService.startAutoCheck();
   logger.info('✅ Update service initialized');
   
+  // Perform initial update check at startup (delayed to not block startup)
+  setTimeout(async () => {
+    try {
+      logger.info('🔍 Performing initial update check at startup...');
+      const result = await updateService.checkForUpdates();
+      
+      if (result && result.updateAvailable) {
+        logger.info(`✅ Initial update check found new version: ${result.version}`);
+        
+        // Notify the renderer about the available update (for title bar button)
+        if (flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
+          const status = updateService.getStatus();
+          flyoutWindow.send('update:status', status);
+        }
+      } else {
+        logger.info('✅ Initial update check completed - no new version');
+      }
+    } catch (error) {
+      logger.error(`❌ Initial update check failed: ${error.message}`);
+    }
+  }, 5000); // Wait 5 seconds before checking to not slow down startup
+  
   // Reload events from file after app is ready (ensures log directory is properly resolved)
   const eventLogger = require('./services/eventLogger');
   eventLogger.reloadEvents();

@@ -806,6 +806,301 @@ const loadUpdateInformation = async () => {
   }
 };
 
+// ==========================================
+// Title Bar Update Button Handlers - Discord-style
+// ==========================================
+
+// Update dropdown elements
+const updateBtn = document.getElementById('updateBtn');
+const updateDropdown = document.getElementById('updateDropdown');
+const updateOverlay = document.getElementById('updateOverlay');
+const updateDropdownClose = document.getElementById('updateDropdownClose');
+const updateDropdownContent = document.getElementById('updateDropdownContent');
+const updateActionBtn = document.getElementById('updateActionBtn');
+
+// Update button click handler - show dropdown
+if (updateBtn) {
+  updateBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleUpdateDropdown();
+  });
+}
+
+// Close dropdown handlers
+if (updateOverlay) {
+  updateOverlay.addEventListener('click', hideUpdateDropdown);
+}
+
+if (updateDropdownClose) {
+  updateDropdownClose.addEventListener('click', hideUpdateDropdown);
+}
+
+// Toggle update dropdown visibility
+function toggleUpdateDropdown() {
+  if (!updateDropdown || !updateOverlay) return;
+  
+  const isVisible = updateDropdown.style.display === 'block';
+  if (isVisible) {
+    hideUpdateDropdown();
+  } else {
+    showUpdateDropdown();
+  }
+}
+
+// Show update dropdown
+function showUpdateDropdown() {
+  if (!updateDropdown || !updateOverlay) return;
+  
+  updateDropdown.style.display = 'block';
+  updateOverlay.style.display = 'block';
+  
+  // Load current update status
+  loadUpdateDropdownContent();
+}
+
+// Hide update dropdown
+function hideUpdateDropdown() {
+  if (!updateDropdown || !updateOverlay) return;
+  
+  updateDropdown.style.display = 'none';
+  updateOverlay.style.display = 'none';
+}
+
+// Load update dropdown content based on current status
+async function loadUpdateDropdownContent() {
+  if (!updateDropdownContent || !updateActionBtn) return;
+  
+  try {
+    const status = await window.trayAPI.getUpdateStatus();
+    
+    if (status.checking) {
+      updateDropdownContent.innerHTML = `
+        <div class="update-version-info">
+          <h4>Checking for updates...</h4>
+          <p>Please wait while we check for the latest version.</p>
+        </div>
+      `;
+      updateActionBtn.textContent = 'Checking...';
+      updateActionBtn.disabled = true;
+      updateActionBtn.className = 'update-action-button primary';
+      return;
+    }
+    
+    if (status.updateDownloaded) {
+      updateDropdownContent.innerHTML = `
+        <div class="update-version-info">
+          <h4>Update Ready!</h4>
+          <p>Version ${status.version} has been downloaded and is ready to install.</p>
+        </div>
+        <div class="update-downloaded-info">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span>Download complete</span>
+        </div>
+      `;
+      updateActionBtn.textContent = 'Install & Restart';
+      updateActionBtn.disabled = false;
+      updateActionBtn.className = 'update-action-button success';
+      updateActionBtn.onclick = installUpdate;
+      return;
+    }
+    
+    if (status.updateAvailable) {
+      const releaseNotes = status.releaseNotes || 'No release notes available.';
+      
+      // Truncate release notes if too long
+      const truncatedNotes = releaseNotes.length > 300 
+        ? releaseNotes.substring(0, 300) + '...'
+        : releaseNotes;
+      
+      updateDropdownContent.innerHTML = `
+        <div class="update-version-info">
+          <h4>Update Available</h4>
+          <p>Version ${status.version} is now available. You are currently running version ${status.currentVersion}.</p>
+        </div>
+        <div class="update-progress-container" id="updateProgressContainer" style="display: none;">
+          <div class="update-progress-label">
+            <span>Downloading...</span>
+            <span id="updateProgressPercent">0%</span>
+          </div>
+          <div class="update-progress-bar">
+            <div class="update-progress-fill" id="updateProgressFill" style="width: 0%;"></div>
+          </div>
+        </div>
+        <div class="update-release-notes">${escapeHtml(truncatedNotes)}</div>
+      `;
+      updateActionBtn.textContent = 'Download Update';
+      updateActionBtn.disabled = false;
+      updateActionBtn.className = 'update-action-button primary';
+      updateActionBtn.onclick = downloadAndInstallUpdate;
+      return;
+    }
+    
+    // No update available
+    updateDropdownContent.innerHTML = `
+      <div class="update-version-info">
+        <h4>You're Up to Date!</h4>
+        <p>You are running the latest version (${status.currentVersion}). We'll notify you when a new update is available.</p>
+      </div>
+    `;
+    updateActionBtn.textContent = 'Check for Updates';
+    updateActionBtn.disabled = false;
+    updateActionBtn.className = 'update-action-button primary';
+    updateActionBtn.onclick = checkForUpdates;
+  } catch (error) {
+    updateDropdownContent.innerHTML = `
+      <div class="update-error">
+        Failed to load update status: ${escapeHtml(error.message)}
+      </div>
+    `;
+    updateActionBtn.textContent = 'Retry';
+    updateActionBtn.disabled = false;
+    updateActionBtn.className = 'update-action-button primary';
+    updateActionBtn.onclick = () => {
+      loadUpdateDropdownContent();
+    };
+  }
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Check for updates
+async function checkForUpdates() {
+  if (!updateActionBtn) return;
+  
+  updateActionBtn.textContent = 'Checking...';
+  updateActionBtn.disabled = true;
+  
+  try {
+    const result = await window.trayAPI.checkForUpdates();
+    loadUpdateDropdownContent();
+    
+    // Also reload the main update status
+    loadUpdateStatus();
+    loadUpdateInformation();
+  } catch (error) {
+    updateDropdownContent.innerHTML = `
+      <div class="update-error">
+        Failed to check for updates: ${escapeHtml(error.message)}
+      </div>
+    `;
+    updateActionBtn.textContent = 'Retry';
+    updateActionBtn.disabled = false;
+  }
+}
+
+// Download and install update
+async function downloadAndInstallUpdate() {
+  if (!updateActionBtn) return;
+  
+  updateActionBtn.textContent = 'Downloading...';
+  updateActionBtn.disabled = true;
+  
+  // Show progress container
+  const progressContainer = document.getElementById('updateProgressContainer');
+  if (progressContainer) {
+    progressContainer.style.display = 'block';
+  }
+  
+  try {
+    const result = await window.trayAPI.downloadUpdate();
+    
+    // Listen for download progress
+    const checkProgress = setInterval(async () => {
+      const status = await window.trayAPI.getUpdateStatus();
+      
+      if (status.updateProgress !== undefined && status.updateProgress > 0) {
+        const progressFill = document.getElementById('updateProgressFill');
+        const progressPercent = document.getElementById('updateProgressPercent');
+        
+        if (progressFill) {
+          progressFill.style.width = status.updateProgress + '%';
+        }
+        if (progressPercent) {
+          progressPercent.textContent = status.updateProgress + '%';
+        }
+      }
+      
+      if (status.updateDownloaded) {
+        clearInterval(checkProgress);
+        loadUpdateDropdownContent();
+        
+        // Also reload the main update status
+        loadUpdateStatus();
+        loadUpdateInformation();
+      }
+    }, 500);
+    
+    // Set a timeout to stop checking after 5 minutes
+    setTimeout(() => {
+      clearInterval(checkProgress);
+    }, 300000);
+    
+  } catch (error) {
+    updateDropdownContent.innerHTML = `
+      <div class="update-error">
+        Failed to download update: ${escapeHtml(error.message)}
+      </div>
+    `;
+    updateActionBtn.textContent = 'Retry Download';
+    updateActionBtn.disabled = false;
+    
+    const progressContainer = document.getElementById('updateProgressContainer');
+    if (progressContainer) {
+      progressContainer.style.display = 'none';
+    }
+  }
+}
+
+// Install update
+async function installUpdate() {
+  if (!updateActionBtn) return;
+  
+  updateActionBtn.textContent = 'Installing...';
+  updateActionBtn.disabled = true;
+  
+  try {
+    await window.trayAPI.installUpdate();
+  } catch (error) {
+    updateDropdownContent.innerHTML = `
+      <div class="update-error">
+        Failed to install update: ${escapeHtml(error.message)}
+      </div>
+    `;
+    updateActionBtn.textContent = 'Retry';
+    updateActionBtn.disabled = false;
+  }
+}
+
+// Listen for update status changes from main process
+window.trayAPI.onUpdateStatus((status) => {
+  // Update the title bar button visibility
+  if (updateBtn) {
+    if (status.updateAvailable) {
+      updateBtn.style.display = 'flex';
+      updateBtn.classList.add('update-available');
+    } else if (status.updateDownloaded) {
+      updateBtn.style.display = 'flex';
+      updateBtn.classList.add('update-downloaded');
+    } else {
+      updateBtn.style.display = 'none';
+      updateBtn.classList.remove('update-available', 'update-downloaded');
+    }
+  }
+  
+  // If dropdown is open, refresh content
+  if (updateDropdown && updateDropdown.style.display === 'block') {
+    loadUpdateDropdownContent();
+  }
+});
+
 if (saveAllBtn) {
   saveAllBtn.addEventListener('click', async () => {
     await saveSettings('all');

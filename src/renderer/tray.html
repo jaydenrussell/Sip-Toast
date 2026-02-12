@@ -12,11 +12,43 @@
       <div class="title-bar-content">
         <span class="title-text">SIP Toast</span>
         <div class="title-bar-controls">
+          <!-- Update Button (Discord-style) -->
+          <button class="title-bar-button update-button" id="updateBtn" title="Check for Updates" style="display: none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+              <path d="M16 21h5v-5"/>
+            </svg>
+          </button>
           <button class="title-bar-button minimize" id="minimizeBtn" title="Minimize">─</button>
           <button class="title-bar-button close" id="closeBtn" title="Close">✕</button>
         </div>
       </div>
     </div>
+
+    <!-- Update Dropdown (Discord-style) -->
+    <div class="update-dropdown" id="updateDropdown" style="display: none;">
+      <div class="update-dropdown-header">
+        <div class="update-dropdown-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+            <path d="M16 21h5v-5"/>
+          </svg>
+          <span>Update Available</span>
+        </div>
+        <button class="update-dropdown-close" id="updateDropdownClose" title="Close">✕</button>
+      </div>
+      <div class="update-dropdown-content" id="updateDropdownContent">
+        <!-- Update info will be inserted here -->
+      </div>
+      <div class="update-dropdown-footer">
+        <button class="update-action-button primary" id="updateActionBtn">Download Update</button>
+      </div>
+    </div>
+    <div class="update-overlay" id="updateOverlay" style="display: none;"></div>
     <div class="app-container">
       <aside class="sidebar">
         <nav class="sidebar-nav">
