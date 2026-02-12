@@ -51,12 +51,30 @@ const sections = {
 // Optimized navigation with event delegation
 const initNavigation = () => {
   const navContainer = document.querySelector('.sidebar-nav');
+  if (!navContainer) {
+    console.error('[Navigation] Sidebar nav container not found!');
+    return;
+  }
+  
+  console.log('[Navigation] Sidebar nav found, attaching click listener');
+  
   navContainer.addEventListener('click', (e) => {
+    console.log('[Navigation] Click event triggered on:', e.target);
     const item = e.target.closest('.nav-item');
-    if (!item) return;
+    console.log('[Navigation] Found nav item:', item);
+    
+    if (!item) {
+      console.log('[Navigation] No nav item found from click target');
+      return;
+    }
     
     const section = item.dataset.section;
-    if (!section || !sections[section]) return;
+    console.log('[Navigation] Section to switch to:', section);
+    
+    if (!section || !sections[section]) {
+      console.log('[Navigation] Invalid section:', section);
+      return;
+    }
     
     // Update nav state
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -65,11 +83,20 @@ const initNavigation = () => {
     // Update sections
     document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
     const targetSection = document.getElementById(`section-${section}`);
-    if (targetSection) targetSection.classList.add('active');
+    console.log('[Navigation] Target section element:', targetSection);
+    
+    if (targetSection) {
+      targetSection.classList.add('active');
+      console.log('[Navigation] Activated section:', section);
+    } else {
+      console.error('[Navigation] Section element not found:', `section-${section}`);
+    }
     
     // Update header
-    $('#sectionTitle').textContent = sections[section].title;
-    $('#sectionSubtitle').textContent = sections[section].subtitle;
+    const titleEl = document.getElementById('sectionTitle');
+    const subtitleEl = document.getElementById('sectionSubtitle');
+    if (titleEl) titleEl.textContent = sections[section].title;
+    if (subtitleEl) subtitleEl.textContent = sections[section].subtitle;
     
     // Lazy load section data
     const loaders = {
@@ -77,7 +104,10 @@ const initNavigation = () => {
       firewall: checkFirewall,
       updates: () => { loadUpdateStatus(); loadUpdateInformation(); }
     };
-    loaders[section]?.();
+    if (loaders[section]) {
+      console.log('[Navigation] Calling lazy loader for:', section);
+      loaders[section]();
+    }
   });
 };
 

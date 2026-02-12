@@ -15,7 +15,7 @@
   --input-bg: #f8fafc;
   --nav-hover: rgba(37, 99, 235, 0.1);
   --nav-active: rgba(37, 99, 235, 0.15);
-  --sidebar-width: 140px;
+  --sidebar-width: 180px;
   --title-bar-height: 32px;
   --header-height: 40px;
   --min-content-height: 400px;
@@ -337,6 +337,7 @@ body {
   flex-direction: column;
   flex-shrink: 0;
   min-width: var(--sidebar-width);
+  z-index: 10;
 }
 
 .sidebar-nav {
