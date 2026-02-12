@@ -1,12 +1,32 @@
+// Global error handler
+window.addEventListener('error', (event) => {
+  console.error('[Global Error]', event.error);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[Unhandled Promise Rejection]', event.reason);
+});
+
 const form = document.getElementById('settingsForm');
 const saveStatus = document.getElementById('saveStatus');
 const restartButton = document.getElementById('restartSip');
 const simulateButton = document.getElementById('simulateCall');
 const sipStatus = document.getElementById('sipStatus');
 const autoLaunchToggle = document.getElementById('autoLaunchToggle');
-const autoLaunchInput = form.querySelector('[name="app.launchAtLogin"]');
+const autoLaunchInput = form ? form.querySelector('[name="app.launchAtLogin"]') : null;
 const sectionTitle = document.getElementById('sectionTitle');
 const sectionSubtitle = document.getElementById('sectionSubtitle');
+
+console.log('[Init] DOM elements initialized:', {
+  form: !!form,
+  saveStatus: !!saveStatus,
+  restartButton: !!restartButton,
+  simulateButton: !!simulateButton,
+  sipStatus: !!sipStatus,
+  autoLaunchToggle: !!autoLaunchToggle,
+  sectionTitle: !!sectionTitle,
+  sectionSubtitle: !!sectionSubtitle
+});
 
 let currentSettings = null;
 
@@ -437,17 +457,21 @@ const saveSettings = async (section = 'all') => {
   }
 };
 
-form.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  await saveSettings('all');
-});
+if (form) {
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await saveSettings('all');
+  });
+}
 
-restartButton.addEventListener('click', async () => {
-  setSaveStatus('Restarting SIP…');
-  await window.trayAPI.restartSip();
-  setSaveStatus('Restart signal sent', 'success');
-  await window.trayAPI.logAction('SIP connection restarted');
-});
+if (restartButton) {
+  restartButton.addEventListener('click', async () => {
+    setSaveStatus('Restarting SIP…');
+    await window.trayAPI.restartSip();
+    setSaveStatus('Restart signal sent', 'success');
+    await window.trayAPI.logAction('SIP connection restarted');
+  });
+}
 
 // Save buttons
 const saveSipBtn = document.getElementById('saveSipBtn');
@@ -460,7 +484,7 @@ const sipDebugSection = document.getElementById('sipDebugSection');
 const acuityDebugSection = document.getElementById('acuityDebugSection');
 const toastTimeoutInput = document.getElementById('toastTimeoutInput');
 const sipTransportSelect = document.getElementById('sipTransport');
-const sipPortInput = form.querySelector('[name="sip.port"]');
+const sipPortInput = form ? form.querySelector('[name="sip.port"]') : null;
 const reloadSettingsBtn = document.getElementById('reloadSettingsBtn');
 
 // Reload settings button
