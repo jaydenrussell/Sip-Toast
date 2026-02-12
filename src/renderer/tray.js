@@ -90,6 +90,7 @@ const updateToggleVisual = (state) => {
 
 const renderSettings = (settings) => {
   // Ensure settings object exists with all required sections
+  console.log('[Render] renderSettings called with:', JSON.stringify(settings, null, 2));
   const safeSettings = settings || {};
   
   // Ensure each section exists to prevent undefined errors
@@ -99,9 +100,20 @@ const renderSettings = (settings) => {
   const app = safeSettings.app || {};
   const updates = safeSettings.updates || {};
   
+  console.log('[Render] Parsed sections:', {
+    sip: Object.keys(sip),
+    acuity: Object.keys(acuity),
+    toast: Object.keys(toast),
+    app: Object.keys(app),
+    updates: Object.keys(updates)
+  });
+  
   fieldNames.forEach((name) => {
     const input = getInput(name);
-    if (!input) return;
+    if (!input) {
+      console.warn(`[Render] Input not found for field: ${name}`);
+      return;
+    }
     
     // Use cached split result
     const parts = getFieldParts(name);
@@ -120,6 +132,8 @@ const renderSettings = (settings) => {
     } else if (section === 'updates') {
       value = updates[key];
     }
+    
+    console.log(`[Render] Field ${name}: value=${value}, inputType=${input.tagName}`);
     
     // Set default value for port based on transport
     if (key === 'port' && (value === null || value === undefined || value === '')) {
@@ -164,6 +178,7 @@ const renderSettings = (settings) => {
     
     // Ensure we always set a value, even if empty string
     input.value = value !== null && value !== undefined ? value : '';
+    console.log(`[Render] Final value for ${name}: "${input.value}"`);
   });
 
   const launchAtLogin = typeof app.launchAtLogin === 'boolean' ? app.launchAtLogin : true;
@@ -319,14 +334,41 @@ const setSaveStatus = (message, tone = 'neutral') => {
 
 
 const loadSettings = async () => {
-  currentSettings = await window.trayAPI.getSettings();
-  renderSettings(currentSettings);
+  try {
+    console.log('[Settings] Loading settings from main process...');
+    const settings = await window.trayAPI.getSettings();
+    console.log('[Settings] Raw settings received:', JSON.stringify(settings, null, 2));
+    
+    currentSettings = settings;
+    console.log('[Settings] currentSettings updated, calling renderSettings...');
+    renderSettings(currentSettings);
+    console.log('[Settings] renderSettings completed');
+  } catch (error) {
+    console.error('[Settings] ERROR loading settings:', error);
+    console.error('[Settings] Stack:', error.stack);
+    // Use default settings on error
+    currentSettings = {
+      sip: { server: null, port: 5060, transport: 'udp', domain: null, username: null, password: null, uri: null, displayName: null },
+      acuity: { enabled: false, userId: null, apiKey: null },
+      toast: { autoDismissMs: 20000, numberFont: 'Segoe UI Variable, Segoe UI, sans-serif', numberFontSize: 15, callerIdFont: 'Segoe UI Variable, Segoe UI, sans-serif', callerIdFontSize: 20 },
+      app: { launchAtLogin: true },
+      updates: { enabled: true, checkFrequency: 'daily', lastCheckTime: null }
+    };
+    console.log('[Settings] Using default fallback settings');
+    renderSettings(currentSettings);
+  }
 };
 
 const updateSipStatus = (status) => {
-  if (!status) return;
+  if (!status) {
+    console.warn('[SIP] updateSipStatus called with null/undefined status');
+    sipStatus.textContent = 'Unknown';
+    sipStatus.dataset.state = 'unknown';
+    return;
+  }
   sipStatus.textContent = status.state.replace('-', ' ');
   sipStatus.dataset.state = status.state;
+  console.log('[SIP] Status updated to:', status.state);
 };
 
 const saveSettings = async (section = 'all') => {
@@ -389,6 +431,23 @@ const acuityDebugSection = document.getElementById('acuityDebugSection');
 const toastTimeoutInput = document.getElementById('toastTimeoutInput');
 const sipTransportSelect = document.getElementById('sipTransport');
 const sipPortInput = form.querySelector('[name="sip.port"]');
+const reloadSettingsBtn = document.getElementById('reloadSettingsBtn');
+
+// Reload settings button
+if (reloadSettingsBtn) {
+  reloadSettingsBtn.addEventListener('click', async () => {
+    console.log('[Settings] Manual reload triggered');
+    setSaveStatus('Reloading settings...', 'neutral');
+    try {
+      await loadSettings();
+      setSaveStatus('Settings reloaded', 'success');
+      console.log('[Settings] Settings reloaded successfully');
+    } catch (error) {
+      console.error('[Settings] Error reloading settings:', error);
+      setSaveStatus('Error reloading settings', 'error');
+    }
+  });
+}
 
 // Update port when transport changes
 if (sipTransportSelect && sipPortInput) {
@@ -1308,23 +1367,55 @@ if (refreshFirewallBtn) {
 
 
 const bootstrap = async () => {
-  await loadSettings();
-  const status = await window.trayAPI.getSipStatus();
-  updateSipStatus(status);
+  console.log('[Bootstrap] Starting bootstrap...');
+  
+  try {
+    console.log('[Bootstrap] Loading settings...');
+    await loadSettings();
+    console.log('[Bootstrap] Settings loaded successfully');
+  } catch (error) {
+    console.error('[Bootstrap] Error loading settings:', error);
+  }
+  
+  try {
+    console.log('[Bootstrap] Getting SIP status...');
+    const status = await window.trayAPI.getSipStatus();
+    updateSipStatus(status);
+    console.log('[Bootstrap] SIP status updated:', status);
+  } catch (error) {
+    console.error('[Bootstrap] Error getting SIP status:', error);
+  }
   
   // Initialize navigation system
-  initNavigation();
+  try {
+    console.log('[Bootstrap] Initializing navigation...');
+    initNavigation();
+    console.log('[Bootstrap] Navigation initialized');
+  } catch (error) {
+    console.error('[Bootstrap] Error initializing navigation:', error);
+  }
   
   // Apply initial theme
-  const initialTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', initialTheme);
+  try {
+    const initialTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', initialTheme);
+    console.log('[Bootstrap] Theme set to:', initialTheme);
+  } catch (error) {
+    console.error('[Bootstrap] Error setting theme:', error);
+  }
   
   // Load event logs if on logs section
-  const activeSection = document.querySelector('.content-section.active');
-  if (activeSection && activeSection.id === 'section-logs') {
-    loadEventLogs();
-    loadLogFilePath();
+  try {
+    const activeSection = document.querySelector('.content-section.active');
+    if (activeSection && activeSection.id === 'section-logs') {
+      loadEventLogs();
+      loadLogFilePath();
+    }
+  } catch (error) {
+    console.error('[Bootstrap] Error loading logs:', error);
   }
+  
+  console.log('[Bootstrap] Bootstrap complete');
 };
 
 bootstrap();

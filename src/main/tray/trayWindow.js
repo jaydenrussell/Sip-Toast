@@ -127,9 +127,14 @@ class TrayWindow {
   // Removed unused toggleDocked and showDocked methods - only showStandalone is used
 
   showStandalone() {
+    console.log('[TrayWindow] showStandalone() called');
     this.ensureWindow();
-    if (!this.window) return;
+    if (!this.window) {
+      console.error('[TrayWindow] Window not available after ensureWindow()');
+      return;
+    }
 
+    console.log('[TrayWindow] Window is available, setting up...');
     this.mode = 'window';
     this.window.setAlwaysOnTop(false);
     this.window.setResizable(true);
@@ -147,6 +152,7 @@ class TrayWindow {
     }
     
     const savedBounds = settings.getWindowBounds('tray');
+    console.log('[TrayWindow] Saved bounds:', savedBounds);
     if (savedBounds) {
       // Validate bounds are within screen dimensions
       const { screen } = require('electron');
@@ -184,12 +190,19 @@ class TrayWindow {
     } else {
       this.window.center();
     }
+    
+    const isVisible = this.window.isVisible();
+    console.log('[TrayWindow] Window visible before show():', isVisible);
+    
     this.window.show();
     this.window.focus();
     this.visible = true;
     
+    console.log('[TrayWindow] Window shown, isVisible:', this.window.isVisible());
+    
     // Send initial resize event to ensure responsive layout is applied
     const { width, height } = this.window.getBounds();
+    console.log('[TrayWindow] Window bounds:', { width, height });
     this.window.webContents.send('window:resized', { width, height });
   }
 
