@@ -222,6 +222,106 @@ const applyAutoLaunch = () => {
   });
 };
 
+// Create a download/update icon with an arrow indicator
+const createDownloadIcon = () => {
+  const size = 16;
+  // Create a simple icon with a download arrow indicator
+  // Using a blue base with green arrow
+  const pixelData = Buffer.alloc(size * size * 4);
+  
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      
+      // Create a rounded square base (blue)
+      const inBounds = x >= 1 && x < 15 && y >= 1 && y < 15;
+      
+      if (inBounds) {
+        // Base blue color
+        pixelData[idx] = 37;     // R
+        pixelData[idx + 1] = 99;  // G  
+        pixelData[idx + 2] = 235; // B
+        pixelData[idx + 3] = 255; // A
+        
+        // Add green arrow in center (downward pointing)
+        const centerX = 7 + Math.floor(x / 4);
+        const centerY = 7 + Math.floor(y / 4);
+        
+        // Simple arrow shape
+        if (y >= 6 && y <= 10 && x >= 5 && x <= 10) {
+          // Arrow shaft and head
+          if (y === 10 && x >= 6 && x <= 9) {
+            // Arrow head bottom
+            pixelData[idx] = 16;     // R - green
+            pixelData[idx + 1] = 185; // G
+            pixelData[idx + 2] = 88;  // B
+          } else if (y >= 6 && y <= 9 && x >= 7 && x <= 8) {
+            // Arrow shaft
+            pixelData[idx] = 16;     // R - green
+            pixelData[idx + 1] = 185; // G
+            pixelData[idx + 2] = 88;  // B
+          } else if (y === 6 && x >= 5 && x <= 10) {
+            // Arrow head top
+            pixelData[idx] = 16;     // R - green
+            pixelData[idx + 1] = 185; // G
+            pixelData[idx + 2] = 88;  // B
+          }
+        }
+      } else {
+        // Transparent outside
+        pixelData[idx] = 0;
+        pixelData[idx + 1] = 0;
+        pixelData[idx + 2] = 0;
+        pixelData[idx + 3] = 0;
+      }
+    }
+  }
+  
+  const icon = nativeImage.createFromBuffer(pixelData, { width: size, height: size });
+  if (process.platform === 'win32') {
+    icon.setTemplateImage(false);
+  }
+  return icon;
+};
+
+// Store the original icon for switching back
+let originalTrayIcon = null;
+
+// Update tray icon based on update status (Discord-like behavior)
+const updateTrayIcon = (status) => {
+  if (!tray || !tray.getImage) return;
+  
+  // On first call, store the original icon
+  if (!originalTrayIcon) {
+    try {
+      originalTrayIcon = tray.getImage();
+    } catch (e) {
+      return;
+    }
+  }
+  
+  if (status.updateAvailable || status.updateDownloaded || status.downloadProgress > 0) {
+    // Update available or downloading - show download icon
+    const downloadIcon = createDownloadIcon();
+    tray.setImage(downloadIcon);
+    
+    // Update tooltip
+    if (status.updateDownloaded) {
+      tray.setToolTip('SIP Toast – Update ready to install');
+    } else if (status.updateAvailable) {
+      tray.setToolTip(`SIP Toast – Update available: ${status.availableVersion}`);
+    } else if (status.downloadProgress > 0) {
+      tray.setToolTip(`SIP Toast – Downloading update: ${status.downloadProgress}%`);
+    }
+  } else if (!status.checking) {
+    // No update - restore original icon
+    if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
+      tray.setImage(originalTrayIcon);
+    }
+    tray.setToolTip('SIP Toast – Caller ID Lookup');
+  }
+};
+
 const createTray = () => {
   if (tray) return tray;
   const icon = createTrayIcon();
@@ -927,6 +1027,17 @@ app.whenReady().then(async () => {
   
   // Initialize update service
   updateService = new UpdateService();
+  
+  // Set up update status event listener to update tray icon and send to renderer
+  updateService.on('update-status', (status) => {
+    // Update tray icon based on update status
+    updateTrayIcon(status);
+    
+    // Send update status to renderer
+    flyoutWindow?.send('update:status', status);
+  });
+  
+  // Start auto-check (this will also check on app load)
   updateService.startAutoCheck();
   logger.info('✅ Update service initialized');
   

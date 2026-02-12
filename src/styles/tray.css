@@ -603,3 +603,254 @@ button.ghost:hover {
 #firewallStatusContainer::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* ======= UPDATES SECTION STYLES ======= */
+
+/* Update status card */
+.update-status-card {
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.update-current-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.update-version {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.update-status-display {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Checking state */
+.update-status-checking {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Available state */
+.update-status-available {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+}
+
+.update-available-icon {
+  font-size: 24px;
+}
+
+.update-available-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.update-available-version {
+  font-size: 16px;
+  font-weight: 600;
+  color: #10b981;
+}
+
+.update-available-note {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Downloading state */
+.update-status-downloading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  border-radius: 8px;
+}
+
+.update-downloading-icon {
+  font-size: 24px;
+}
+
+.update-downloading-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.update-downloading-progress {
+  font-size: 14px;
+  font-weight: 500;
+  color: #2563eb;
+}
+
+.update-progress-bar {
+  height: 8px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #7c3aed);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Ready state */
+.update-status-ready {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+}
+
+.update-ready-icon {
+  font-size: 24px;
+}
+
+.update-ready-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.update-ready-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: #10b981;
+}
+
+.update-ready-note {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Up to date state */
+.update-status-uptodate {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.update-uptodate-icon {
+  font-size: 20px;
+  color: #10b981;
+}
+
+.update-uptodate-text {
+  font-size: 14px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+/* Error state */
+.update-status-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+}
+
+.update-error-icon {
+  font-size: 20px;
+}
+
+.update-error-text {
+  font-size: 14px;
+  color: #ef4444;
+}
+
+/* Update actions */
+.update-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-start;
+}
+
+/* Update settings */
+.update-settings {
+  margin-top: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.update-settings h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ======= SIDEBAR UPDATE CHIP ======= */
+
+.update-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  margin-top: 8px;
+}
+
+.update-icon {
+  font-size: 12px;
+}
+
+.update-text {
+  flex: 1;
+}

@@ -17,6 +17,7 @@ const sections = {
   acuity: { title: 'Acuity Scheduler', subtitle: 'Configure API credentials for client lookups' },
   options: { title: 'Options', subtitle: 'Application settings and controls' },
   firewall: { title: 'Firewall', subtitle: 'Check Windows Firewall configuration' },
+  updates: { title: 'Updates', subtitle: 'Check for and install application updates' },
   logs: { title: 'Event Logs', subtitle: 'View SIP calls, toast notifications, and user interactions' },
   about: { title: 'About', subtitle: 'Application information' }
 };
@@ -58,6 +59,11 @@ navItems.forEach((item) => {
     // Load update status if options section is shown
     if (section === 'options') {
       loadUpdateStatus();
+    }
+    
+    // Load update status if updates section is shown
+    if (section === 'updates') {
+      loadUpdateStatusNew();
     }
   });
 });
@@ -1107,6 +1113,176 @@ if (checkFirewallBtn) {
 if (refreshFirewallBtn) {
   refreshFirewallBtn.addEventListener('click', checkFirewall);
 }
+
+// ======= NEW UPDATES SECTION =======
+
+// New Updates section elements
+const currentVersionEl = document.getElementById('currentVersion');
+const updateStatusChecking = document.getElementById('updateStatusChecking');
+const updateStatusAvailable = document.getElementById('updateStatusAvailable');
+const updateStatusDownloading = document.getElementById('updateStatusDownloading');
+const updateStatusReady = document.getElementById('updateStatusReady');
+const updateStatusUptodate = document.getElementById('updateStatusUptodate');
+const updateStatusError = document.getElementById('updateStatusError');
+const availableVersion = document.getElementById('availableVersion');
+const downloadProgress = document.getElementById('downloadProgress');
+const downloadProgressBar = document.getElementById('downloadProgressBar');
+const updateErrorText = document.getElementById('updateErrorText');
+const checkUpdatesBtnNew = document.getElementById('checkUpdatesBtnNew');
+const downloadUpdateBtnNew = document.getElementById('downloadUpdateBtnNew');
+const installUpdateBtnNew = document.getElementById('installUpdateBtnNew');
+const autoUpdateToggleNew = document.getElementById('autoUpdateToggleNew');
+const updateFrequencySelectNew = document.getElementById('updateFrequencySelectNew');
+const saveUpdateSettingsBtn = document.getElementById('saveUpdateSettingsBtn');
+
+// Sidebar update status chip
+const updateStatusChip = document.getElementById('updateStatus');
+
+// Update the new Updates section UI
+const updateNewSectionUI = (status) => {
+  // Update current version
+  if (currentVersionEl) {
+    currentVersionEl.textContent = status.currentVersion || 'Unknown';
+  }
+  
+  // Hide all status displays first
+  if (updateStatusChecking) updateStatusChecking.style.display = 'none';
+  if (updateStatusAvailable) updateStatusAvailable.style.display = 'none';
+  if (updateStatusDownloading) updateStatusDownloading.style.display = 'none';
+  if (updateStatusReady) updateStatusReady.style.display = 'none';
+  if (updateStatusUptodate) updateStatusUptodate.style.display = 'none';
+  if (updateStatusError) updateStatusError.style.display = 'none';
+  
+  // Update button states
+  const showDownloadBtn = status.updateAvailable && !status.updateDownloaded;
+  const showInstallBtn = status.updateDownloaded;
+  
+  if (checkUpdatesBtnNew) checkUpdatesBtnNew.disabled = status.checking;
+  if (downloadUpdateBtnNew) downloadUpdateBtnNew.style.display = showDownloadBtn ? 'inline-block' : 'none';
+  if (installUpdateBtnNew) installUpdateBtnNew.style.display = showInstallBtn ? 'inline-block' : 'none';
+  
+  // Show appropriate status
+  if (status.checking) {
+    if (updateStatusChecking) updateStatusChecking.style.display = 'flex';
+  } else if (status.error) {
+    if (updateStatusError) {
+      updateStatusError.style.display = 'flex';
+      if (updateErrorText) updateErrorText.textContent = status.error || 'Unable to check for updates';
+    }
+  } else if (status.updateDownloaded) {
+    if (updateStatusReady) updateStatusReady.style.display = 'flex';
+    // Show in sidebar
+    if (updateStatusChip) {
+      updateStatusChip.style.display = 'flex';
+      updateStatusChip.querySelector('.update-text').textContent = 'Update Ready';
+    }
+  } else if (status.updateAvailable) {
+    if (updateStatusAvailable) updateStatusAvailable.style.display = 'flex';
+    if (availableVersion) availableVersion.textContent = `Version ${status.availableVersion || 'Unknown'} available`;
+    // Show in sidebar
+    if (updateStatusChip) {
+      updateStatusChip.style.display = 'flex';
+      updateStatusChip.querySelector('.update-text').textContent = 'Update Available';
+    }
+  } else if (status.downloadProgress > 0 && status.downloadProgress < 100) {
+    if (updateStatusDownloading) updateStatusDownloading.style.display = 'flex';
+    if (downloadProgress) downloadProgress.textContent = `Downloading... ${status.downloadProgress}%`;
+    if (downloadProgressBar) downloadProgressBar.style.width = `${status.downloadProgress}%`;
+  } else {
+    if (updateStatusUptodate) updateStatusUptodate.style.display = 'flex';
+    // Hide sidebar chip
+    if (updateStatusChip) {
+      updateStatusChip.style.display = 'none';
+    }
+  }
+};
+
+// Load update status for new Updates section
+const loadUpdateStatusNew = async () => {
+  try {
+    const status = await window.trayAPI.getUpdateStatus();
+    updateNewSectionUI(status);
+  } catch (error) {
+    console.error('Failed to load update status:', error);
+  }
+};
+
+// Check for updates button handler (new section)
+if (checkUpdatesBtnNew) {
+  checkUpdatesBtnNew.addEventListener('click', async () => {
+    try {
+      const result = await window.trayAPI.checkForUpdates();
+      // Status will be updated via the onUpdateStatus listener
+    } catch (error) {
+      console.error('Failed to check for updates:', error);
+    }
+  });
+}
+
+// Download update button handler (new section)
+if (downloadUpdateBtnNew) {
+  downloadUpdateBtnNew.addEventListener('click', async () => {
+    try {
+      const result = await window.trayAPI.downloadUpdate();
+      // Status will be updated via the onUpdateStatus listener
+    } catch (error) {
+      console.error('Failed to download update:', error);
+    }
+  });
+}
+
+// Install update button handler (new section)
+if (installUpdateBtnNew) {
+  installUpdateBtnNew.addEventListener('click', async () => {
+    if (!confirm('This will install the update and restart the application. Continue?')) {
+      return;
+    }
+    
+    try {
+      const result = await window.trayAPI.installUpdate();
+      // App will restart, so no need to update UI
+    } catch (error) {
+      alert(`Failed to install update: ${error.message}`);
+    }
+  });
+}
+
+// Auto-update toggle handler (new section)
+if (autoUpdateToggleNew) {
+  const autoUpdateInputNew = form.querySelector('[name="updates.enabled"]');
+  autoUpdateToggleNew.addEventListener('click', () => {
+    const current = autoUpdateToggleNew.getAttribute('aria-checked') === 'true';
+    const newState = !current;
+    autoUpdateToggleNew.setAttribute('aria-checked', newState ? 'true' : 'false');
+    if (autoUpdateInputNew) {
+      autoUpdateInputNew.value = newState ? 'true' : 'false';
+    }
+  });
+}
+
+// Save update settings button handler
+if (saveUpdateSettingsBtn) {
+  saveUpdateSettingsBtn.addEventListener('click', async () => {
+    const updatesPayload = {
+      updates: {
+        enabled: autoUpdateToggleNew?.getAttribute('aria-checked') === 'true',
+        checkFrequency: updateFrequencySelectNew?.value || 'daily'
+      }
+    };
+    
+    try {
+      await window.trayAPI.saveSettings(updatesPayload);
+      setSaveStatus('Update settings saved', 'success');
+    } catch (error) {
+      setSaveStatus('Failed to save update settings', 'error');
+    }
+  });
+}
+
+// Listen for update status changes from main process
+window.trayAPI.onUpdateStatus((status) => {
+  updateNewSectionUI(status);
+});
 
 
 const bootstrap = async () => {

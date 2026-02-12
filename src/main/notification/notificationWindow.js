@@ -49,7 +49,7 @@ class NotificationWindow {
       frame: false,
       resizable: true,
       alwaysOnTop: true,
-      focusable: false, // Don't steal focus from other windows
+      focusable: true, // Allow interaction with the toast
       skipTaskbar: true,
       transparent: true,
       backgroundColor: '#00000000',
@@ -255,7 +255,8 @@ class NotificationWindow {
       windowSize: size
     });
 
-    this.window.showInactive();
+    this.window.show();
+    this.window.focus();
     this.window.setOpacity(1);
 
     if (this.hideTimeout) {
