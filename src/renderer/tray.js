@@ -106,6 +106,16 @@ const updateToggleVisual = (state) => {
 };
 
 const renderSettings = (settings) => {
+  // Ensure settings object exists with all required sections
+  const safeSettings = settings || {};
+  
+  // Ensure each section exists to prevent undefined errors
+  const sip = safeSettings.sip || {};
+  const acuity = safeSettings.acuity || {};
+  const toast = safeSettings.toast || {};
+  const app = safeSettings.app || {};
+  const updates = safeSettings.updates || {};
+  
   fieldNames.forEach((name) => {
     const input = getInput(name);
     if (!input) return;
@@ -113,22 +123,35 @@ const renderSettings = (settings) => {
     // Use cached split result
     const parts = getFieldParts(name);
     const [section, key] = parts;
-    let value = (settings[section] && settings[section][key]);
+    
+    // Get value from the appropriate section with safe fallback
+    let value = null;
+    if (section === 'sip') {
+      value = sip[key];
+    } else if (section === 'acuity') {
+      value = acuity[key];
+    } else if (section === 'toast') {
+      value = toast[key];
+    } else if (section === 'app') {
+      value = app[key];
+    } else if (section === 'updates') {
+      value = updates[key];
+    }
     
     // Set default value for port based on transport
-    if (key === 'port' && !value) {
+    if (key === 'port' && (value === null || value === undefined || value === '')) {
       const transportInput = form.querySelector('[name="sip.transport"]');
       const transport = transportInput ? transportInput.value : 'udp';
       value = transport === 'tls' ? 5061 : 5060;
     }
     
     // Set default transport if not set
-    if (key === 'transport' && !value) {
+    if (key === 'transport' && (value === null || value === undefined || value === '')) {
       value = 'udp';
     }
     
-    // Set default toast timeout if not set
-    if (key === 'autoDismissMs' && (value === null || value === undefined || value === '')) {
+    // Set default toast timeout if not set (handle 0 as valid)
+    if (key === 'autoDismissMs' && (value === null || value === undefined || value === '' || value === 0)) {
       value = 20000; // Default 20 seconds
     }
     
@@ -160,18 +183,13 @@ const renderSettings = (settings) => {
     input.value = value !== null && value !== undefined ? value : '';
   });
 
-  const launchAtLogin =
-    (settings.app && typeof settings.app.launchAtLogin === 'boolean'
-      ? settings.app.launchAtLogin
-      : true);
+  const launchAtLogin = typeof app.launchAtLogin === 'boolean' ? app.launchAtLogin : true;
   updateToggleVisual(launchAtLogin);
   
   // Handle Acuity enabled toggle
   const acuityEnabledToggle = document.getElementById('acuityEnabledToggle');
   if (acuityEnabledToggle) {
-    const acuityEnabled = settings.acuity && typeof settings.acuity.enabled === 'boolean'
-      ? settings.acuity.enabled
-      : false;
+    const acuityEnabled = typeof acuity.enabled === 'boolean' ? acuity.enabled : false;
     acuityEnabledToggle.setAttribute('aria-checked', acuityEnabled ? 'true' : 'false');
     const acuityEnabledInput = form.querySelector('[name="acuity.enabled"]');
     if (acuityEnabledInput) {
@@ -182,9 +200,7 @@ const renderSettings = (settings) => {
   // Handle Auto-update enabled toggle
   const autoUpdateToggle = document.getElementById('autoUpdateToggle');
   if (autoUpdateToggle) {
-    const updatesEnabled = settings.updates && typeof settings.updates.enabled === 'boolean'
-      ? settings.updates.enabled
-      : true;
+    const updatesEnabled = typeof updates.enabled === 'boolean' ? updates.enabled : true;
     autoUpdateToggle.setAttribute('aria-checked', updatesEnabled ? 'true' : 'false');
     const autoUpdateInput = form.querySelector('[name="updates.enabled"]');
     if (autoUpdateInput) {
@@ -194,8 +210,8 @@ const renderSettings = (settings) => {
 
   // Handle update check frequency
   const updateFrequencySelect = document.getElementById('updateFrequencySelect');
-  if (updateFrequencySelect && settings.updates) {
-    updateFrequencySelect.value = settings.updates.checkFrequency || 'daily';
+  if (updateFrequencySelect) {
+    updateFrequencySelect.value = updates.checkFrequency || 'daily';
   }
 
 };
@@ -1085,22 +1101,28 @@ const firewallInstructionsSection = document.getElementById('firewallInstruction
 const firewallInstructionsContent = document.getElementById('firewallInstructionsContent');
 
 const checkFirewall = async () => {
-  if (!checkFirewallBtn || !firewallStatusContainer) return;
+  if (!checkFirewallBtn) return;
+  
+  // Get all UI elements with null checks
+  const loadingEl = firewallLoading;
+  const errorEl = firewallError;
+  const statusContainerEl = firewallStatusContainer;
+  const refreshBtn = refreshFirewallBtn;
   
   try {
     // Show loading state
-    firewallStatusContainer.style.display = 'none';
-    firewallError.style.display = 'none';
-    firewallLoading.style.display = 'block';
+    if (statusContainerEl) statusContainerEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    if (loadingEl) loadingEl.style.display = 'block';
     checkFirewallBtn.disabled = true;
     
     // Check firewall status
     const status = await window.trayAPI.checkFirewall();
     
     // Hide loading
-    firewallLoading.style.display = 'none';
+    if (loadingEl) loadingEl.style.display = 'none';
     checkFirewallBtn.disabled = false;
-    refreshFirewallBtn.style.display = 'inline-block';
+    if (refreshBtn) refreshBtn.style.display = 'inline-block';
     
     // Display results
     displayFirewallStatus(status);
@@ -1111,9 +1133,11 @@ const checkFirewall = async () => {
     
   } catch (error) {
     console.error('Failed to check firewall:', error);
-    firewallLoading.style.display = 'none';
-    firewallError.style.display = 'block';
-    firewallError.textContent = `Error checking firewall: ${error.message}`;
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (errorEl) {
+      errorEl.style.display = 'block';
+      errorEl.textContent = `Error checking firewall: ${error.message}`;
+    }
     checkFirewallBtn.disabled = false;
   }
 };
