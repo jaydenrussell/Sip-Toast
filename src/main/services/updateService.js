@@ -2,6 +2,7 @@ const { autoUpdater } = require('electron-updater');
 const { logger } = require('./logger');
 const settings = require('../settings');
 const https = require('https');
+const { UpdateHandler } = require('../update');
 
 class UpdateService {
   constructor() {
@@ -10,10 +11,15 @@ class UpdateService {
     this.updateAvailable = false;
     this.updateAvailableVersion = null;
     this.updateDownloaded = false;
+    this.updateProgress = 0;
+    this.updateReleaseNotes = null;
+    
+    // Initialize the new update handler
+    this.updateHandler = new UpdateHandler();
     
     // Configure autoUpdater
     autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoInstallOnAppQuit = false;
     
     this.githubConfig = {
       owner: 'jaydenrussell',
@@ -29,34 +35,59 @@ class UpdateService {
     autoUpdater.on('checking-for-update', () => {
       logger.info('🔍 Checking for updates...');
       this.isChecking = true;
+      this.sendUpdateStatusToRenderer();
     });
 
     autoUpdater.on('update-available', (info) => {
       logger.info(`✅ Update available: ${info.version}`);
       this.updateAvailable = true;
+      this.updateAvailableVersion = info.version;
+      this.updateReleaseNotes = info.releaseNotes;
       this.isChecking = false;
+      this.sendUpdateStatusToRenderer();
     });
 
     autoUpdater.on('update-not-available', (info) => {
       logger.info(`ℹ️ No update available. Current version: ${info.version}`);
       this.updateAvailable = false;
+      this.updateAvailableVersion = null;
+      this.updateReleaseNotes = null;
       this.isChecking = false;
+      this.sendUpdateStatusToRenderer();
     });
 
     autoUpdater.on('error', (err) => {
       logger.error(`❌ Update error: ${err.message}`);
       this.isChecking = false;
+      this.updateProgress = 0;
+      this.sendUpdateStatusToRenderer();
     });
 
     autoUpdater.on('download-progress', (progressObj) => {
-      logger.info(`📥 Download progress: ${Math.round(progressObj.percent)}%`);
+      this.updateProgress = Math.round(progressObj.percent);
+      logger.info(`📥 Download progress: ${this.updateProgress}%`);
+      this.sendUpdateStatusToRenderer();
     });
 
     autoUpdater.on('update-downloaded', (info) => {
       logger.info(`✅ Update downloaded: ${info.version}`);
       this.updateDownloaded = true;
       this.updateAvailable = false;
+      this.updateProgress = 100;
+      this.updateAvailableVersion = info.version;
+      this.sendUpdateStatusToRenderer();
     });
+  }
+
+  /**
+   * Send update status to renderer process
+   */
+  sendUpdateStatusToRenderer() {
+    const { TrayWindow } = require('../tray/trayWindow');
+    const trayWindow = TrayWindow.getInstance();
+    if (trayWindow && trayWindow.window && !trayWindow.window.isDestroyed()) {
+      trayWindow.send('update:status', this.getStatus());
+    }
   }
 
   getCurrentVersion() {
@@ -96,13 +127,26 @@ class UpdateService {
         response.on('end', () => {
           if (response.statusCode === 200) {
             const release = JSON.parse(data);
+            
+            // Find Windows installer asset
+            const windowsAsset = (release.assets || []).find(asset => 
+              asset.name && (
+                asset.name.endsWith('.exe') || 
+                asset.name.endsWith('.msi') ||
+                asset.name.toLowerCase().includes('windows')
+              )
+            );
+            
             resolve({
               version: release.tag_name.replace('v', ''),
               name: release.name,
               body: release.body,
               publishedAt: release.published_at,
               htmlUrl: release.html_url,
-              assets: release.assets || []
+              assets: release.assets || [],
+              downloadUrl: windowsAsset?.browser_download_url || release.html_url,
+              assetSize: windowsAsset?.size || 0,
+              downloadCount: windowsAsset?.download_count || 0
             });
           } else {
             reject(new Error(`GitHub API returned status ${response.statusCode}`));
@@ -126,7 +170,9 @@ class UpdateService {
       if (comparison < 0) {
         this.updateAvailable = true;
         this.updateAvailableVersion = latestRelease.version;
+        this.updateReleaseNotes = latestRelease.body;
         this.isChecking = false;
+        this.sendUpdateStatusToRenderer();
         return { 
           updateAvailable: true, 
           version: latestRelease.version, 
@@ -136,11 +182,14 @@ class UpdateService {
       } else {
         this.updateAvailable = false;
         this.updateAvailableVersion = null;
+        this.updateReleaseNotes = null;
         this.isChecking = false;
+        this.sendUpdateStatusToRenderer();
         return { updateAvailable: false, version: currentVersion, message: 'You are using the latest version.' };
       }
     } catch (error) {
       this.isChecking = false;
+      this.sendUpdateStatusToRenderer();
       return { updateAvailable: false, error: error.message, message: 'Failed to check for updates via GitHub API' };
     }
   }
@@ -153,6 +202,7 @@ class UpdateService {
     this.isChecking = true;
     this.updateAvailable = false;
     this.updateDownloaded = false;
+    this.updateProgress = 0;
     
     // Update last check time
     const updateSettings = settings.get('updates', {});
@@ -168,25 +218,35 @@ class UpdateService {
           const result = await autoUpdater.checkForUpdates();
           const updateAvailable = !!(result?.updateInfo);
           this.updateAvailable = updateAvailable;
+          this.updateAvailableVersion = result?.updateInfo?.version;
+          this.updateReleaseNotes = result?.updateInfo?.releaseNotes;
           this.isChecking = false;
+          this.sendUpdateStatusToRenderer();
           return { checking: false, updateAvailable, version: result?.updateInfo?.version };
         } catch (updaterError) {
           this.isChecking = false;
+          this.sendUpdateStatusToRenderer();
           return { checking: false, updateAvailable: false, error: `Both GitHub API and electron-updater failed: ${updaterError.message}` };
         }
       }
       
       this.isChecking = false;
-      return { checking: false, updateAvailable: githubResult.updateAvailable, version: githubResult.version, message: githubResult.message };
+      this.sendUpdateStatusToRenderer();
+      return { 
+        checking: false, 
+        updateAvailable: githubResult.updateAvailable, 
+        version: githubResult.version, 
+        message: githubResult.message,
+        release: githubResult.release
+      };
     } catch (error) {
       this.isChecking = false;
+      this.sendUpdateStatusToRenderer();
       return { checking: false, updateAvailable: false, error: error.message };
     }
   }
 
   async downloadUpdate() {
-    // Allow download if updateAvailable is true OR if updateDownloaded is true (already downloaded)
-    // Also check if we have a pending version from GitHub check
     if (!this.updateAvailable && !this.updateDownloaded && !this.updateAvailableVersion) {
       throw new Error('Please check for updates first to find an available update');
     }
@@ -205,10 +265,14 @@ class UpdateService {
       const result = await autoUpdater.downloadUpdate();
       this.updateDownloaded = true;
       this.updateAvailable = false;
+      this.updateProgress = 100;
       logger.info('✅ Update download initiated successfully');
+      this.sendUpdateStatusToRenderer();
       return { success: true, message: 'Update download started' };
     } catch (error) {
       logger.error(`❌ Update download failed: ${error.message}`);
+      this.updateProgress = 0;
+      this.sendUpdateStatusToRenderer();
       throw new Error(`Download failed: ${error.message}`);
     }
   }
@@ -227,8 +291,24 @@ class UpdateService {
       checking: this.isChecking,
       updateAvailable: this.updateAvailable,
       updateDownloaded: this.updateDownloaded,
+      updateProgress: this.updateProgress,
       currentVersion: this.getCurrentVersion(),
-      version: this.updateAvailableVersion || this.getCurrentVersion()
+      version: this.updateAvailableVersion || this.getCurrentVersion(),
+      releaseNotes: this.updateReleaseNotes,
+      githubConfig: this.githubConfig
+    };
+  }
+
+  /**
+   * Get update info for title bar button
+   */
+  getUpdateButtonInfo() {
+    return {
+      visible: this.updateAvailable || this.updateDownloaded,
+      updateAvailable: this.updateAvailable,
+      updateDownloaded: this.updateDownloaded,
+      version: this.updateAvailableVersion,
+      progress: this.updateProgress
     };
   }
 

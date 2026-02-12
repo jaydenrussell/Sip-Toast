@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!-- Update Launcher (update.exe) Configuration -->
+    <!-- This executable runs before the main app to check for and apply updates -->
+    
+    <!-- Define the update launcher directory -->
+    <DirectoryRef Id="INSTALLDIR">
+      <!-- Update launcher executable -->
+      <Component Id="UpdateLauncher" Guid="{UPDATE_LAUNCHER_GUID}" KeyPath="yes" Directory="INSTALLDIR">
+        <File 
+          Id="UpdateLauncher.exe" 
+          Source="dist\win-unpacked\resources\update\updateLauncher.js" 
+          Name="updateLauncher.exe" 
+          ProcessorArchitecture="x64" />
+        
+        <!-- Create shortcut for update launcher -->
+        <Shortcut 
+          Id="UpdateLauncherShortcut" 
+          Name="SIP Toast Update" 
+          Description="SIP Toast Update Launcher" 
+          Directory="ProgramMenuDir" 
+          Target="[INSTALLDIR]updateLauncher.exe" 
+          WorkingDirectory="INSTALLDIR" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- Create Program Menu folder for update launcher -->
+    <DirectoryRef Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuDir" Name="SIP Toast" />
+    </DirectoryRef>
+
+    <!-- Install sequence for update launcher -->
+    <InstallExecuteSequence>
+      <!-- Ensure update launcher is installed after main application -->
+      <Custom Action="UpdateLauncher" After="InstallFiles">NOT Installed</Custom>
+    </InstallExecuteSequence>
+
+    <!-- Feature definition - update launcher is optional -->
+    <Feature 
+      Id="UpdateLauncherFeature" 
+      Title="Update Launcher" 
+      Description="Enables automatic background updates" 
+      Level="1" 
+      Configurable="yes">
+      <ComponentRef Id="UpdateLauncher" />
+    </Feature>
+  </Fragment>
+</Wix>

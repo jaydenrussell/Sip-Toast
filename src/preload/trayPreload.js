@@ -45,5 +45,8 @@ contextBridge.exposeInMainWorld('trayAPI', {
   // Event listeners
   onLogEntry: (callback) => ipcRenderer.on('logs:entry', (_event, entry) => callback(entry)),
   onSipStatus: (callback) => ipcRenderer.on('sip:status', (_event, status) => callback(status)),
-  onThemeChanged: (callback) => ipcRenderer.on('theme:changed', (_event, theme) => callback(theme))
+  onThemeChanged: (callback) => ipcRenderer.on('theme:changed', (_event, theme) => callback(theme)),
+  
+  // Update status listener
+  onUpdateStatus: (callback) => ipcRenderer.on('update:status', (_event, status) => callback(status))
 });
