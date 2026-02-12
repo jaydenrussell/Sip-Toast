@@ -14,9 +14,16 @@ class UpdateService extends EventEmitter {
     this.availableVersion = null;
     this.currentVersion = null;
     
-    // Configure autoUpdater
+    // Configure autoUpdater to use GitHub releases
     autoUpdater.autoDownload = false; // We'll handle downloads manually
     autoUpdater.autoInstallOnAppQuit = true;
+    
+    // Set the feed URL to use GitHub releases
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'jaydenrussell',
+      repo: 'Sip-Toast'
+    });
     
     // Set up event listeners
     this.setupEventListeners();
