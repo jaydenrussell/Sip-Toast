@@ -1,7 +1,7 @@
 {
   "name": "sip-toast",
-  "version": "0.67.106",
-  "buildDate": "2026-02-12T16:07:21.315Z",
+  "version": "0.67.107",
+  "buildDate": "2026-02-12T16:14:06.024Z",
   "description": "Windows 11-ready SIP caller ID toast that looks up clients via Acuity Scheduling.",
   "main": "src/main/main.js",
   "author": "Jayden Russell",
@@ -55,7 +55,8 @@
     },
     "extraFiles": [],
     "extraResources": [
-      "app-update.yml"
+      "app-update.yml",
+      "update.exe"
     ],
     "win": {
       "target": [
