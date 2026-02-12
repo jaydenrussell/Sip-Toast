@@ -45,7 +45,10 @@ let cachedSettings = {
 };
 
 const refreshCachedSettings = () => {
-  cachedSettings = settings.getAll();
+  const all = settings.getAll();
+  console.log('[Main] refreshCachedSettings called');
+  console.log('[Main] Settings from getAll:', JSON.stringify(all, null, 2));
+  cachedSettings = all;
 };
 settings.store.onDidChange('sip', () => { cachedSettings.sip = settings.get('sip'); });
 settings.store.onDidChange('acuity', () => { cachedSettings.acuity = settings.get('acuity'); });
@@ -328,7 +331,11 @@ const wireIpc = () => {
   // SETTINGS HANDLERS - Optimized with caching
   // ==========================================
   ipcMain.handle('settings:get', (_event, key) => settings.get(key));
-  ipcMain.handle('settings:getAll', () => cachedSettings);
+  ipcMain.handle('settings:getAll', () => {
+    console.log('[IPC] settings:getAll called');
+    console.log('[IPC] cachedSettings:', JSON.stringify(cachedSettings, null, 2));
+    return cachedSettings;
+  });
   
   ipcMain.handle('settings:save', (_event, payload) => {
     const saved = settings.save(payload || {});
