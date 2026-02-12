@@ -2,7 +2,6 @@ const { autoUpdater } = require('electron-updater');
 const { logger } = require('./logger');
 const settings = require('../settings');
 const https = require('https');
-const { UpdateHandler } = require('../update');
 
 class UpdateService {
   constructor() {
@@ -13,9 +12,6 @@ class UpdateService {
     this.updateDownloaded = false;
     this.updateProgress = 0;
     this.updateReleaseNotes = null;
-    
-    // Initialize the new update handler
-    this.updateHandler = new UpdateHandler();
     
     // Configure autoUpdater
     autoUpdater.autoDownload = false;

@@ -50,7 +50,7 @@ const sections = {
 
 // Optimized navigation with event delegation
 const initNavigation = () => {
-  const navContainer = document.querySelector('.nav-container') || document.body;
+  const navContainer = document.querySelector('.sidebar-nav');
   navContainer.addEventListener('click', (e) => {
     const item = e.target.closest('.nav-item');
     if (!item) return;
