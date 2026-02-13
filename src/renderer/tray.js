@@ -766,6 +766,10 @@ const formatEventTimestamp = (isoString) => {
 const getEventTypeLabel = (type) => {
   const labels = {
     'sip_incoming': '📞 SIP Call',
+    'sip_registering': '📡 SIP Registering',
+    'sip_registered': '✅ SIP Registered',
+    'sip_disconnected': '❌ SIP Disconnected',
+    'sip_error': '⚠️ SIP Error',
     'toast_deployed': '🔔 Toast Deployed',
     'toast_timeout': '⏱️ Toast Timeout',
     'toast_click': '👆 Toast Click'
@@ -796,6 +800,16 @@ const formatEventData = (event) => {
   let details = '';
   if (type === 'sip_incoming') {
     details = `${data.displayName || 'Unknown'} (${data.number || 'N/A'})`;
+  } else if (type === 'sip_registering') {
+    details = `Connecting to ${data.server || 'N/A'} via ${data.transport || 'UDP'}`;
+  } else if (type === 'sip_registered') {
+    details = `Connected to ${data.server || 'N/A'} as ${data.username || 'N/A'}`;
+  } else if (type === 'sip_disconnected') {
+    details = `Disconnected from ${data.server || 'N/A'} (${data.reason || 'stopped'})`;
+  } else if (type === 'sip_error') {
+    details = `${data.error || 'Unknown error'}`;
+    if (data.server) details += ` - Server: ${data.server}`;
+    if (data.statusCode) details += ` (Status: ${data.statusCode})`;
   } else if (type === 'toast_deployed') {
     details = `${data.callerLabel || 'Unknown'} - ${data.phoneNumber || 'N/A'}`;
     if (data.hasClientInfo) details += ' [Client Match]';

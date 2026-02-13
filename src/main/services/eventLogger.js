@@ -219,6 +219,79 @@ const logUpdateError = (errorMessage, context = '') => {
   return event;
 };
 
+// Log SIP registration attempt
+const logSipRegistering = (eventData) => {
+  const event = {
+    type: 'sip_registering',
+    timestamp: new Date().toISOString(),
+    data: {
+      server: eventData.server,
+      transport: eventData.transport,
+      username: eventData.username
+    }
+  };
+  
+  eventLogger.info(`SIP_REGISTERING: Attempting to register to ${eventData.server} (${eventData.transport})`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log SIP successful registration
+const logSipRegistered = (eventData) => {
+  const event = {
+    type: 'sip_registered',
+    timestamp: new Date().toISOString(),
+    data: {
+      server: eventData.server,
+      transport: eventData.transport,
+      username: eventData.username,
+      expires: eventData.expires
+    }
+  };
+  
+  eventLogger.info(`SIP_REGISTERED: Successfully registered to ${eventData.server} as ${eventData.username}`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log SIP disconnection
+const logSipDisconnected = (eventData) => {
+  const event = {
+    type: 'sip_disconnected',
+    timestamp: new Date().toISOString(),
+    data: {
+      server: eventData.server,
+      transport: eventData.transport,
+      username: eventData.username,
+      reason: eventData.reason || 'stopped'
+    }
+  };
+  
+  eventLogger.info(`SIP_DISCONNECTED: Disconnected from ${eventData.server} (reason: ${eventData.reason || 'stopped'})`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log SIP error
+const logSipError = (errorMessage, eventData) => {
+  const event = {
+    type: 'sip_error',
+    timestamp: new Date().toISOString(),
+    data: {
+      server: eventData.server,
+      transport: eventData.transport,
+      username: eventData.username,
+      error: errorMessage,
+      statusCode: eventData.statusCode,
+      cause: eventData.cause
+    }
+  };
+  
+  eventLogger.error(`SIP_ERROR: ${errorMessage} (server: ${eventData.server})`, event);
+  addToBuffer(event);
+  return event;
+};
+
 // Get recent events
 const getRecentEvents = (count = 100, filterType = null) => {
   let events = eventLogBuffer.slice(-count);
@@ -395,6 +468,10 @@ module.exports = {
   logUpdateDownloaded,
   logUpdateInstalled,
   logUpdateError,
+  logSipRegistering,
+  logSipRegistered,
+  logSipDisconnected,
+  logSipError,
   getRecentEvents,
   getEventsByType,
   getEventsInRange,

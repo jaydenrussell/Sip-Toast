@@ -6,6 +6,19 @@ const dns = require('dns').promises;
 const { URL } = require('url');
 const os = require('os');
 
+// Lazy load eventLogger to avoid issues before app is ready
+let eventLogger = null;
+const getEventLogger = () => {
+  if (!eventLogger) {
+    try {
+      eventLogger = require('../services/eventLogger');
+    } catch (e) {
+      // Event logger not ready yet
+    }
+  }
+  return eventLogger;
+};
+
 class SipManager extends EventEmitter {
   constructor(config) {
     super();
@@ -575,7 +588,32 @@ class SipManager extends EventEmitter {
   }
 
   _setState(state, meta) {
+    const previousState = this.state;
     this.state = state;
+    
+    // Log state changes to Event Log
+    const eventLogger = getEventLogger();
+    if (eventLogger) {
+      const eventData = {
+        previousState,
+        currentState: state,
+        server: this.serverHost ? `${this.serverHost}:${this.serverPort}` : null,
+        transport: this.config?.transport || 'udp',
+        username: this.config?.username || null,
+        ...meta
+      };
+      
+      if (state === 'registered' && previousState !== 'registered') {
+        eventLogger.logSipRegistered(eventData);
+      } else if (state === 'error' && previousState !== 'error') {
+        eventLogger.logSipError(meta?.cause || 'Unknown error', eventData);
+      } else if (state === 'registering' && previousState !== 'registering') {
+        eventLogger.logSipRegistering(eventData);
+      } else if (state === 'idle' && previousState !== 'idle') {
+        eventLogger.logSipDisconnected(eventData);
+      }
+    }
+    
     this.emit('status', {
       state,
       meta,
