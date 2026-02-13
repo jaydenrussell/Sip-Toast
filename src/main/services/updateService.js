@@ -261,11 +261,17 @@ class UpdateService extends EventEmitter {
 
   /**
    * Download and install the update (Discord-like)
+   * Shows download progress, then launches helper to close app, install, and restart
    */
   async downloadAndInstall() {
     if (!this.updateAvailable || !this.downloadUrl) {
       throw new Error('No update available to download');
     }
+
+    let startTime = Date.now();
+    let lastLoaded = 0;
+    let lastTime = startTime;
+    let downloadSpeed = 0;
 
     try {
       logger.info('📥 Starting update download...');
@@ -280,7 +286,18 @@ class UpdateService extends EventEmitter {
         onDownloadProgress: (progressEvent) => {
           const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           this.downloadProgress = percent;
-          logger.info(`📥 Download progress: ${percent}%`);
+          
+          // Calculate download speed
+          const now = Date.now();
+          const timeDiff = now - lastTime;
+          if (timeDiff >= 500) { // Update speed every 500ms
+            const loadedDiff = progressEvent.loaded - lastLoaded;
+            downloadSpeed = Math.round(loadedDiff / (timeDiff / 1000) / 1024); // KB/s
+            lastLoaded = progressEvent.loaded;
+            lastTime = now;
+          }
+          
+          logger.info(`📥 Download progress: ${percent}% (${downloadSpeed} KB/s)`);
           this.emitStatus();
         }
       });
@@ -295,7 +312,8 @@ class UpdateService extends EventEmitter {
       
       return new Promise((resolve, reject) => {
         writer.on('finish', async () => {
-          logger.info(`✅ Download complete: ${filePath}`);
+          const downloadTime = Math.round((Date.now() - startTime) / 1000);
+          logger.info(`✅ Download complete: ${filePath} (took ${downloadTime}s)`);
           this.downloadProgress = 100;
           this.emitStatus();
           
@@ -303,30 +321,61 @@ class UpdateService extends EventEmitter {
           const { logUpdateDownloaded } = require('./eventLogger');
           logUpdateDownloaded(this.availableVersion, filePath);
           
-          // Install the MSI silently
+          // Now launch the update helper to close app, install, and restart
           try {
-            logger.info('🚀 Installing update...');
+            logger.info('🚀 Launching update helper...');
             
-            // Use msiexec to install silently
-            const installArgs = [
-              '/i',
-              filePath,
-              '/quiet',
-              '/norestart',
-              '/log',
-              path.join(tempDir, 'sip-toast-install.log')
+            // Get the helper path
+            let helperPath;
+            if (app.isPackaged) {
+              helperPath = path.join(process.resourcesPath, 'update-helper.bat');
+            } else {
+              helperPath = path.join(__dirname, '..', '..', 'scripts', 'update-helper.bat');
+            }
+            
+            // Get app executable path
+            const appPath = app.isPackaged ? process.execPath : null;
+            
+            // Launch helper - it will:
+            // 1. Kill the main app process
+            // 2. Install the MSI with UI (shows progress)
+            // 3. Restart the app
+            
+            const helperArgs = [
+              '--msi', filePath
             ];
             
-            spawn('msiexec.exe', installArgs, {
+            if (appPath) {
+              helperArgs.push('--app', appPath);
+            }
+            
+            const fullArgs = ['/c', helperPath, ...helperArgs];
+            logger.info(`   Helper: cmd ${fullArgs.join(' ')}`);
+            
+            // Run the batch file helper - it will install and restart the app
+            // Use cmd /c to run the batch file
+            spawn('cmd', fullArgs, {
               detached: true,
-              stdio: 'ignore'
+              stdio: 'ignore',
+              windowsHide: false
             }).unref();
             
-            logger.info('🚀 Update installer started');
-            resolve({ success: true, message: 'Update installer started' });
-          } catch (installError) {
-            logger.error(`❌ Failed to install update: ${installError.message}`);
-            reject(installError);
+            logger.info('🚀 Update helper launched - app will close and restart');
+            resolve({ 
+              success: true, 
+              message: 'Update in progress - app will restart automatically',
+              willRestart: true 
+            });
+            
+            // Give user a moment to see the progress before quitting
+            setTimeout(() => {
+              logger.info('👋 Closing app for update...');
+              app.quit();
+            }, 3000);
+            
+          } catch (helperError) {
+            logger.error(`❌ Failed to launch update helper: ${helperError.message}`);
+            reject(helperError);
           }
         });
         
