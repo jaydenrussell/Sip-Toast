@@ -141,6 +141,84 @@ const logToastClick = (phoneNumber, success = true) => {
   return event;
 };
 
+// Log update check
+const logUpdateCheck = (trigger = 'manual') => {
+  const event = {
+    type: 'update_check',
+    timestamp: new Date().toISOString(),
+    data: {
+      trigger // 'manual', 'auto', 'app_load'
+    }
+  };
+  
+  eventLogger.info(`UPDATE_CHECK: Check triggered by ${trigger}`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log update available
+const logUpdateAvailable = (version, downloadUrl = null) => {
+  const event = {
+    type: 'update_available',
+    timestamp: new Date().toISOString(),
+    data: {
+      version,
+      downloadUrl
+    }
+  };
+  
+  eventLogger.info(`UPDATE_AVAILABLE: Version ${version} is available`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log update downloaded
+const logUpdateDownloaded = (version, filePath = null) => {
+  const event = {
+    type: 'update_downloaded',
+    timestamp: new Date().toISOString(),
+    data: {
+      version,
+      filePath
+    }
+  };
+  
+  eventLogger.info(`UPDATE_DOWNLOADED: Version ${version} downloaded`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log update installed
+const logUpdateInstalled = (version) => {
+  const event = {
+    type: 'update_installed',
+    timestamp: new Date().toISOString(),
+    data: {
+      version
+    }
+  };
+  
+  eventLogger.info(`UPDATE_INSTALLED: Version ${version} installed`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log update error
+const logUpdateError = (errorMessage, context = '') => {
+  const event = {
+    type: 'update_error',
+    timestamp: new Date().toISOString(),
+    data: {
+      error: errorMessage,
+      context
+    }
+  };
+  
+  eventLogger.error(`UPDATE_ERROR: ${errorMessage} (${context})`, event);
+  addToBuffer(event);
+  return event;
+};
+
 // Get recent events
 const getRecentEvents = (count = 100, filterType = null) => {
   let events = eventLogBuffer.slice(-count);
@@ -312,6 +390,11 @@ module.exports = {
   logToastDeployed,
   logToastTimeout,
   logToastClick,
+  logUpdateCheck,
+  logUpdateAvailable,
+  logUpdateDownloaded,
+  logUpdateInstalled,
+  logUpdateError,
   getRecentEvents,
   getEventsByType,
   getEventsInRange,

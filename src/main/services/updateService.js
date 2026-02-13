@@ -60,6 +60,7 @@ class UpdateService extends EventEmitter {
 
   /**
    * Check for updates on app load (called automatically)
+   * Only checks once on app load, not periodically
    */
   async checkOnAppLoad() {
     const updateSettings = settings.get('updates', {});
@@ -76,12 +77,27 @@ class UpdateService extends EventEmitter {
       return;
     }
 
+    // Check if we've already checked on this app session
+    if (this.hasCheckedOnLoad) {
+      logger.info('⏸️ Already checked for updates on this app load, skipping');
+      return;
+    }
+
     logger.info('🔄 Checking for updates on app load...');
+    
+    // Import and log the update check event
+    const { logUpdateCheck } = require('./eventLogger');
+    logUpdateCheck('app_load');
     
     try {
       await this.checkForUpdates();
+      this.hasCheckedOnLoad = true; // Mark as checked
     } catch (error) {
       logger.error(`❌ Initial update check failed: ${error.message}`);
+      
+      // Log the error
+      const { logUpdateError } = require('./eventLogger');
+      logUpdateError(error.message, 'app_load_check');
     }
   }
 
@@ -128,6 +144,10 @@ class UpdateService extends EventEmitter {
           this.downloadUrl = msiAsset.browser_download_url;
           this.downloadFileName = msiAsset.name;
           logger.info(`✅ Update available: ${latestVersion} (${msiAsset.name})`);
+          
+          // Log update available event
+          const { logUpdateAvailable } = require('./eventLogger');
+          logUpdateAvailable(latestVersion, this.downloadUrl);
         } else {
           logger.warn('⚠️ No MSI file found in release assets');
           this.updateAvailable = false;
@@ -212,6 +232,10 @@ class UpdateService extends EventEmitter {
           logger.info(`✅ Download complete: ${filePath}`);
           this.downloadProgress = 100;
           this.emitStatus();
+          
+          // Log downloaded event
+          const { logUpdateDownloaded } = require('./eventLogger');
+          logUpdateDownloaded(this.availableVersion, filePath);
           
           // Install the MSI silently
           try {
