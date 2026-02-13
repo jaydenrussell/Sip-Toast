@@ -39,13 +39,42 @@ echo MSI: %MSI_PATH%
 echo App: %APP_PATH%
 echo.
 
-:: Kill the main app if running
+:: First, uninstall any existing version
+echo Checking for existing installation...
+for /f "tokens=2,* delims=	 " %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" /s 2^>nul ^| findstr /i "SIP Toast"') do (
+    set "UNINSTKEY=%%a %%b"
+    goto :found_uninstall
+)
+
+:: Also check 32-bit registry on 64-bit Windows
+for /f "tokens=2,* delims=	 " %%a in ('reg query "HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall" /s 2^>nul ^| findstr /i "SIP Toast"') do (
+    set "UNINSTKEY=%%a %%b"
+    goto :found_uninstall
+)
+
+:found_uninstall
+if defined UNINSTKEY (
+    echo Found existing installation, uninstalling...
+    for /f "tokens=2,* delims=	 " %%a in ('reg query "!UNINSTKEY!" /v UninstallString 2^>nul') do (
+        set "UNINSTCMD=%%a %%b"
+    )
+    
+    if defined UNINSTCMD (
+        echo Running: !UNINSTCMD!
+        !UNINSTCMD! /qn /norestart
+        echo Waiting for uninstall to complete...
+        timeout /t 5 /nobreak >nul
+    )
+) else (
+    echo No existing installation found, will install fresh
+)
+
+:: Kill the main app if running (in case it's still running)
 if not "%APP_PATH%"=="" (
     echo Closing SIP Toast...
     
     :: Try to kill by process name
     set "APP_NAME=%~nxAPP_PATH%"
-    echo Looking for %APP_NAME%...
     
     tasklist /FI "IMAGENAME eq %APP_NAME%" /NH | findstr /i /C:"%APP_NAME%" >nul
     if !errorlevel!==0 (
@@ -58,7 +87,10 @@ if not "%APP_PATH%"=="" (
     timeout /t 2 /nobreak >nul
 )
 
-echo Installing update...
+echo.
+echo ========================================
+echo Installing new version...
+echo ========================================
 echo.
 
 :: Install MSI with basic UI (shows progress)
@@ -72,10 +104,17 @@ if %INSTALL_RESULT%==0 (
     echo Installation completed successfully!
 ) else if %INSTALL_RESULT%==3010 (
     echo Installation completed. Restart required.
+) else if %INSTALL_RESULT%==1605 (
+    echo ERROR: Previous version not found. Trying repair...
+    msiexec.exe /i "%MSI_PATH%" /qb- /norestart
+    set "INSTALL_RESULT=%errorlevel%"
+    if %INSTALL_RESULT%==0 (
+        echo Repair completed successfully!
+    ) else (
+        echo Repair failed with code: %INSTALL_RESULT%
+    )
 ) else (
     echo Installation failed with code: %INSTALL_RESULT%
-    pause
-    exit /b %INSTALL_RESULT%
 )
 echo ========================================
 
@@ -84,12 +123,24 @@ del "%MSI_PATH%" 2>nul
 
 :: Restart the app if specified
 if not "%APP_PATH%"=="" (
+    echo Waiting for installer to finish...
+    timeout /t 3 /nobreak >nul
+    
     if exist "%APP_PATH%" (
         echo Restarting SIP Toast...
         start "" "%APP_PATH%"
+    ) else (
+        echo Could not find app at %APP_PATH%
+        :: Try to find in common locations
+        if exist "%ProgramFiles%\SIP Toast\SIP Toast.exe" (
+            start "" "%ProgramFiles%\SIP Toast\SIP Toast.exe"
+        ) else if exist "%ProgramFiles(x86)%\SIP Toast\SIP Toast.exe" (
+            start "" "%ProgramFiles(x86)%\SIP Toast\SIP Toast.exe"
+        )
     )
 )
 
+echo.
 echo Update complete!
-timeout /t 3 /nobreak >nul
+timeout /t 5 /nobreak >nul
 exit /b 0
