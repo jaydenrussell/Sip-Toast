@@ -841,7 +841,7 @@ const boot = async () => {
   
   // Now initialize SIP manager and set up event listeners
   sipManager = new SipManager(cachedSettings.sip);
-  flyoutWindow = new TrayWindow();
+  // flyoutWindow is already created in app.whenReady() before createTray() is called
 
   // Set up event listener BEFORE starting SIP
   // Remove any existing listeners first to prevent duplicates
@@ -1020,6 +1020,12 @@ if (powerMonitor) {
 app.whenReady().then(async () => {
   logger.info('🚀 SIP Toast application starting');
   logger.info('📦 Initializing components...');
+  
+  // Initialize flyoutWindow BEFORE creating tray
+  // This ensures flyoutWindow exists when tray click handler runs
+  flyoutWindow = new TrayWindow();
+  logger.info('✅ Control center window created');
+  
   createTray();
   logger.info('✅ System tray icon created');
   wireIpc();
