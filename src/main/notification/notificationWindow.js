@@ -38,6 +38,7 @@ class NotificationWindow {
     this.pendingPayload = null;
 
     // Default to full size initially, will be resized when payload is received
+    // Using Windows native dialog style with only close button
     this.window = new BrowserWindow({
       width: 340,
       height: 200,
@@ -46,19 +47,38 @@ class NotificationWindow {
       maxWidth: 600,
       maxHeight: 400,
       show: false,
-      frame: false,
+      frame: true,
       resizable: true,
       alwaysOnTop: true,
       focusable: true, // Allow interaction with the toast
       skipTaskbar: true,
       transparent: true,
       backgroundColor: '#00000000',
+      // Windows-specific: hide minimize and maximize buttons, show only close
+      titleBarStyle: 'hidden',
+      titleBarOverlay: false,
+      // Additional options to hide min/max
+      minimizable: false,
+      maximizable: false,
+      // Set empty title (will be overridden by dialog)
+      title: '',
       webPreferences: {
         preload: path.join(__dirname, '..', '..', 'preload', 'notificationPreload.js'),
         nodeIntegration: false,
         contextIsolation: true
       }
     });
+    
+    // Remove the window menu (prevents keyboard shortcuts for min/max)
+    this.window.setMenu(null);
+    
+    // Remove window controls on Windows (close button only)
+    if (process.platform === 'win32') {
+      this.window.setTitleBarOverlay({
+        symbolColor: 'transparent',
+        color: 'transparent'
+      });
+    }
 
     this.window.loadFile(path.join(__dirname, '..', '..', 'renderer', 'notification.html'));
     

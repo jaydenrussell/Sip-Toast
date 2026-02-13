@@ -42,18 +42,43 @@ class UpdateService extends EventEmitter {
    */
   async fetchLatestRelease() {
     try {
-      const response = await axios.get(
-        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
-        {
-          headers: {
-            'Accept': 'application/vnd.github+json',
-            'User-Agent': 'SIP-Toast'
-          }
+      const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+      logger.info(`📡 Fetching latest release from: ${apiUrl}`);
+      
+      const response = await axios.get(apiUrl, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'User-Agent': 'SIP-Toast'
         }
-      );
+      });
+      
+      // Log detailed response info
+      logger.info(`📥 GitHub API Response:`);
+      logger.info(`   - Tag name: ${response.data.tag_name}`);
+      logger.info(`   - Release name: ${response.data.name || 'N/A'}`);
+      logger.info(`   - Published: ${response.data.published_at || 'N/A'}`);
+      logger.info(`   - Assets count: ${response.data.assets?.length || 0}`);
+      
+      if (response.data.assets && response.data.assets.length > 0) {
+        logger.info(`   - Available assets:`);
+        response.data.assets.forEach(asset => {
+          logger.info(`     * ${asset.name} (${asset.size} bytes)`);
+        });
+      }
+      
       return response.data;
     } catch (error) {
       logger.error(`❌ Failed to fetch GitHub release: ${error.message}`);
+      
+      // Log more details about the error
+      if (error.response) {
+        logger.error(`   Status: ${error.response.status}`);
+        logger.error(`   Status text: ${error.response.statusText}`);
+        logger.error(`   Response data: ${JSON.stringify(error.response.data).substring(0, 200)}`);
+      } else if (error.request) {
+        logger.error(`   No response received from GitHub API`);
+      }
+      
       throw error;
     }
   }
@@ -119,7 +144,10 @@ class UpdateService extends EventEmitter {
       updateSettings.lastCheckTime = new Date().toISOString();
       settings.set('updates', updateSettings);
       
-      logger.info('🔍 Checking for updates from GitHub...');
+      logger.info('🔍 ===============================================');
+      logger.info('🔍 Starting update check...');
+      logger.info(`🔍 Current version: ${this.currentVersion}`);
+      logger.info('🔍 ===============================================');
       
       const release = await this.fetchLatestRelease();
       
@@ -128,13 +156,24 @@ class UpdateService extends EventEmitter {
         ? release.tag_name.substring(1) 
         : release.tag_name;
       
+      logger.info(`🔍 Version comparison:`);
+      logger.info(`   Current version: ${this.currentVersion}`);
+      logger.info(`   Latest version:   ${latestVersion}`);
+      
       // Compare versions
       const currentVer = this.currentVersion.replace(/^v/, '');
-      const isNewer = this.compareVersions(latestVersion, currentVer) > 0;
+      const comparisonResult = this.compareVersions(latestVersion, currentVer);
+      const isNewer = comparisonResult > 0;
+      
+      logger.info(`   Comparison result: ${comparisonResult > 0 ? 'Newer available' : comparisonResult < 0 ? 'Current is newer' : 'Versions equal'}`);
+      logger.info(`   Update needed: ${isNewer ? 'YES' : 'NO'}`);
       
       if (isNewer) {
         // Find MSI file in release assets
-        const msiAsset = release.assets.find(asset => 
+        const allAssets = release.assets || [];
+        logger.info(`🔍 Looking for MSI file in ${allAssets.length} assets...`);
+        
+        const msiAsset = allAssets.find(asset => 
           asset.name.toLowerCase().endsWith('.msi')
         );
         
@@ -143,24 +182,43 @@ class UpdateService extends EventEmitter {
           this.availableVersion = latestVersion;
           this.downloadUrl = msiAsset.browser_download_url;
           this.downloadFileName = msiAsset.name;
-          logger.info(`✅ Update available: ${latestVersion} (${msiAsset.name})`);
+          logger.info(`✅ ===============================================`);
+          logger.info(`✅ UPDATE AVAILABLE: v${latestVersion}`);
+          logger.info(`   File: ${msiAsset.name}`);
+          logger.info(`   Size: ${(msiAsset.size / 1024 / 1024).toFixed(2)} MB`);
+          logger.info(`   URL:  ${this.downloadUrl}`);
+          logger.info(`✅ ===============================================`);
           
           // Log update available event
           const { logUpdateAvailable } = require('./eventLogger');
           logUpdateAvailable(latestVersion, this.downloadUrl);
         } else {
-          logger.warn('⚠️ No MSI file found in release assets');
+          logger.warn(`⚠️ No MSI file found in release assets!`);
+          logger.warn(`   Available files:`);
+          allAssets.forEach(asset => {
+            logger.warn(`   - ${asset.name} (${(asset.size / 1024).toFixed(1)} KB)`);
+          });
           this.updateAvailable = false;
           this.availableVersion = null;
         }
       } else {
-        logger.info(`ℹ️ Already on latest version: ${currentVer}`);
+        logger.info(`ℹ️ ===============================================`);
+        logger.info(`ℹ️ NO UPDATE AVAILABLE`);
+        logger.info(`   Current version: ${currentVer} is up to date`);
+        logger.info(`   Latest release:   v${latestVersion}`);
+        logger.info(`ℹ️ ===============================================`);
         this.updateAvailable = false;
         this.availableVersion = null;
+        
+        // Log that we're up to date
+        const { logUpdateCheck } = require('./eventLogger');
+        logUpdateCheck('check_complete_up_to_date');
       }
       
       this.isChecking = false;
       this.emitStatus();
+      
+      logger.info(`🔍 Update check complete. Available: ${this.updateAvailable}`);
       
       return {
         checking: false,
@@ -168,7 +226,15 @@ class UpdateService extends EventEmitter {
         version: this.availableVersion
       };
     } catch (error) {
-      logger.error(`❌ Failed to check for updates: ${error.message}`);
+      logger.error(`❌ ===============================================`);
+      logger.error(`❌ UPDATE CHECK FAILED`);
+      logger.error(`   Error: ${error.message}`);
+      logger.error(`❌ ===============================================`);
+      
+      // Log the error
+      const { logUpdateError } = require('./eventLogger');
+      logUpdateError(error.message, 'checkForUpdates');
+      
       this.isChecking = false;
       this.emitStatus();
       throw error;
