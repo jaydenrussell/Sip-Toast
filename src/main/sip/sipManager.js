@@ -39,49 +39,6 @@ class SipManager extends EventEmitter {
     await this.start();
   }
 
-  async _checkServerReachability(server) {
-    try {
-      // Parse server - could be domain:port or just domain
-      let hostname = server;
-      let port = 5060;
-      
-      if (server.includes(':')) {
-        const parts = server.split(':');
-        hostname = parts[0];
-        port = parseInt(parts[1]) || 5060;
-      }
-      
-      // Remove protocol if present
-      hostname = hostname.replace(/^sips?:\/\//, '');
-      
-      logger.info(`🔍 Checking server reachability: ${hostname}:${port}`);
-      
-      // Try DNS lookup
-      try {
-        await Promise.race([
-          dns.lookup(hostname),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('DNS lookup timeout')), 3000))
-        ]);
-        logger.info(`✅ DNS lookup successful for ${hostname}`);
-        return { reachable: true, error: null, hostname, port };
-      } catch (dnsError) {
-        logger.error(`❌ DNS lookup failed for ${hostname}: ${dnsError.message}`);
-        return { 
-          reachable: false, 
-          error: `Server ${hostname} is not reachable. DNS lookup failed. Check your internet connection and server address.`,
-          hostname,
-          port
-        };
-      }
-    } catch (error) {
-      logger.error(`❌ Invalid server address format: ${error.message}`);
-      return { 
-        reachable: false, 
-        error: `Invalid server address format. Expected format: server.example.com or server.example.com:5060` 
-      };
-    }
-  }
-
   _parseServerAddress(server) {
     if (!server) return null;
     
@@ -136,17 +93,6 @@ class SipManager extends EventEmitter {
     logger.info(`   SIP URI: ${this.config.uri}`);
     logger.info(`   Username: ${this.config.username || 'N/A'}`);
     logger.info(`   Port: ${this.config.port || 5060}`);
-    
-    // Check server reachability first
-    const reachability = await this._checkServerReachability(this.config.server);
-    if (!reachability.reachable) {
-      logger.error(`❌ ${reachability.error}`);
-      this._setState('error', { cause: reachability.error });
-      return;
-    }
-
-    this.serverHost = reachability.hostname;
-    this.serverPort = reachability.port;
     
     // Set connection timeout
     const connectionTimeout = setTimeout(() => {
