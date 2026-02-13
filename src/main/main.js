@@ -100,18 +100,31 @@ const simulateIncomingCall = async () => {
   const toastTimeout = cachedSettings.toast?.autoDismissMs || 20000;
   logger.info(`🔔 Showing simulated toast notification (will auto-dismiss in ${toastTimeout / 1000} seconds)`);
   
-  notificationWindow.show({
-    callerLabel: fakeCall.displayName,
-    phoneNumber: fakeCall.number,
-    clientName: hasAcuity && acuity.found ? acuity.clientName : null,
-    appointmentTime: hasAcuity ? acuity.appointmentTime : null,
-    lookupState: hasAcuity && acuity.found ? 'match' : 'unknown',
-    acuityConfigured: hasAcuity, // Indicate if Acuity API is configured
-    timestamp: fakeCall.timestamp,
-    simulated: true
-  });
-  
-  return true;
+  try {
+    // Ensure notificationWindow exists
+    if (!notificationWindow) {
+      logger.error('❌ Notification window not initialized');
+      throw new Error('Notification window not initialized');
+    }
+    
+    notificationWindow.show({
+      callerLabel: fakeCall.displayName,
+      phoneNumber: fakeCall.number,
+      clientName: hasAcuity && acuity.found ? acuity.clientName : null,
+      appointmentTime: hasAcuity ? acuity.appointmentTime : null,
+      lookupState: hasAcuity && acuity.found ? 'match' : 'unknown',
+      acuityConfigured: hasAcuity, // Indicate if Acuity API is configured
+      timestamp: fakeCall.timestamp,
+      simulated: true
+    });
+    
+    logger.info('✅ Test toast notification shown successfully');
+    return true;
+  } catch (error) {
+    logger.error(`❌ Failed to show test toast notification: ${error.message}`);
+    logger.error(error.stack);
+    throw error;
+  }
 };
 
 const resolveIconPath = () => {

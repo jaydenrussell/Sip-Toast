@@ -7,16 +7,16 @@ const { URL } = require('url');
 const os = require('os');
 
 // Lazy load eventLogger to avoid issues before app is ready
-let eventLogger = null;
+let _eventLogger = null;
 const getEventLogger = () => {
-  if (!eventLogger) {
+  if (!_eventLogger) {
     try {
-      eventLogger = require('../services/eventLogger');
+      _eventLogger = require('../services/eventLogger');
     } catch (e) {
       // Event logger not ready yet
     }
   }
-  return eventLogger;
+  return _eventLogger;
 };
 
 class SipManager extends EventEmitter {
@@ -592,8 +592,8 @@ class SipManager extends EventEmitter {
     this.state = state;
     
     // Log state changes to Event Log
-    const eventLogger = getEventLogger();
-    if (eventLogger) {
+    const evtLogger = getEventLogger();
+    if (evtLogger) {
       const eventData = {
         previousState,
         currentState: state,
@@ -604,13 +604,13 @@ class SipManager extends EventEmitter {
       };
       
       if (state === 'registered' && previousState !== 'registered') {
-        eventLogger.logSipRegistered(eventData);
+        evtLogger.logSipRegistered(eventData);
       } else if (state === 'error' && previousState !== 'error') {
-        eventLogger.logSipError(meta?.cause || 'Unknown error', eventData);
+        evtLogger.logSipError(meta?.cause || 'Unknown error', eventData);
       } else if (state === 'registering' && previousState !== 'registering') {
-        eventLogger.logSipRegistering(eventData);
+        evtLogger.logSipRegistering(eventData);
       } else if (state === 'idle' && previousState !== 'idle') {
-        eventLogger.logSipDisconnected(eventData);
+        evtLogger.logSipDisconnected(eventData);
       }
     }
     
