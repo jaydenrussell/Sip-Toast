@@ -726,23 +726,23 @@ const wireIpc = () => {
       return { error: 'Update service not initialized' };
     }
     try {
-      const result = await updateService.downloadUpdate();
+      const result = await updateService.downloadAndInstall();
       return result;
     } catch (error) {
-      logger.error(`Update download failed: ${error.message}`);
+      logger.error(`Update download/install failed: ${error.message}`);
       return { error: error.message };
     }
   });
 
-  ipcMain.handle('updates:install', async () => {
+  ipcMain.handle('updates:openPage', async () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
     }
     try {
-      const result = await updateService.installUpdate();
+      const result = await updateService.openDownloadPage();
       return result;
     } catch (error) {
-      logger.error(`Update install failed: ${error.message}`);
+      logger.error(`Open download page failed: ${error.message}`);
       return { error: error.message };
     }
   });

@@ -608,15 +608,15 @@ if (downloadUpdateBtn) {
   });
 }
 
-// Install update button handler
+// Install update button handler - now triggers download + install
 if (installUpdateBtn) {
   installUpdateBtn.addEventListener('click', async () => {
-    if (!confirm('This will install the update and restart the application. Continue?')) {
+    if (!confirm('This will download and install the update. The application will restart after installation. Continue?')) {
       return;
     }
     
     try {
-      const result = await window.trayAPI.installUpdate();
+      const result = await window.trayAPI.downloadUpdate();
       if (result.error) {
         alert(`Failed to install update: ${result.error}`);
       }
@@ -1231,16 +1231,20 @@ if (downloadUpdateBtnNew) {
   });
 }
 
-// Install update button handler (new section)
+// Install update button handler (new section) - now triggers download + install
 if (installUpdateBtnNew) {
   installUpdateBtnNew.addEventListener('click', async () => {
-    if (!confirm('This will install the update and restart the application. Continue?')) {
+    if (!confirm('This will download and install the update. The application will restart after installation. Continue?')) {
       return;
     }
     
     try {
-      const result = await window.trayAPI.installUpdate();
-      // App will restart, so no need to update UI
+      // Now calls downloadAndInstall which downloads MSI and runs installer
+      const result = await window.trayAPI.downloadUpdate();
+      if (result.error) {
+        alert(`Failed to install update: ${result.error}`);
+      }
+      // App will restart after installation, so no need to update UI
     } catch (error) {
       alert(`Failed to install update: ${error.message}`);
     }
