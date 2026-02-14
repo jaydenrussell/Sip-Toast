@@ -12,8 +12,8 @@ class TrayWindow {
 
   createWindow() {
     const savedBounds = settings.getWindowBounds('tray');
-    const defaultWidth = 800;
-    const defaultHeight = 600;
+    const defaultWidth = 900;
+    const defaultHeight = 700;
     
     this.window = new BrowserWindow({
       width: savedBounds?.width || defaultWidth,
@@ -23,9 +23,10 @@ class TrayWindow {
       show: false,
       frame: false,
       resizable: true,
-      minWidth: 800,
+      minWidth: 700,
       minHeight: 600,
-      // Remove maximum size restrictions
+      maxWidth: 2000,
+      maxHeight: 1500,
       skipTaskbar: false,
       transparent: false,
       backgroundColor: '#f8f9fc',
@@ -59,8 +60,6 @@ class TrayWindow {
         const [x, y] = this.window.getPosition();
         const { width, height } = this.window.getBounds();
         settings.setWindowBounds('tray', { x, y, width, height });
-        // Send resize event to renderer for responsive layout adjustments
-        this.window.webContents.send('window:resized', { width, height });
       }
     });
 
@@ -69,8 +68,6 @@ class TrayWindow {
         const [x, y] = this.window.getPosition();
         const { width, height } = this.window.getBounds();
         settings.setWindowBounds('tray', { x, y, width, height });
-        // Send resize event to renderer for responsive layout adjustments
-        this.window.webContents.send('window:resized', { width, height });
       }
     });
 
@@ -127,19 +124,14 @@ class TrayWindow {
   // Removed unused toggleDocked and showDocked methods - only showStandalone is used
 
   showStandalone() {
-    console.log('[TrayWindow] showStandalone() called');
     this.ensureWindow();
-    if (!this.window) {
-      console.error('[TrayWindow] Window not available after ensureWindow()');
-      return;
-    }
+    if (!this.window) return;
 
-    console.log('[TrayWindow] Window is available, setting up...');
     this.mode = 'window';
     this.window.setAlwaysOnTop(false);
     this.window.setResizable(true);
-    this.window.setMinimumSize(800, 600);
-    // Remove maximum size restrictions
+    this.window.setMinimumSize(700, 600);
+    this.window.setMaximumSize(2000, 1500);
     this.window.setSkipTaskbar(false);
     
     // Memory optimization: Restore normal frame rate when shown
@@ -152,58 +144,23 @@ class TrayWindow {
     }
     
     const savedBounds = settings.getWindowBounds('tray');
-    console.log('[TrayWindow] Saved bounds:', savedBounds);
     if (savedBounds) {
-      // Validate bounds are within screen dimensions
-      const { screen } = require('electron');
-      const display = screen.getDisplayMatching(savedBounds);
-      
-      // Ensure window fits within screen bounds
-      const maxWidth = display.bounds.width;
-      const maxHeight = display.bounds.height;
-      
-      let width = Math.min(savedBounds.width || 800, maxWidth);
-      let height = Math.min(savedBounds.height || 600, maxHeight);
-      let x = savedBounds.x;
-      let y = savedBounds.y;
-      
-      // Adjust position if window would be off-screen
-      if (x + width > display.bounds.x + display.bounds.width) {
-        x = display.bounds.x + display.bounds.width - width;
+      if (savedBounds.width && savedBounds.height) {
+        this.window.setBounds({
+          x: Math.round(savedBounds.x),
+          y: Math.round(savedBounds.y),
+          width: Math.round(savedBounds.width),
+          height: Math.round(savedBounds.height)
+        });
+      } else {
+        this.window.setPosition(Math.round(savedBounds.x), Math.round(savedBounds.y));
       }
-      if (y + height > display.bounds.y + display.bounds.height) {
-        y = display.bounds.y + display.bounds.height - height;
-      }
-      if (x < display.bounds.x) {
-        x = display.bounds.x;
-      }
-      if (y < display.bounds.y) {
-        y = display.bounds.y;
-      }
-      
-      this.window.setBounds({
-        x: Math.round(x),
-        y: Math.round(y),
-        width: Math.round(width),
-        height: Math.round(height)
-      });
     } else {
       this.window.center();
     }
-    
-    const isVisible = this.window.isVisible();
-    console.log('[TrayWindow] Window visible before show():', isVisible);
-    
     this.window.show();
     this.window.focus();
     this.visible = true;
-    
-    console.log('[TrayWindow] Window shown, isVisible:', this.window.isVisible());
-    
-    // Send initial resize event to ensure responsive layout is applied
-    const { width, height } = this.window.getBounds();
-    console.log('[TrayWindow] Window bounds:', { width, height });
-    this.window.webContents.send('window:resized', { width, height });
   }
 
   hide() {
@@ -228,15 +185,6 @@ class TrayWindow {
     this.ensureWindow();
     if (!this.window) return;
     this.window.webContents.send(channel, payload);
-  }
-
-  // Handle window resize events from renderer
-  onWindowResized(callback) {
-    if (this.window) {
-      this.window.webContents.on('did-finish-load', () => {
-        this.window.webContents.send('window:resized', this.window.getBounds());
-      });
-    }
   }
 }
 

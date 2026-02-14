@@ -17,6 +17,11 @@ class NotificationWindow {
       logToastClick(phoneNumber, success);
       // Don't hide on click - let timeout handle it
     });
+
+    // Handle close button from custom title bar
+    ipcMain.on('toast:close', () => {
+      this.hide();
+    });
   }
 
   _calculateSize(payload) {
@@ -38,6 +43,7 @@ class NotificationWindow {
     this.pendingPayload = null;
 
     // Default to full size initially, will be resized when payload is received
+    // Using Windows native dialog style with only close button
     this.window = new BrowserWindow({
       width: 340,
       height: 200,
@@ -46,19 +52,28 @@ class NotificationWindow {
       maxWidth: 600,
       maxHeight: 400,
       show: false,
-      frame: false,
+      frame: true,
       resizable: true,
       alwaysOnTop: true,
-      focusable: false, // Don't steal focus from other windows
+      focusable: true, // Allow interaction with the toast
       skipTaskbar: true,
       transparent: true,
       backgroundColor: '#00000000',
+      // Windows-specific: custom title bar (we render our own in HTML)
+      // Set empty title (no application name displayed)
+      title: '',
+      // Additional options to hide min/max
+      minimizable: false,
+      maximizable: false,
       webPreferences: {
         preload: path.join(__dirname, '..', '..', 'preload', 'notificationPreload.js'),
         nodeIntegration: false,
         contextIsolation: true
       }
     });
+    
+    // Remove the window menu (prevents keyboard shortcuts for min/max)
+    this.window.setMenu(null);
 
     this.window.loadFile(path.join(__dirname, '..', '..', 'renderer', 'notification.html'));
     
@@ -255,7 +270,8 @@ class NotificationWindow {
       windowSize: size
     });
 
-    this.window.showInactive();
+    this.window.show();
+    this.window.focus();
     this.window.setOpacity(1);
 
     if (this.hideTimeout) {
@@ -297,8 +313,9 @@ class NotificationWindow {
       this.window.destroy();
       this.window = null;
     }
-    // Remove IPC listener
+    // Remove IPC listeners
     ipcMain.removeAllListeners('toast-clicked');
+    ipcMain.removeAllListeners('toast:close');
   }
 }
 

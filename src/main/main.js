@@ -33,23 +33,8 @@ let latestSipStatus = { state: 'idle', timestamp: new Date().toISOString() };
 let updateService = null;
 
 // Cache settings to avoid repeated lookups (memory-optimized)
-// Initialize with empty structure to prevent null reference errors
-let cachedSettings = {
-  sip: {},
-  acuity: {},
-  callerId: {},
-  toast: {},
-  app: {},
-  updates: {},
-  windows: {}
-};
-
-const refreshCachedSettings = () => {
-  const all = settings.getAll();
-  console.log('[Main] refreshCachedSettings called');
-  console.log('[Main] Settings from getAll:', JSON.stringify(all, null, 2));
-  cachedSettings = all;
-};
+let cachedSettings = settings.getAll();
+// Use individual listeners for each section (electron-store doesn't have onDidChangeAny)
 settings.store.onDidChange('sip', () => { cachedSettings.sip = settings.get('sip'); });
 settings.store.onDidChange('acuity', () => { cachedSettings.acuity = settings.get('acuity'); });
 settings.store.onDidChange('callerId', () => { cachedSettings.callerId = settings.get('callerId'); });
@@ -115,18 +100,31 @@ const simulateIncomingCall = async () => {
   const toastTimeout = cachedSettings.toast?.autoDismissMs || 20000;
   logger.info(`🔔 Showing simulated toast notification (will auto-dismiss in ${toastTimeout / 1000} seconds)`);
   
-  notificationWindow.show({
-    callerLabel: fakeCall.displayName,
-    phoneNumber: fakeCall.number,
-    clientName: hasAcuity && acuity.found ? acuity.clientName : null,
-    appointmentTime: hasAcuity ? acuity.appointmentTime : null,
-    lookupState: hasAcuity && acuity.found ? 'match' : 'unknown',
-    acuityConfigured: hasAcuity, // Indicate if Acuity API is configured
-    timestamp: fakeCall.timestamp,
-    simulated: true
-  });
-  
-  return true;
+  try {
+    // Ensure notificationWindow exists
+    if (!notificationWindow) {
+      logger.error('❌ Notification window not initialized');
+      throw new Error('Notification window not initialized');
+    }
+    
+    notificationWindow.show({
+      callerLabel: fakeCall.displayName,
+      phoneNumber: fakeCall.number,
+      clientName: hasAcuity && acuity.found ? acuity.clientName : null,
+      appointmentTime: hasAcuity ? acuity.appointmentTime : null,
+      lookupState: hasAcuity && acuity.found ? 'match' : 'unknown',
+      acuityConfigured: hasAcuity, // Indicate if Acuity API is configured
+      timestamp: fakeCall.timestamp,
+      simulated: true
+    });
+    
+    logger.info('✅ Test toast notification shown successfully');
+    return true;
+  } catch (error) {
+    logger.error(`❌ Failed to show test toast notification: ${error.message}`);
+    logger.error(error.stack);
+    throw error;
+  }
 };
 
 const resolveIconPath = () => {
@@ -237,6 +235,106 @@ const applyAutoLaunch = () => {
   });
 };
 
+// Create a download/update icon with an arrow indicator
+const createDownloadIcon = () => {
+  const size = 16;
+  // Create a simple icon with a download arrow indicator
+  // Using a blue base with green arrow
+  const pixelData = Buffer.alloc(size * size * 4);
+  
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      
+      // Create a rounded square base (blue)
+      const inBounds = x >= 1 && x < 15 && y >= 1 && y < 15;
+      
+      if (inBounds) {
+        // Base blue color
+        pixelData[idx] = 37;     // R
+        pixelData[idx + 1] = 99;  // G  
+        pixelData[idx + 2] = 235; // B
+        pixelData[idx + 3] = 255; // A
+        
+        // Add green arrow in center (downward pointing)
+        const centerX = 7 + Math.floor(x / 4);
+        const centerY = 7 + Math.floor(y / 4);
+        
+        // Simple arrow shape
+        if (y >= 6 && y <= 10 && x >= 5 && x <= 10) {
+          // Arrow shaft and head
+          if (y === 10 && x >= 6 && x <= 9) {
+            // Arrow head bottom
+            pixelData[idx] = 16;     // R - green
+            pixelData[idx + 1] = 185; // G
+            pixelData[idx + 2] = 88;  // B
+          } else if (y >= 6 && y <= 9 && x >= 7 && x <= 8) {
+            // Arrow shaft
+            pixelData[idx] = 16;     // R - green
+            pixelData[idx + 1] = 185; // G
+            pixelData[idx + 2] = 88;  // B
+          } else if (y === 6 && x >= 5 && x <= 10) {
+            // Arrow head top
+            pixelData[idx] = 16;     // R - green
+            pixelData[idx + 1] = 185; // G
+            pixelData[idx + 2] = 88;  // B
+          }
+        }
+      } else {
+        // Transparent outside
+        pixelData[idx] = 0;
+        pixelData[idx + 1] = 0;
+        pixelData[idx + 2] = 0;
+        pixelData[idx + 3] = 0;
+      }
+    }
+  }
+  
+  const icon = nativeImage.createFromBuffer(pixelData, { width: size, height: size });
+  if (process.platform === 'win32') {
+    icon.setTemplateImage(false);
+  }
+  return icon;
+};
+
+// Store the original icon for switching back
+let originalTrayIcon = null;
+
+// Update tray icon based on update status (Discord-like behavior)
+const updateTrayIcon = (status) => {
+  if (!tray || !tray.getImage) return;
+  
+  // On first call, store the original icon
+  if (!originalTrayIcon) {
+    try {
+      originalTrayIcon = tray.getImage();
+    } catch (e) {
+      return;
+    }
+  }
+  
+  if (status.updateAvailable || status.updateDownloaded || status.downloadProgress > 0) {
+    // Update available or downloading - show download icon
+    const downloadIcon = createDownloadIcon();
+    tray.setImage(downloadIcon);
+    
+    // Update tooltip
+    if (status.updateDownloaded) {
+      tray.setToolTip('SIP Toast – Update ready to install');
+    } else if (status.updateAvailable) {
+      tray.setToolTip(`SIP Toast – Update available: ${status.availableVersion}`);
+    } else if (status.downloadProgress > 0) {
+      tray.setToolTip(`SIP Toast – Downloading update: ${status.downloadProgress}%`);
+    }
+  } else if (!status.checking) {
+    // No update - restore original icon
+    if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
+      tray.setImage(originalTrayIcon);
+    }
+    tray.setToolTip('SIP Toast – Caller ID Lookup');
+  }
+};
+
 const createTray = () => {
   if (tray) return tray;
   const icon = createTrayIcon();
@@ -296,221 +394,377 @@ const createTray = () => {
   return tray;
 };
 
-// Consolidated IPC handlers for better performance
-// Batches similar handlers to reduce code duplication
 const wireIpc = () => {
-  // Initialize cached settings first (after store is ready)
-  refreshCachedSettings();
-  
-  // ==========================================
-  // APP INFO HANDLERS
-  // ==========================================
   ipcMain.handle('app:info', () => {
     const appName = app.getName() || 'SIP Toast';
+    // Use app.getVersion() which works in both dev and production
     const version = app.getVersion() || 'Unknown';
     
+    // Get build date from package.json (set during build process)
     let buildDate = 'Unknown';
+    let packageJson = null;
+    
     try {
+      // Use app.getAppPath() which works in both dev and production
       const appPath = app.getAppPath();
       const packageJsonPath = path.join(appPath, 'package.json');
+      
       if (fs.existsSync(packageJsonPath)) {
-        const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-        if (pkg?.buildDate) {
-          const date = new Date(pkg.buildDate);
-          if (!isNaN(date.getTime())) {
-            buildDate = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-          }
+        packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      } else {
+        // Fallback: try require (works in dev mode)
+        try {
+          packageJson = require('../package.json');
+        } catch (e) {
+          logger.warn(`Could not load package.json: ${e.message}`);
         }
       }
-    } catch { /* Silently fail */ }
+      
+      if (packageJson?.buildDate) {
+        const buildDateObj = new Date(packageJson.buildDate);
+        if (!isNaN(buildDateObj.getTime())) {
+          buildDate = buildDateObj.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          });
+        }
+      }
+      
+      // Log for debugging if still unknown
+      if (buildDate === 'Unknown') {
+        logger.warn(`Build date not found. App path: ${appPath}, Package.json exists: ${packageJson !== null}`);
+      }
+    } catch (error) {
+      logger.warn(`Could not determine build date: ${error.message}`);
+    }
     
-    return { appName, version, buildDate };
+    return {
+      appName,
+      version,
+      buildDate
+    };
   });
 
-  // ==========================================
-  // SETTINGS HANDLERS - Optimized with caching
-  // ==========================================
   ipcMain.handle('settings:get', (_event, key) => settings.get(key));
-  ipcMain.handle('settings:getAll', () => {
-    console.log('[IPC] settings:getAll called');
-    console.log('[IPC] cachedSettings:', JSON.stringify(cachedSettings, null, 2));
-    return cachedSettings;
-  });
-  
+  ipcMain.handle('settings:getAll', () => cachedSettings); // Return cached settings
   ipcMain.handle('settings:save', (_event, payload) => {
     const saved = settings.save(payload || {});
+    // Update cached settings after save
     cachedSettings = settings.getAll();
-    
-    // Handle each section efficiently
     if (payload.sip) {
-      logger.info(`💾 SIP settings saved: ${saved.sip?.server || 'N/A'}`);
-      setTimeout(() => sipManager?.updateConfig(saved.sip), 100);
+      logger.info('💾 SIP settings saved');
+      logger.info(`   Server: ${saved.sip?.server || 'N/A'}, Port: ${saved.sip?.port || 5060}, Transport: ${(saved.sip?.transport || 'udp').toUpperCase()}, Domain: ${saved.sip?.domain || 'N/A'}, Username: ${saved.sip?.username || 'N/A'}`);
+      // Update config asynchronously
+      (async () => {
+        await sipManager?.updateConfig(saved.sip);
+        logger.info('🔄 SIP connection updated with new configuration');
+      })();
     }
-    if (payload.acuity) logger.info(`💾 Acuity settings saved`);
-    if (payload.callerId) logger.info(`💾 Caller ID settings saved`);
-    if (payload.app) { applyAutoLaunch(); logger.info(`💾 App settings saved`); }
-    if (payload.toast) logger.info(`💾 Toast settings saved`);
-    if (payload.updates) { updateService?.restartAutoCheck(); logger.info(`💾 Update settings saved`); }
-    
+    if (payload.acuity) {
+      logger.info('💾 Acuity settings saved');
+      logger.info(`   User ID: ${saved.acuity?.userId || 'N/A'}`);
+    }
+    if (payload.callerId) {
+      logger.info('💾 Caller ID settings saved');
+      logger.info(`   Enabled: ${saved.callerId?.enabled ? 'Yes' : 'No'}, Provider: ${saved.callerId?.provider || 'N/A'}`);
+    }
+    if (payload.app) {
+      applyAutoLaunch();
+      logger.info('💾 App settings saved');
+      logger.info(`   Launch at startup: ${saved.app?.launchAtLogin ? 'Yes' : 'No'}`);
+    }
+    if (payload.toast) {
+      logger.info('💾 Toast settings saved');
+      logger.info(`   Auto-dismiss timeout: ${saved.toast?.autoDismissMs || 20000}ms (${(saved.toast?.autoDismissMs || 20000) / 1000}s)`);
+    }
+    if (payload.updates) {
+      logger.info('💾 Update settings saved');
+      logger.info(`   Auto-update enabled: ${saved.updates?.enabled ? 'Yes' : 'No'}, Frequency: ${saved.updates?.checkFrequency || 'daily'}`);
+      // Restart auto-check when update settings change
+      if (updateService) {
+        updateService.restartAutoCheck();
+      }
+    }
     return saved;
   });
 
-  // ==========================================
-  // LOG HANDLERS
-  // ==========================================
   ipcMain.handle('logs:tail', (_event, count) => getRecentLogs(count));
-  ipcMain.handle('log:action', (_event, message) => { logger.info(message); return true; });
 
-  // ==========================================
-  // SIP HANDLERS - Optimized
-  // ==========================================
   ipcMain.handle('sip:restart', async () => {
+    logger.info('🔄 SIP restart requested by user');
     sipManager?.stop();
-    setTimeout(() => sipManager?.start(), 500);
+    setTimeout(async () => {
+      await sipManager?.start();
+      logger.info('✅ SIP connection restart initiated');
+    }, 500);
     return true;
   });
 
-  ipcMain.handle('sip:status:get', () => latestSipStatus);
-  
-  ipcMain.handle('sip:health:check', () => {
-    return sipManager ? sipManager.checkHealth() : { healthy: false, issue: 'Not initialized' };
+  ipcMain.handle('acuity:test', async () => {
+    logger.info('🧪 Acuity API connection test requested');
+    const acuityConfig = cachedSettings.acuity || {};
+    if (!acuityConfig?.enabled) {
+      return {
+        success: false,
+        message: 'Acuity Scheduler is disabled',
+        error: 'Enable Acuity Scheduler in settings to test connection'
+      };
+    }
+    try {
+      const { testConnection } = getAcuityClient();
+      const result = await testConnection();
+      return result;
+    } catch (error) {
+      logger.error(`❌ Acuity test error: ${error.message}`);
+      return {
+        success: false,
+        message: 'Test failed',
+        error: error.message
+      };
+    }
   });
 
+
   ipcMain.handle('sip:test', async () => {
-    const sipConfig = cachedSettings.sip || {};
-    if (!sipConfig.server || !sipConfig.username || !sipConfig.password) {
-      return { success: false, message: 'SIP settings incomplete', status: 'Incomplete' };
+    logger.info('🔍 SIP connection test requested');
+    const sipConfig = cachedSettings.sip;
+    
+    if (!sipConfig || !sipConfig.server || !sipConfig.username || !sipConfig.password) {
+      return {
+        success: false,
+        message: 'SIP settings incomplete',
+        error: 'Missing required fields: Server, Username, or Password',
+        status: 'Incomplete',
+        server: sipConfig?.server || 'Not set',
+        port: sipConfig?.port || 5060,
+        transport: sipConfig?.transport || 'udp',
+        dns: 'Not tested',
+        ip: 'Not tested',
+        username: sipConfig?.username || 'Not set',
+        uri: sipConfig?.uri || 'Not set'
+      };
     }
 
     try {
-      // Parallel DNS lookup with timeout
+      // Test DNS resolution and get IP
       const dns = require('dns').promises;
-      const serverHost = sipConfig.server.split(':')[0].replace(/^sips?:\/\//, '').split('/')[0];
-      const addresses = await Promise.race([
-        dns.lookup(serverHost, { all: true }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('DNS timeout')), 3000))
-      ]);
+      const serverHost = sipConfig.server.split(':')[0].replace(/^sips?:\/\//, '').replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').split('/')[0];
+      let dnsResult = 'Failed';
+      let ipAddress = 'Unknown';
       
-      const ipAddress = addresses?.map?.(a => a.address).join(', ') || 'Unknown';
+      try {
+        const addresses = await Promise.race([
+          dns.lookup(serverHost, { all: true }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('DNS timeout after 3 seconds')), 3000))
+        ]);
+        
+        if (addresses && addresses.length > 0) {
+          dnsResult = 'Success';
+          ipAddress = addresses.map(addr => addr.address).join(', ');
+          logger.info(`✅ DNS lookup successful: ${serverHost} → ${ipAddress}`);
+        }
+      } catch (dnsError) {
+        dnsResult = `Failed: ${dnsError.message}`;
+        logger.error(`❌ DNS lookup failed for ${serverHost}: ${dnsError.message}`);
+        return {
+          success: false,
+          message: 'DNS lookup failed',
+          error: `Cannot resolve ${serverHost}: ${dnsError.message}`,
+          status: 'DNS Error',
+          server: sipConfig.server,
+          port: sipConfig.port || 5060,
+          transport: sipConfig.transport || 'udp',
+          dns: dnsResult,
+          ip: ipAddress,
+          username: sipConfig.username,
+          uri: sipConfig.uri || (() => {
+            const domain = sipConfig.domain || serverHost;
+            const scheme = sipConfig.transport === 'tls' ? 'sips' : 'sip';
+            return `${scheme}:${sipConfig.username}@${domain}`;
+          })()
+        };
+      }
+
+      // Determine domain (use provided domain or server hostname)
       const domain = sipConfig.domain || serverHost;
       const transport = sipConfig.transport || 'udp';
-      const sipUri = `${transport === 'tls' ? 'sips' : 'sip'}:${sipConfig.username}@${domain}`;
+      const scheme = transport === 'tls' ? 'sips' : 'sip';
+      const sipUri = sipConfig.uri || `${scheme}:${sipConfig.username}@${domain}`;
+
+      // Check current SIP status
       const currentState = sipManager?.getState() || 'idle';
       
       return {
         success: currentState === 'registered',
-        message: currentState === 'registered' ? 'SIP connection is active' : `Status: ${currentState}`,
+        message: currentState === 'registered' 
+          ? 'SIP connection is active and registered' 
+          : `SIP status: ${currentState}`,
+        error: currentState === 'error' ? latestSipStatus?.meta?.cause : null,
         status: currentState.charAt(0).toUpperCase() + currentState.slice(1),
         server: sipConfig.server,
         port: sipConfig.port || 5060,
-        transport,
-        dns: 'Success',
+        transport: transport,
+        dns: dnsResult,
         ip: ipAddress,
         username: sipConfig.username,
         uri: sipUri
       };
     } catch (error) {
-      return { success: false, message: 'Test failed', error: error.message, status: 'Error' };
+      return {
+        success: false,
+        message: 'Test failed',
+        error: error.message,
+        status: 'Error',
+        server: sipConfig?.server || 'Not set',
+        port: sipConfig?.port || 5060,
+        transport: sipConfig?.transport || 'udp',
+        dns: 'Not tested',
+        ip: 'Not tested',
+        username: sipConfig?.username || 'Not set',
+        uri: sipConfig?.uri || 'Not set'
+      };
     }
   });
 
+  ipcMain.handle('sip:status:get', () => latestSipStatus);
+  ipcMain.handle('sip:health:check', () => {
+    if (sipManager) {
+      return sipManager.checkHealth();
+    }
+    return { healthy: false, issue: 'SIP manager not initialized' };
+  });
   ipcMain.handle('sim:incoming', () => simulateIncomingCall());
   
-  // ==========================================
-  // ACUITY HANDLER - Lazy loaded
-  // ==========================================
-  ipcMain.handle('acuity:test', async () => {
-    const acuityConfig = cachedSettings.acuity || {};
-    if (!acuityConfig?.enabled) {
-      return { success: false, message: 'Acuity Scheduler is disabled' };
-    }
-    try {
-      const { testConnection } = getAcuityClient();
-      return await testConnection();
-    } catch (error) {
-      return { success: false, message: 'Test failed', error: error.message };
-    }
-  });
-
-  // ==========================================
-  // WINDOW HANDLERS - Consolidated
-  // ==========================================
-  const windowHandler = (action) => {
+  ipcMain.handle('window:minimize', () => {
     if (flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
-      if (action === 'minimize') flyoutWindow.window.minimize();
-      else if (action === 'close') flyoutWindow.window.hide();
+      flyoutWindow.window.minimize();
     }
     return true;
-  };
-  ipcMain.handle('window:minimize', () => windowHandler('minimize'));
-  ipcMain.handle('window:close', () => windowHandler('close'));
+  });
   
-  // ==========================================
-  // EVENT LOG HANDLERS
-  // ==========================================
+  ipcMain.handle('window:close', () => {
+    if (flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
+      flyoutWindow.window.hide();
+    }
+    return true;
+  });
+  
+  ipcMain.handle('log:action', (_event, message) => {
+    logger.info(message);
+    return true;
+  });
+
+  // Event log handlers
   const eventLogger = require('./services/eventLogger');
+  ipcMain.handle('events:getRecent', (_event, count, filterType) => {
+    return eventLogger.getRecentEvents(count, filterType);
+  });
   
-  // Consolidate event handlers - use single handler with action parameter
-  ipcMain.handle('events:query', (_event, action, ...args) => {
-    switch (action) {
-      case 'recent': return eventLogger.getRecentEvents(args[0], args[1]);
-      case 'type': return eventLogger.getEventsByType(args[0]);
-      case 'all': return eventLogger.getAllEvents(args[0]);
-      case 'range': return eventLogger.getEventsInRange(args[0], args[1]);
-      case 'path': return eventLogger.getEventLogFilePath();
-      case 'delete': return eventLogger.deleteAllEvents();
-      default: return [];
-    }
+  ipcMain.handle('events:getByType', (_event, type) => {
+    return eventLogger.getEventsByType(type);
+  });
+  
+  ipcMain.handle('events:getAll', (_event, filterType) => {
+    return eventLogger.getAllEvents(filterType);
+  });
+  
+  ipcMain.handle('events:getInRange', (_event, startDate, endDate) => {
+    return eventLogger.getEventsInRange(startDate, endDate);
+  });
+  
+  ipcMain.handle('events:getLogFilePath', () => {
+    return eventLogger.getEventLogFilePath();
   });
 
-  // ==========================================
-  // FIREWALL HANDLERS
-  // ==========================================
+  ipcMain.handle('events:deleteAll', () => {
+    return eventLogger.deleteAllEvents();
+  });
+
+  // Firewall check handlers
   ipcMain.handle('firewall:check', async () => {
+    logger.info('🔥 Firewall status check requested');
     try {
-      return await checkFirewallStatus();
+      const status = await checkFirewallStatus();
+      return status;
     } catch (error) {
-      return { status: 'error', error: error.message };
+      logger.error(`❌ Firewall check failed: ${error.message}`);
+      return {
+        status: 'error',
+        error: error.message,
+        recommendations: [{
+          type: 'error',
+          message: `Firewall check failed: ${error.message}`,
+          action: 'Check Windows Firewall settings manually.'
+        }]
+      };
     }
   });
-  
-  ipcMain.handle('firewall:instructions', () => getFirewallInstructions());
 
-  // ==========================================
-  // CLIPBOARD HANDLER
-  // ==========================================
+  ipcMain.handle('firewall:instructions', () => {
+    return getFirewallInstructions();
+  });
+
   ipcMain.handle('clipboard:write', (_event, text) => {
-    if (text && typeof text === 'string') {
+    try {
+      if (!text || typeof text !== 'string') {
+        logger.warn('Invalid text provided to clipboard:write');
+        return false;
+      }
       clipboard.writeText(text);
+      logger.info(`📋 Copied to clipboard: ${text}`);
       return true;
+    } catch (error) {
+      logger.error(`❌ Failed to copy to clipboard: ${error.message}`);
+      return false;
     }
-    return false;
   });
 
-  // ==========================================
-  // UPDATE HANDLERS - Consolidated single handler
-  // ==========================================
-  ipcMain.handle('updates:action', (_event, action) => {
-    if (!updateService) return { error: 'Update service not initialized' };
-    
-    switch (action) {
-      case 'check':
-        try { return updateService.checkForUpdates(true); } 
-        catch (error) { return { error: error.message }; }
-      case 'checkGithub':
-        try { return updateService.checkForUpdatesWithGitHub(); } 
-        catch (error) { return { error: error.message }; }
-      case 'download':
-        try { return updateService.downloadUpdate(); } 
-        catch (error) { return { error: error.message }; }
-      case 'install':
-        try { return updateService.installUpdate(); } 
-        catch (error) { return { error: error.message }; }
-      case 'status':
-        return updateService.getStatus();
-      default:
-        return { error: 'Unknown action' };
+  // Update handlers
+  ipcMain.handle('updates:check', async () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
     }
+    try {
+      const result = await updateService.checkForUpdates(true);
+      return result;
+    } catch (error) {
+      logger.error(`Update check failed: ${error.message}`);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('updates:download', async () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    try {
+      const result = await updateService.downloadAndInstall();
+      return result;
+    } catch (error) {
+      logger.error(`Update download/install failed: ${error.message}`);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('updates:openPage', async () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    try {
+      const result = await updateService.openDownloadPage();
+      return result;
+    } catch (error) {
+      logger.error(`Open download page failed: ${error.message}`);
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('updates:status', () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    return updateService.getStatus();
   });
 };
 
@@ -600,7 +854,7 @@ const boot = async () => {
   
   // Now initialize SIP manager and set up event listeners
   sipManager = new SipManager(cachedSettings.sip);
-  flyoutWindow = new TrayWindow();
+  // flyoutWindow is already created in app.whenReady() before createTray() is called
 
   // Set up event listener BEFORE starting SIP
   // Remove any existing listeners first to prevent duplicates
@@ -779,6 +1033,12 @@ if (powerMonitor) {
 app.whenReady().then(async () => {
   logger.info('🚀 SIP Toast application starting');
   logger.info('📦 Initializing components...');
+  
+  // Initialize flyoutWindow BEFORE creating tray
+  // This ensures flyoutWindow exists when tray click handler runs
+  flyoutWindow = new TrayWindow();
+  logger.info('✅ Control center window created');
+  
   createTray();
   logger.info('✅ System tray icon created');
   wireIpc();
@@ -786,30 +1046,19 @@ app.whenReady().then(async () => {
   
   // Initialize update service
   updateService = new UpdateService();
+  
+  // Set up update status event listener to update tray icon and send to renderer
+  updateService.on('update-status', (status) => {
+    // Update tray icon based on update status
+    updateTrayIcon(status);
+    
+    // Send update status to renderer
+    flyoutWindow?.send('update:status', status);
+  });
+  
+  // Start auto-check (this will also check on app load)
   updateService.startAutoCheck();
   logger.info('✅ Update service initialized');
-  
-  // Perform initial update check at startup (delayed to not block startup)
-  setTimeout(async () => {
-    try {
-      logger.info('🔍 Performing initial update check at startup...');
-      const result = await updateService.checkForUpdates();
-      
-      if (result && result.updateAvailable) {
-        logger.info(`✅ Initial update check found new version: ${result.version}`);
-        
-        // Notify the renderer about the available update (for title bar button)
-        if (flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
-          const status = updateService.getStatus();
-          flyoutWindow.send('update:status', status);
-        }
-      } else {
-        logger.info('✅ Initial update check completed - no new version');
-      }
-    } catch (error) {
-      logger.error(`❌ Initial update check failed: ${error.message}`);
-    }
-  }, 5000); // Wait 5 seconds before checking to not slow down startup
   
   // Reload events from file after app is ready (ensures log directory is properly resolved)
   const eventLogger = require('./services/eventLogger');

@@ -1,314 +1,427 @@
-const { autoUpdater } = require('electron-updater');
+const axios = require('axios');
 const { logger } = require('./logger');
 const settings = require('../settings');
-const https = require('https');
+const { EventEmitter } = require('events');
+const { app, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
 
-class UpdateService {
+const GITHUB_OWNER = 'jaydenrussell';
+const GITHUB_REPO = 'Sip-Toast';
+
+class UpdateService extends EventEmitter {
   constructor() {
+    super();
     this.updateCheckInterval = null;
     this.isChecking = false;
     this.updateAvailable = false;
-    this.updateAvailableVersion = null;
-    this.updateDownloaded = false;
-    this.updateProgress = 0;
-    this.updateReleaseNotes = null;
+    this.downloadProgress = 0;
+    this.availableVersion = null;
+    this.downloadUrl = null;
+    this.downloadFileName = null;
+    this.currentVersion = null;
     
-    // Configure autoUpdater
-    autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = false;
-    
-    this.githubConfig = {
-      owner: 'jaydenrussell',
-      repo: 'Sip-Toast',
-      apiUrl: 'https://api.github.com',
-      releasesUrl: 'https://github.com/jaydenrussell/Sip-Toast/releases'
-    };
-    
-    this.setupEventListeners();
-  }
-
-  setupEventListeners() {
-    autoUpdater.on('checking-for-update', () => {
-      logger.info('🔍 Checking for updates...');
-      this.isChecking = true;
-      this.sendUpdateStatusToRenderer();
-    });
-
-    autoUpdater.on('update-available', (info) => {
-      logger.info(`✅ Update available: ${info.version}`);
-      this.updateAvailable = true;
-      this.updateAvailableVersion = info.version;
-      this.updateReleaseNotes = info.releaseNotes;
-      this.isChecking = false;
-      this.sendUpdateStatusToRenderer();
-    });
-
-    autoUpdater.on('update-not-available', (info) => {
-      logger.info(`ℹ️ No update available. Current version: ${info.version}`);
-      this.updateAvailable = false;
-      this.updateAvailableVersion = null;
-      this.updateReleaseNotes = null;
-      this.isChecking = false;
-      this.sendUpdateStatusToRenderer();
-    });
-
-    autoUpdater.on('error', (err) => {
-      logger.error(`❌ Update error: ${err.message}`);
-      this.isChecking = false;
-      this.updateProgress = 0;
-      this.sendUpdateStatusToRenderer();
-    });
-
-    autoUpdater.on('download-progress', (progressObj) => {
-      this.updateProgress = Math.round(progressObj.percent);
-      logger.info(`📥 Download progress: ${this.updateProgress}%`);
-      this.sendUpdateStatusToRenderer();
-    });
-
-    autoUpdater.on('update-downloaded', (info) => {
-      logger.info(`✅ Update downloaded: ${info.version}`);
-      this.updateDownloaded = true;
-      this.updateAvailable = false;
-      this.updateProgress = 100;
-      this.updateAvailableVersion = info.version;
-      this.sendUpdateStatusToRenderer();
-    });
+    // Get current version
+    try {
+      this.currentVersion = require('../../../package.json').version;
+    } catch (e) {
+      this.currentVersion = 'Unknown';
+    }
   }
 
   /**
-   * Send update status to renderer process
+   * Emit status to all listeners
    */
-  sendUpdateStatusToRenderer() {
-    const { TrayWindow } = require('../tray/trayWindow');
-    const trayWindow = TrayWindow.getInstance();
-    if (trayWindow && trayWindow.window && !trayWindow.window.isDestroyed()) {
-      trayWindow.send('update:status', this.getStatus());
-    }
+  emitStatus() {
+    this.emit('update-status', this.getStatus());
   }
 
-  getCurrentVersion() {
+  /**
+   * Fetch latest release from GitHub API
+   */
+  async fetchLatestRelease() {
     try {
-      return require('../../../package.json').version || 'Unknown';
-    } catch {
-      return 'Unknown';
+      const apiUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+      logger.info(`📡 Fetching latest release from: ${apiUrl}`);
+      
+      const response = await axios.get(apiUrl, {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'User-Agent': 'SIP-Toast'
+        }
+      });
+      
+      // Log detailed response info
+      logger.info(`📥 GitHub API Response:`);
+      logger.info(`   - Tag name: ${response.data.tag_name}`);
+      logger.info(`   - Release name: ${response.data.name || 'N/A'}`);
+      logger.info(`   - Published: ${response.data.published_at || 'N/A'}`);
+      logger.info(`   - Assets count: ${response.data.assets?.length || 0}`);
+      
+      if (response.data.assets && response.data.assets.length > 0) {
+        logger.info(`   - Available assets:`);
+        response.data.assets.forEach(asset => {
+          logger.info(`     * ${asset.name} (${asset.size} bytes)`);
+        });
+      }
+      
+      return response.data;
+    } catch (error) {
+      logger.error(`❌ Failed to fetch GitHub release: ${error.message}`);
+      
+      // Log more details about the error
+      if (error.response) {
+        logger.error(`   Status: ${error.response.status}`);
+        logger.error(`   Status text: ${error.response.statusText}`);
+        logger.error(`   Response data: ${JSON.stringify(error.response.data).substring(0, 200)}`);
+      } else if (error.request) {
+        logger.error(`   No response received from GitHub API`);
+      }
+      
+      throw error;
     }
   }
 
-  compareVersions(current, latest) {
-    if (!current || !latest) return 0;
-    const cleanCurrent = current.replace('v', '');
-    const cleanLatest = latest.replace('v', '');
-    const currentParts = cleanCurrent.split('.').map(Number);
-    const latestParts = cleanLatest.split('.').map(Number);
+  /**
+   * Check for updates on app load (called automatically)
+   * Only checks once on app load, not periodically
+   */
+  async checkOnAppLoad() {
+    const updateSettings = settings.get('updates', {});
     
-    for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
-      const curr = currentParts[i] || 0;
-      const lat = latestParts[i] || 0;
-      if (curr < lat) return -1;
-      if (curr > lat) return 1;
+    // Don't check if updates are disabled
+    if (!updateSettings.enabled) {
+      logger.info('⏸️ Auto-update is disabled, skipping initial check');
+      return;
+    }
+    
+    // Don't check if frequency is 'never'
+    if (updateSettings.checkFrequency === 'never') {
+      logger.info('⏸️ Auto-update check frequency is set to never, skipping initial check');
+      return;
+    }
+
+    // Check if we've already checked on this app session
+    if (this.hasCheckedOnLoad) {
+      logger.info('⏸️ Already checked for updates on this app load, skipping');
+      return;
+    }
+
+    logger.info('🔄 Checking for updates on app load...');
+    
+    // Import and log the update check event
+    const { logUpdateCheck } = require('./eventLogger');
+    logUpdateCheck('app_load');
+    
+    try {
+      await this.checkForUpdates();
+      this.hasCheckedOnLoad = true; // Mark as checked
+    } catch (error) {
+      logger.error(`❌ Initial update check failed: ${error.message}`);
+      
+      // Log the error
+      const { logUpdateError } = require('./eventLogger');
+      logUpdateError(error.message, 'app_load_check');
+    }
+  }
+
+  /**
+   * Check for updates manually
+   */
+  async checkForUpdates(force = false) {
+    if (this.isChecking && !force) {
+      logger.warn('⚠️ Update check already in progress');
+      return { checking: true };
+    }
+
+    try {
+      this.isChecking = true;
+      this.emitStatus();
+      
+      // Update last check time
+      const updateSettings = settings.get('updates', {});
+      updateSettings.lastCheckTime = new Date().toISOString();
+      settings.set('updates', updateSettings);
+      
+      logger.info('🔍 ===============================================');
+      logger.info('🔍 Starting update check...');
+      logger.info(`🔍 Current version: ${this.currentVersion}`);
+      logger.info('🔍 ===============================================');
+      
+      const release = await this.fetchLatestRelease();
+      
+      // Extract version from tag name (remove 'v' prefix if present)
+      const latestVersion = release.tag_name.startsWith('v') 
+        ? release.tag_name.substring(1) 
+        : release.tag_name;
+      
+      logger.info(`🔍 Version comparison:`);
+      logger.info(`   Current version: ${this.currentVersion}`);
+      logger.info(`   Latest version:   ${latestVersion}`);
+      
+      // Compare versions
+      const currentVer = this.currentVersion.replace(/^v/, '');
+      const comparisonResult = this.compareVersions(latestVersion, currentVer);
+      const isNewer = comparisonResult > 0;
+      
+      logger.info(`   Comparison result: ${comparisonResult > 0 ? 'Newer available' : comparisonResult < 0 ? 'Current is newer' : 'Versions equal'}`);
+      logger.info(`   Update needed: ${isNewer ? 'YES' : 'NO'}`);
+      
+      if (isNewer) {
+        // Find MSI file in release assets
+        const allAssets = release.assets || [];
+        logger.info(`🔍 Looking for MSI file in ${allAssets.length} assets...`);
+        
+        const msiAsset = allAssets.find(asset => 
+          asset.name.toLowerCase().endsWith('.msi')
+        );
+        
+        if (msiAsset) {
+          this.updateAvailable = true;
+          this.availableVersion = latestVersion;
+          this.downloadUrl = msiAsset.browser_download_url;
+          this.downloadFileName = msiAsset.name;
+          logger.info(`✅ ===============================================`);
+          logger.info(`✅ UPDATE AVAILABLE: v${latestVersion}`);
+          logger.info(`   File: ${msiAsset.name}`);
+          logger.info(`   Size: ${(msiAsset.size / 1024 / 1024).toFixed(2)} MB`);
+          logger.info(`   URL:  ${this.downloadUrl}`);
+          logger.info(`✅ ===============================================`);
+          
+          // Log update available event
+          const { logUpdateAvailable } = require('./eventLogger');
+          logUpdateAvailable(latestVersion, this.downloadUrl);
+        } else {
+          logger.warn(`⚠️ No MSI file found in release assets!`);
+          logger.warn(`   Available files:`);
+          allAssets.forEach(asset => {
+            logger.warn(`   - ${asset.name} (${(asset.size / 1024).toFixed(1)} KB)`);
+          });
+          this.updateAvailable = false;
+          this.availableVersion = null;
+        }
+      } else {
+        logger.info(`ℹ️ ===============================================`);
+        logger.info(`ℹ️ NO UPDATE AVAILABLE`);
+        logger.info(`   Current version: ${currentVer} is up to date`);
+        logger.info(`   Latest release:   v${latestVersion}`);
+        logger.info(`ℹ️ ===============================================`);
+        this.updateAvailable = false;
+        this.availableVersion = null;
+        
+        // Log that we're up to date
+        const { logUpdateCheck } = require('./eventLogger');
+        logUpdateCheck('check_complete_up_to_date');
+      }
+      
+      this.isChecking = false;
+      this.emitStatus();
+      
+      logger.info(`🔍 Update check complete. Available: ${this.updateAvailable}`);
+      
+      return {
+        checking: false,
+        updateAvailable: this.updateAvailable,
+        version: this.availableVersion
+      };
+    } catch (error) {
+      logger.error(`❌ ===============================================`);
+      logger.error(`❌ UPDATE CHECK FAILED`);
+      logger.error(`   Error: ${error.message}`);
+      logger.error(`❌ ===============================================`);
+      
+      // Log the error
+      const { logUpdateError } = require('./eventLogger');
+      logUpdateError(error.message, 'checkForUpdates');
+      
+      this.isChecking = false;
+      this.emitStatus();
+      throw error;
+    }
+  }
+
+  /**
+   * Compare semantic versions
+   * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+   */
+  compareVersions(v1, v2) {
+    const parse = v => v.replace(/^v/, '').split('.').map(n => parseInt(n, 10));
+    const p1 = parse(v1);
+    const p2 = parse(v2);
+    
+    for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+      const n1 = p1[i] || 0;
+      const n2 = p2[i] || 0;
+      if (n1 > n2) return 1;
+      if (n1 < n2) return -1;
     }
     return 0;
   }
 
-  async getLatestReleaseFromGitHub() {
-    return new Promise((resolve, reject) => {
-      const url = `${this.githubConfig.apiUrl}/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/releases/latest`;
-      const options = {
-        headers: { 'User-Agent': 'SIP-Toast-Update-Service', 'Accept': 'application/vnd.github.v3+json' }
-      };
+  /**
+   * Download and install the update (Discord-like)
+   * Shows download progress, then launches helper to close app, install, and restart
+   */
+  async downloadAndInstall() {
+    if (!this.updateAvailable || !this.downloadUrl) {
+      throw new Error('No update available to download');
+    }
 
-      const request = https.request(url, options, (response) => {
-        let data = '';
-        response.on('data', chunk => data += chunk);
-        response.on('end', () => {
-          if (response.statusCode === 200) {
-            const release = JSON.parse(data);
+    let startTime = Date.now();
+    let lastLoaded = 0;
+    let lastTime = startTime;
+    let downloadSpeed = 0;
+
+    try {
+      logger.info('📥 Starting update download...');
+      this.downloadProgress = 0;
+      this.emitStatus();
+      
+      // Download the MSI file
+      const response = await axios({
+        method: 'get',
+        url: this.downloadUrl,
+        responseType: 'stream',
+        onDownloadProgress: (progressEvent) => {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          this.downloadProgress = percent;
+          
+          // Calculate download speed
+          const now = Date.now();
+          const timeDiff = now - lastTime;
+          if (timeDiff >= 500) { // Update speed every 500ms
+            const loadedDiff = progressEvent.loaded - lastLoaded;
+            downloadSpeed = Math.round(loadedDiff / (timeDiff / 1000) / 1024); // KB/s
+            lastLoaded = progressEvent.loaded;
+            lastTime = now;
+          }
+          
+          logger.info(`📥 Download progress: ${percent}% (${downloadSpeed} KB/s)`);
+          this.emitStatus();
+        }
+      });
+      
+      // Get temp directory
+      const tempDir = app.getPath('temp');
+      const filePath = path.join(tempDir, this.downloadFileName);
+      
+      // Write file
+      const writer = fs.createWriteStream(filePath);
+      response.data.pipe(writer);
+      
+      return new Promise((resolve, reject) => {
+        writer.on('finish', async () => {
+          const downloadTime = Math.round((Date.now() - startTime) / 1000);
+          logger.info(`✅ Download complete: ${filePath} (took ${downloadTime}s)`);
+          this.downloadProgress = 100;
+          this.emitStatus();
+          
+          // Log downloaded event
+          const { logUpdateDownloaded } = require('./eventLogger');
+          logUpdateDownloaded(this.availableVersion, filePath);
+          
+          // Now launch the update helper to close app, install, and restart
+          try {
+            logger.info('🚀 Launching update helper...');
             
-            // Find Windows installer asset
-            const windowsAsset = (release.assets || []).find(asset => 
-              asset.name && (
-                asset.name.endsWith('.exe') || 
-                asset.name.endsWith('.msi') ||
-                asset.name.toLowerCase().includes('windows')
-              )
-            );
+            // Get the helper path
+            let helperPath;
+            if (app.isPackaged) {
+              helperPath = path.join(process.resourcesPath, 'update-helper.bat');
+            } else {
+              helperPath = path.join(__dirname, '..', '..', 'scripts', 'update-helper.bat');
+            }
             
-            resolve({
-              version: release.tag_name.replace('v', ''),
-              name: release.name,
-              body: release.body,
-              publishedAt: release.published_at,
-              htmlUrl: release.html_url,
-              assets: release.assets || [],
-              downloadUrl: windowsAsset?.browser_download_url || release.html_url,
-              assetSize: windowsAsset?.size || 0,
-              downloadCount: windowsAsset?.download_count || 0
+            // Get app executable path
+            const appPath = app.isPackaged ? process.execPath : null;
+            
+            // Launch helper - it will:
+            // 1. Kill the main app process
+            // 2. Install the MSI with UI (shows progress)
+            // 3. Restart the app
+            
+            const helperArgs = [
+              '--msi', filePath
+            ];
+            
+            if (appPath) {
+              helperArgs.push('--app', appPath);
+            }
+            
+            const fullArgs = ['/c', helperPath, ...helperArgs];
+            logger.info(`   Helper: cmd ${fullArgs.join(' ')}`);
+            
+            // Run the batch file helper - it will install and restart the app
+            // Use cmd /c to run the batch file
+            spawn('cmd', fullArgs, {
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: false
+            }).unref();
+            
+            logger.info('🚀 Update helper launched - app will close and restart');
+            resolve({ 
+              success: true, 
+              message: 'Update in progress - app will restart automatically',
+              willRestart: true 
             });
-          } else {
-            reject(new Error(`GitHub API returned status ${response.statusCode}`));
+            
+            // Give user a moment to see the progress before quitting
+            setTimeout(() => {
+              logger.info('👋 Closing app for update...');
+              app.quit();
+            }, 3000);
+            
+          } catch (helperError) {
+            logger.error(`❌ Failed to launch update helper: ${helperError.message}`);
+            reject(helperError);
           }
         });
+        
+        writer.on('error', (err) => {
+          logger.error(`❌ Failed to write update file: ${err.message}`);
+          reject(err);
+        });
       });
-
-      request.on('error', error => reject(new Error(`GitHub API request failed: ${error.message}`)));
-      request.setTimeout(10000, () => { request.destroy(); reject(new Error('GitHub API request timed out')); });
-      request.end();
-    });
-  }
-
-  async checkForUpdatesWithGitHub() {
-    try {
-      logger.info('🔍 Checking for updates via GitHub API...');
-      const latestRelease = await this.getLatestReleaseFromGitHub();
-      const currentVersion = this.getCurrentVersion();
-      const comparison = this.compareVersions(currentVersion, latestRelease.version);
-      
-      if (comparison < 0) {
-        this.updateAvailable = true;
-        this.updateAvailableVersion = latestRelease.version;
-        this.updateReleaseNotes = latestRelease.body;
-        this.isChecking = false;
-        this.sendUpdateStatusToRenderer();
-        return { 
-          updateAvailable: true, 
-          version: latestRelease.version, 
-          message: `Update available: ${latestRelease.version}`,
-          release: latestRelease
-        };
-      } else {
-        this.updateAvailable = false;
-        this.updateAvailableVersion = null;
-        this.updateReleaseNotes = null;
-        this.isChecking = false;
-        this.sendUpdateStatusToRenderer();
-        return { updateAvailable: false, version: currentVersion, message: 'You are using the latest version.' };
-      }
     } catch (error) {
-      this.isChecking = false;
-      this.sendUpdateStatusToRenderer();
-      return { updateAvailable: false, error: error.message, message: 'Failed to check for updates via GitHub API' };
+      logger.error(`❌ Failed to download update: ${error.message}`);
+      this.emitStatus();
+      throw error;
     }
   }
 
-  async checkForUpdates(force = false) {
-    if (this.isChecking && !force) {
-      return { checking: true };
+  /**
+   * Open download page in browser (fallback)
+   */
+  async openDownloadPage() {
+    if (!this.availableVersion) {
+      throw new Error('No update available');
     }
-
-    this.isChecking = true;
-    this.updateAvailable = false;
-    this.updateDownloaded = false;
-    this.updateProgress = 0;
     
-    // Update last check time
-    const updateSettings = settings.get('updates', {});
-    updateSettings.lastCheckTime = new Date().toISOString();
-    settings.set('updates', updateSettings);
-    
-    try {
-      const githubResult = await this.checkForUpdatesWithGitHub();
-      
-      if (githubResult.error && !githubResult.updateAvailable) {
-        // Fall back to electron-updater
-        try {
-          const result = await autoUpdater.checkForUpdates();
-          const updateAvailable = !!(result?.updateInfo);
-          this.updateAvailable = updateAvailable;
-          this.updateAvailableVersion = result?.updateInfo?.version;
-          this.updateReleaseNotes = result?.updateInfo?.releaseNotes;
-          this.isChecking = false;
-          this.sendUpdateStatusToRenderer();
-          return { checking: false, updateAvailable, version: result?.updateInfo?.version };
-        } catch (updaterError) {
-          this.isChecking = false;
-          this.sendUpdateStatusToRenderer();
-          return { checking: false, updateAvailable: false, error: `Both GitHub API and electron-updater failed: ${updaterError.message}` };
-        }
-      }
-      
-      this.isChecking = false;
-      this.sendUpdateStatusToRenderer();
-      return { 
-        checking: false, 
-        updateAvailable: githubResult.updateAvailable, 
-        version: githubResult.version, 
-        message: githubResult.message,
-        release: githubResult.release
-      };
-    } catch (error) {
-      this.isChecking = false;
-      this.sendUpdateStatusToRenderer();
-      return { checking: false, updateAvailable: false, error: error.message };
-    }
+    const url = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tag/v${this.availableVersion}`;
+    await shell.openExternal(url);
+    return { success: true };
   }
 
-  async downloadUpdate() {
-    if (!this.updateAvailable && !this.updateDownloaded && !this.updateAvailableVersion) {
-      throw new Error('Please check for updates first to find an available update');
-    }
-
-    // Set the feed URL for GitHub provider
-    autoUpdater.setFeedURL({
-      provider: 'github',
-      owner: this.githubConfig.owner,
-      repo: this.githubConfig.repo,
-      releaseType: 'release'
-    });
-    
-    logger.info('📥 Starting update download...');
-    
-    try {
-      const result = await autoUpdater.downloadUpdate();
-      this.updateDownloaded = true;
-      this.updateAvailable = false;
-      this.updateProgress = 100;
-      logger.info('✅ Update download initiated successfully');
-      this.sendUpdateStatusToRenderer();
-      return { success: true, message: 'Update download started' };
-    } catch (error) {
-      logger.error(`❌ Update download failed: ${error.message}`);
-      this.updateProgress = 0;
-      this.sendUpdateStatusToRenderer();
-      throw new Error(`Download failed: ${error.message}`);
-    }
-  }
-
-  async installUpdate() {
-    if (!this.updateDownloaded) {
-      throw new Error('No update has been downloaded yet. Please download the update first.');
-    }
-    logger.info('🚀 Installing update and restarting...');
-    autoUpdater.quitAndInstall(false, true);
-    return { success: true, message: 'Update installed. Application will restart.' };
-  }
-
+  /**
+   * Get update status
+   */
   getStatus() {
     return {
       checking: this.isChecking,
       updateAvailable: this.updateAvailable,
-      updateDownloaded: this.updateDownloaded,
-      updateProgress: this.updateProgress,
-      currentVersion: this.getCurrentVersion(),
-      version: this.updateAvailableVersion || this.getCurrentVersion(),
-      releaseNotes: this.updateReleaseNotes,
-      githubConfig: this.githubConfig
+      downloadProgress: this.downloadProgress,
+      availableVersion: this.availableVersion,
+      currentVersion: this.currentVersion
     };
   }
 
   /**
-   * Get update info for title bar button
+   * Start automatic update checking based on frequency
    */
-  getUpdateButtonInfo() {
-    return {
-      visible: this.updateAvailable || this.updateDownloaded,
-      updateAvailable: this.updateAvailable,
-      updateDownloaded: this.updateDownloaded,
-      version: this.updateAvailableVersion,
-      progress: this.updateProgress
-    };
-  }
-
   startAutoCheck() {
+    // Clear any existing interval
     if (this.updateCheckInterval) {
       clearInterval(this.updateCheckInterval);
       this.updateCheckInterval = null;
@@ -316,35 +429,46 @@ class UpdateService {
 
     const updateSettings = settings.get('updates', {});
     
-    if (!updateSettings.enabled || updateSettings.checkFrequency === 'never') {
+    // Don't start if updates are disabled
+    if (!updateSettings.enabled) {
       logger.info('⏸️ Auto-update is disabled');
       return;
     }
 
+    // Don't start if frequency is 'never'
+    if (updateSettings.checkFrequency === 'never') {
+      logger.info('⏸️ Auto-update check frequency is set to never');
+      return;
+    }
+
+    // Calculate interval based on frequency
     const intervals = {
-      daily: 24 * 60 * 60 * 1000,
-      weekly: 7 * 24 * 60 * 60 * 1000,
-      monthly: 30 * 24 * 60 * 60 * 1000
+      daily: 24 * 60 * 60 * 1000,      // 24 hours
+      weekly: 7 * 24 * 60 * 60 * 1000, // 7 days
+      monthly: 30 * 24 * 60 * 60 * 1000 // 30 days
     };
 
     const intervalMs = intervals[updateSettings.checkFrequency] || intervals.daily;
-    logger.info(`🔄 Auto-update check scheduled: ${updateSettings.checkFrequency}`);
+    
+    logger.info(`🔄 Auto-update check scheduled: ${updateSettings.checkFrequency} (every ${intervalMs / 1000 / 60 / 60} hours)`);
 
-    // Check immediately if it's been longer than the interval
-    const lastCheckTime = updateSettings.lastCheckTime ? new Date(updateSettings.lastCheckTime).getTime() : 0;
-    if (Date.now() - lastCheckTime >= intervalMs) {
-      logger.info('⏰ Last check was too long ago, checking now...');
-      setTimeout(() => {
-        this.checkForUpdates().catch(err => logger.error(`Failed to check for updates: ${err.message}`));
-      }, 5000);
-    }
+    // Check immediately on app load (with a small delay to let app start)
+    setTimeout(() => {
+      this.checkOnAppLoad();
+    }, 5000); // Wait 5 seconds after app start
 
+    // Set up periodic checking
     this.updateCheckInterval = setInterval(() => {
       logger.info(`🔄 Periodic update check (${updateSettings.checkFrequency})`);
-      this.checkForUpdates().catch(err => logger.error(`Failed to check for updates: ${err.message}`));
+      this.checkForUpdates().catch(err => {
+        logger.error(`Failed to check for updates: ${err.message}`);
+      });
     }, intervalMs);
   }
 
+  /**
+   * Stop automatic update checking
+   */
   stopAutoCheck() {
     if (this.updateCheckInterval) {
       clearInterval(this.updateCheckInterval);
@@ -353,9 +477,19 @@ class UpdateService {
     }
   }
 
+  /**
+   * Restart auto-check (useful when settings change)
+   */
   restartAutoCheck() {
     this.stopAutoCheck();
     this.startAutoCheck();
+  }
+
+  /**
+   * Check if there's an update ready (for tray icon)
+   */
+  hasUpdateReady() {
+    return this.updateAvailable;
   }
 }
 

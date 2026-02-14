@@ -1,4 +1,4 @@
-const { default: Store } = require('electron-store');
+const Store = require('electron-store');
 const { encrypt, decrypt } = require('./services/encryption');
 
 // Fields that should be encrypted at rest
@@ -133,31 +133,20 @@ const encryptSensitiveFields = (section, data) => {
 
 // Decrypt sensitive fields after retrieving
 const decryptSensitiveFields = (section, data) => {
-  console.log(`[Settings] decryptSensitiveFields called for section: ${section}, data:`, JSON.stringify(data, null, 2));
-  if (!data || typeof data !== 'object') {
-    console.log('[Settings] decryptSensitiveFields: data is not an object, returning as-is');
-    return data;
-  }
+  if (!data || typeof data !== 'object') return data;
   
   const decrypted = { ...data };
   for (const field of ENCRYPTED_FIELDS) {
     const [fieldSection, fieldKey] = field.split('.');
     if (fieldSection === section && decrypted[fieldKey] && decrypted[fieldKey] !== null) {
-      console.log(`[Settings] decryptSensitiveFields: decrypting field ${field}`);
-      try {
-        decrypted[fieldKey] = decrypt(decrypted[fieldKey]);
-        console.log(`[Settings] decryptSensitiveFields: decrypted ${field} = "${decrypted[fieldKey]}"`);
-      } catch (err) {
-        console.error(`[Settings] decryptSensitiveFields: error decrypting ${field}:`, err);
-      }
+      decrypted[fieldKey] = decrypt(decrypted[fieldKey]);
     }
   }
-  console.log(`[Settings] decryptSensitiveFields: returning:`, JSON.stringify(decrypted, null, 2));
   return decrypted;
 };
 
 const mergeSection = (section, patch = {}) => {
-  const existing = store.get(section) || {};
+  const existing = store.get(section);
   const decrypted = decryptSensitiveFields(section, existing);
   return {
     ...decrypted,
@@ -236,25 +225,16 @@ module.exports = {
     return value;
   },
   getAll() {
-    try {
-      const all = store.store || {};
-      console.log('[Settings] getAll: raw store.store:', JSON.stringify(all, null, 2));
-      // Decrypt all sensitive fields
-      const decrypted = { ...all };
-      if (decrypted.sip) {
-        console.log('[Settings] getAll: decrypting sip section');
-        decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
-      }
-      if (decrypted.acuity) {
-        console.log('[Settings] getAll: decrypting acuity section');
-        decrypted.acuity = decryptSensitiveFields('acuity', decrypted.acuity);
-      }
-      console.log('[Settings] getAll: returning:', JSON.stringify(decrypted, null, 2));
-      return decrypted;
-    } catch (error) {
-      logger.error('Error getting all settings:', error);
-      return { sip: {}, acuity: {}, toast: {}, app: {}, updates: {} };
+    const all = store.store;
+    // Decrypt all sensitive fields
+    const decrypted = { ...all };
+    if (decrypted.sip) {
+      decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
     }
+    if (decrypted.acuity) {
+      decrypted.acuity = decryptSensitiveFields('acuity', decrypted.acuity);
+    }
+    return decrypted;
   },
   set(key, value) {
     // Encrypt if this is a sensitive field

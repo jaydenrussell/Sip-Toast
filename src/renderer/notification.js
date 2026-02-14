@@ -3,7 +3,20 @@ const callerEl = document.getElementById('caller');
 const numberEl = document.getElementById('number');
 const noteEl = document.getElementById('note');
 const copiedBadge = document.getElementById('copiedBadge');
+const titleBarClose = document.getElementById('titleBarClose');
 let currentPhoneNumber = '';
+
+// Handle title bar close button
+if (titleBarClose) {
+  titleBarClose.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Close the toast window via IPC
+    if (window.notificationAPI && window.notificationAPI.closeWindow) {
+      window.notificationAPI.closeWindow();
+    }
+  });
+}
 
 // Handle window resize to adjust content
 window.addEventListener('resize', () => {

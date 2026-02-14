@@ -12,43 +12,11 @@
       <div class="title-bar-content">
         <span class="title-text">SIP Toast</span>
         <div class="title-bar-controls">
-          <!-- Update Button (Discord-style) -->
-          <button class="title-bar-button update-button" id="updateBtn" title="Check for Updates" style="display: none;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
-              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-              <path d="M16 21h5v-5"/>
-            </svg>
-          </button>
           <button class="title-bar-button minimize" id="minimizeBtn" title="Minimize">─</button>
           <button class="title-bar-button close" id="closeBtn" title="Close">✕</button>
         </div>
       </div>
     </div>
-
-    <!-- Update Dropdown (Discord-style) -->
-    <div class="update-dropdown" id="updateDropdown" style="display: none;">
-      <div class="update-dropdown-header">
-        <div class="update-dropdown-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-            <path d="M16 21h5v-5"/>
-          </svg>
-          <span>Update Available</span>
-        </div>
-        <button class="update-dropdown-close" id="updateDropdownClose" title="Close">✕</button>
-      </div>
-      <div class="update-dropdown-content" id="updateDropdownContent">
-        <!-- Update info will be inserted here -->
-      </div>
-      <div class="update-dropdown-footer">
-        <button class="update-action-button primary" id="updateActionBtn">Download Update</button>
-      </div>
-    </div>
-    <div class="update-overlay" id="updateOverlay" style="display: none;"></div>
     <div class="app-container">
       <aside class="sidebar">
         <nav class="sidebar-nav">
@@ -64,13 +32,13 @@
             <span class="nav-icon">⚙️</span>
             <span class="nav-label">Options</span>
           </button>
-          <button class="nav-item" data-section="updates">
-            <span class="nav-icon">🔄</span>
-            <span class="nav-label">Updates</span>
-          </button>
           <button class="nav-item" data-section="firewall">
             <span class="nav-icon">🔥</span>
             <span class="nav-label">Firewall</span>
+          </button>
+          <button class="nav-item" data-section="updates">
+            <span class="nav-icon">🔄</span>
+            <span class="nav-label">Updates</span>
           </button>
           <button class="nav-item" data-section="logs">
             <span class="nav-icon">📋</span>
@@ -83,7 +51,10 @@
         </nav>
         <div class="sidebar-footer">
           <div class="status-chip" id="sipStatus">Initializing…</div>
-          <button type="button" id="reloadSettingsBtn" class="ghost" style="margin-top: 8px; width: 100%;" title="Reload Settings">🔄 Reload Settings</button>
+          <div class="update-chip" id="updateStatus" style="display: none;">
+            <span class="update-icon">⬇️</span>
+            <span class="update-text">Update Ready</span>
+          </div>
         </div>
       </aside>
       <main class="main-content">
@@ -146,7 +117,8 @@
               </div>
               <div class="actions">
                 <button type="button" class="primary" id="saveSipBtn">Save & Connect</button>
-                <button type="button" class="secondary" id="testSipBtn">Test SIP Call</button>
+                <button type="button" class="secondary" id="testSipBtn">Test Connection</button>
+                <button type="button" class="ghost" id="restartSip">Restart SIP</button>
               </div>
 
               <div class="debug-section" id="sipDebugSection" style="display: none;">
@@ -250,241 +222,101 @@
             <div class="card">
               <div class="section-heading">
                 <div>
-                  <h2>Application Options</h2>
-                  <p class="note">Configure startup behavior, notifications, and appearance</p>
+                  <h2>Options</h2>
+                  <p class="note">Application settings and controls</p>
                 </div>
               </div>
-
-              <!-- Startup Section -->
-              <div class="card-section">
-                <div class="section-heading">
-                  <div>
-                    <h3>Startup</h3>
-                    <p class="note">Configure how the application starts</p>
-                  </div>
-                </div>
-                <div class="options-grid">
-                  <div class="toggle-group">
-                    <label>Run at Windows startup</label>
-                    <button type="button" class="toggle" id="autoLaunchToggle" role="switch" aria-checked="true">
-                      <span></span>
-                    </button>
-                    <input type="hidden" name="app.launchAtLogin" value="true" />
-                  </div>
+              <div class="options-grid">
+                <div class="toggle-group">
+                  <label>Run at Windows startup</label>
+                  <button type="button" class="toggle" id="autoLaunchToggle" role="switch" aria-checked="true">
+                    <span></span>
+                  </button>
+                  <input type="hidden" name="app.launchAtLogin" value="true" />
                 </div>
               </div>
-
-              <!-- Toast Appearance Section -->
-              <div class="card-section">
-                <div class="section-heading">
-                  <div>
-                    <h3>Toast Notification & Behavior</h3>
-                    <p class="note">Customize the look, feel, and behavior of toast notifications</p>
-                  </div>
+              
+              <div class="section-heading" style="margin-top: 24px; margin-bottom: 12px;">
+                <div>
+                  <h3>Toast Notification Settings</h3>
+                  <p class="note">Customize toast notification display and behavior</p>
                 </div>
-                
+              </div>
+              
+              <div class="field-group">
+                <label>Toast Notification Timeout</label>
+                <input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
+                <small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
+              </div>
+              
+              <div class="section-heading" style="margin-top: 24px; margin-bottom: 12px;">
+                <div>
+                  <h3>Toast Notification Fonts</h3>
+                  <p class="note">Customize font and size for Caller ID and caller number</p>
+                </div>
+              </div>
+              
+              <div class="grid two-col">
                 <div class="field-group">
-                  <label>Toast Notification Timeout</label>
-                  <input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
-                  <small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
+                  <label>Caller ID Font</label>
+                  <select name="toast.callerIdFont" id="callerIdFontInput">
+                    <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
+                    <option value="Segoe UI, sans-serif">Segoe UI</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                    <option value="Calibri, sans-serif">Calibri</option>
+                    <option value="Consolas, monospace">Consolas</option>
+                    <option value="Courier New, monospace">Courier New</option>
+                    <option value="Georgia, serif">Georgia</option>
+                    <option value="Helvetica, sans-serif">Helvetica</option>
+                    <option value="Impact, sans-serif">Impact</option>
+                    <option value="Lucida Console, monospace">Lucida Console</option>
+                    <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
+                    <option value="Tahoma, sans-serif">Tahoma</option>
+                    <option value="Times New Roman, serif">Times New Roman</option>
+                    <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+                    <option value="Verdana, sans-serif">Verdana</option>
+                  </select>
+                  <small class="field-hint">Font family for the Caller ID name/label</small>
                 </div>
-                
-                <div class="grid two-col">
-                  <div class="field-group">
-                    <label>Caller ID Font</label>
-                    <select name="toast.callerIdFont" id="callerIdFontInput">
-                      <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
-                      <option value="Segoe UI, sans-serif">Segoe UI</option>
-                      <option value="Arial, sans-serif">Arial</option>
-                      <option value="Calibri, sans-serif">Calibri</option>
-                      <option value="Consolas, monospace">Consolas</option>
-                      <option value="Courier New, monospace">Courier New</option>
-                      <option value="Georgia, serif">Georgia</option>
-                      <option value="Helvetica, sans-serif">Helvetica</option>
-                      <option value="Impact, sans-serif">Impact</option>
-                      <option value="Lucida Console, monospace">Lucida Console</option>
-                      <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
-                      <option value="Tahoma, sans-serif">Tahoma</option>
-                      <option value="Times New Roman, serif">Times New Roman</option>
-                      <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
-                      <option value="Verdana, sans-serif">Verdana</option>
-                    </select>
-                    <small class="field-hint">Font family for the Caller ID name/label</small>
-                  </div>
-                  <div class="field-group">
-                    <label>Caller ID Font Size</label>
-                    <input type="number" name="toast.callerIdFontSize" placeholder="20" min="10" max="36" step="1" id="callerIdFontSizeInput" />
-                    <small class="field-hint">Font size in pixels (10-36px, default: 20)</small>
-                  </div>
-                </div>
-                
-                <div class="grid two-col">
-                  <div class="field-group">
-                    <label>Caller Number Font</label>
-                    <select name="toast.numberFont" id="numberFontInput">
-                      <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
-                      <option value="Segoe UI, sans-serif">Segoe UI</option>
-                      <option value="Arial, sans-serif">Arial</option>
-                      <option value="Calibri, sans-serif">Calibri</option>
-                      <option value="Consolas, monospace">Consolas</option>
-                      <option value="Courier New, monospace">Courier New</option>
-                      <option value="Georgia, serif">Georgia</option>
-                      <option value="Helvetica, sans-serif">Helvetica</option>
-                      <option value="Impact, sans-serif">Impact</option>
-                      <option value="Lucida Console, monospace">Lucida Console</option>
-                      <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
-                      <option value="Tahoma, sans-serif">Tahoma</option>
-                      <option value="Times New Roman, serif">Times New Roman</option>
-                      <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
-                      <option value="Verdana, sans-serif">Verdana</option>
-                    </select>
-                    <small class="field-hint">Font family for the phone number</small>
-                  </div>
-                  <div class="field-group">
-                    <label>Caller Number Font Size</label>
-                    <input type="number" name="toast.numberFontSize" placeholder="15" min="10" max="36" step="1" id="numberFontSizeInput" />
-                    <small class="field-hint">Font size in pixels (10-36px, default: 15) - Adjust to fit 10-digit numbers</small>
-                  </div>
+                <div class="field-group">
+                  <label>Caller ID Font Size</label>
+                  <input type="number" name="toast.callerIdFontSize" placeholder="20" min="10" max="36" step="1" id="callerIdFontSizeInput" />
+                  <small class="field-hint">Font size in pixels (10-36px, default: 20)</small>
                 </div>
               </div>
-
-              <!-- Actions Section -->
-              <div class="card-section">
-                <div class="section-heading">
-                  <div>
-                    <h3>Actions</h3>
-                    <p class="note">Quick actions for testing and maintenance</p>
-                  </div>
+              
+              <div class="grid two-col">
+                <div class="field-group">
+                  <label>Caller Number Font</label>
+                  <select name="toast.numberFont" id="numberFontInput">
+                    <option value="Segoe UI Variable, Segoe UI, sans-serif">Segoe UI Variable</option>
+                    <option value="Segoe UI, sans-serif">Segoe UI</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                    <option value="Calibri, sans-serif">Calibri</option>
+                    <option value="Consolas, monospace">Consolas</option>
+                    <option value="Courier New, monospace">Courier New</option>
+                    <option value="Georgia, serif">Georgia</option>
+                    <option value="Helvetica, sans-serif">Helvetica</option>
+                    <option value="Impact, sans-serif">Impact</option>
+                    <option value="Lucida Console, monospace">Lucida Console</option>
+                    <option value="Microsoft Sans Serif, sans-serif">Microsoft Sans Serif</option>
+                    <option value="Tahoma, sans-serif">Tahoma</option>
+                    <option value="Times New Roman, serif">Times New Roman</option>
+                    <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+                    <option value="Verdana, sans-serif">Verdana</option>
+                  </select>
+                  <small class="field-hint">Font family for the phone number</small>
                 </div>
+                <div class="field-group">
+                  <label>Caller Number Font Size</label>
+                  <input type="number" name="toast.numberFontSize" placeholder="15" min="10" max="36" step="1" id="numberFontSizeInput" />
+                  <small class="field-hint">Font size in pixels (10-36px, default: 15) - Adjust to fit 10-digit numbers</small>
+                </div>
+              </div>
+              
               <div class="actions">
                 <button type="button" class="primary" id="saveOptionsBtn">Save Settings</button>
-                <button type="button" class="ghost" id="restartSip">Restart SIP</button>
                 <button type="button" class="ghost" id="simulateCall">Test Toast Notification</button>
-              </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- Updates Section -->
-          <section class="content-section" id="section-updates">
-            <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>Application Updates</h2>
-                  <p class="note">Check for and install updates from GitHub releases</p>
-                </div>
-              </div>
-
-              <!-- Auto-Update Configuration Section -->
-              <div class="card-section">
-                <div class="section-heading">
-                  <div>
-                    <h3>Auto-Update Settings</h3>
-                    <p class="note">Configure automatic update checking behavior</p>
-                  </div>
-                </div>
-                
-                <div class="options-grid">
-                  <div class="toggle-group">
-                    <label>Enable Auto-Update</label>
-                    <button type="button" class="toggle" id="autoUpdateToggle" role="switch" aria-checked="true">
-                      <span></span>
-                    </button>
-                    <input type="hidden" name="updates.enabled" value="true" />
-                  </div>
-                  <div class="field-group">
-                    <label>Check Frequency</label>
-                    <select name="updates.checkFrequency" id="updateFrequencySelect">
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="never">Never</option>
-                    </select>
-                    <small class="field-hint">How often to automatically check for updates</small>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Manual Update Section -->
-              <div class="card-section">
-                <div class="section-heading">
-                  <div>
-                    <h3>Manual Update Check</h3>
-                    <p class="note">Manually check for updates and manage installation</p>
-                  </div>
-                </div>
-                
-                <div class="actions" style="margin-bottom: 16px;">
-                  <button type="button" class="primary" id="checkUpdatesBtn">Check for Updates</button>
-                </div>
-                
-                <div id="updateStatusContainer" style="padding: 12px; background: var(--bg-secondary, rgba(0,0,0,0.02)); border-radius: 8px;">
-                  <div id="updateStatusText" style="color: var(--text-primary);">No update check performed yet</div>
-                  <div id="updateStatusActions" style="margin-top: 8px; display: none;">
-                    <button type="button" class="primary" id="downloadUpdateBtn" style="margin-right: 8px;">Download Update</button>
-                    <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install & Restart</button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Update Information Section -->
-              <div class="card-section">
-                <div class="section-heading">
-                  <div>
-                    <h3>Update Information</h3>
-                    <p class="note">Current version and update details</p>
-                  </div>
-                </div>
-                
-                <div class="debug-section">
-                  <div class="debug-info">
-                    <div class="debug-item">
-                      <strong>Current Version:</strong> <span id="currentVersionInfo">-</span>
-                    </div>
-                    <div class="debug-item">
-                      <strong>Latest Available:</strong> <span id="latestVersionInfo">-</span>
-                    </div>
-                    <div class="debug-item">
-                      <strong>Last Check:</strong> <span id="lastCheckInfo">-</span>
-                    </div>
-                    <div class="debug-item">
-                      <strong>Update Status:</strong> <span id="updateStatusInfo">-</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- GitHub Integration Section -->
-              <div class="card-section">
-                <div class="section-heading">
-                  <div>
-                    <h3>GitHub Integration</h3>
-                    <p class="note">Updates are fetched from the official GitHub repository</p>
-                  </div>
-                </div>
-                
-                <div class="debug-section">
-                  <div class="debug-info">
-                    <div class="debug-item">
-                      <strong>Repository:</strong> <span style="font-family: monospace;">jaydenrussell/Sip-Toast</span>
-                    </div>
-                    <div class="debug-item">
-                      <strong>Release Channel:</strong> <span>Stable releases</span>
-                    </div>
-                    <div class="debug-item">
-                      <strong>Update Method:</strong> <span>Automatic download and install</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div style="margin-top: 12px; padding: 12px; background: var(--bg-secondary, rgba(0,0,0,0.02)); border-radius: 8px;">
-                  <small style="color: var(--text-muted); display: block; margin-bottom: 8px;">
-                    <strong>Note:</strong> Updates are automatically downloaded in the background and installed when you restart the application.
-                  </small>
-                  <small style="color: var(--text-muted); display: block;">
-                    <strong>Security:</strong> All updates are verified using digital signatures to ensure authenticity.
-                  </small>
-                </div>
               </div>
             </div>
           </section>
@@ -543,6 +375,94 @@
             </div>
           </section>
 
+          <!-- Updates Section -->
+          <section class="content-section" id="section-updates">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>Updates</h2>
+                  <p class="note">Check for and install application updates</p>
+                </div>
+              </div>
+              
+              <div class="update-status-card" id="updateCard">
+                <div class="update-current-version">
+                  <span class="update-label">Current Version:</span>
+                  <span class="update-version" id="currentVersion">-</span>
+                </div>
+                
+                <div class="update-status-display" id="updateStatusDisplay">
+                  <div class="update-status-checking" id="updateStatusChecking">
+                    <span class="spinner"></span>
+                    <span>Checking for updates...</span>
+                  </div>
+                  <div class="update-status-available" id="updateStatusAvailable" style="display: none;">
+                    <span class="update-available-icon">⬆️</span>
+                    <div class="update-available-info">
+                      <span class="update-available-version" id="availableVersion">Version 1.0.0 available</span>
+                      <span class="update-available-note">A new version is available. Download and install to get the latest features.</span>
+                    </div>
+                  </div>
+                  <div class="update-status-downloading" id="updateStatusDownloading" style="display: none;">
+                    <span class="update-downloading-icon">⬇️</span>
+                    <div class="update-downloading-info">
+                      <span class="update-downloading-progress" id="downloadProgress">Downloading... 0%</span>
+                      <div class="update-progress-bar">
+                        <div class="update-progress-fill" id="downloadProgressBar" style="width: 0%;"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="update-status-ready" id="updateStatusReady" style="display: none;">
+                    <span class="update-ready-icon">✅</span>
+                    <div class="update-ready-info">
+                      <span class="update-ready-text">Update ready to install</span>
+                      <span class="update-ready-note">Restart the application to apply the update.</span>
+                    </div>
+                  </div>
+                  <div class="update-status-uptodate" id="updateStatusUptodate" style="display: none;">
+                    <span class="update-uptodate-icon">✓</span>
+                    <span class="update-uptodate-text">You're up to date!</span>
+                  </div>
+                  <div class="update-status-error" id="updateStatusError" style="display: none;">
+                    <span class="update-error-icon">⚠️</span>
+                    <span class="update-error-text" id="updateErrorText">Unable to check for updates</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="update-actions">
+                <button type="button" class="primary" id="checkUpdatesBtnNew">Check for Updates</button>
+                <button type="button" class="secondary" id="downloadUpdateBtnNew" style="display: none;">Download Update</button>
+                <button type="button" class="primary" id="installUpdateBtnNew" style="display: none;">Install & Restart</button>
+              </div>
+              
+              <div class="update-settings">
+                <h3>Auto-Update Settings</h3>
+                <div class="options-grid">
+                  <div class="toggle-group">
+                    <label>Enable Auto-Update</label>
+                    <button type="button" class="toggle" id="autoUpdateToggleNew" role="switch" aria-checked="true">
+                      <span></span>
+                    </button>
+                    <input type="hidden" name="updates.enabled" value="true" />
+                  </div>
+                  <div class="field-group">
+                    <label>Check Frequency</label>
+                    <select name="updates.checkFrequency" id="updateFrequencySelectNew">
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="never">Never</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="actions" style="margin-top: 12px;">
+                  <button type="button" class="secondary" id="saveUpdateSettingsBtn">Save Settings</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <!-- Event Logs Section -->
           <section class="content-section" id="section-logs">
             <div class="card">
@@ -557,9 +477,18 @@
                 <select id="logFilterType" style="padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary);">
                   <option value="">All Events</option>
                   <option value="sip_incoming">SIP Incoming Calls</option>
+                  <option value="sip_registering">SIP Registering</option>
+                  <option value="sip_registered">SIP Registered</option>
+                  <option value="sip_disconnected">SIP Disconnected</option>
+                  <option value="sip_error">SIP Error</option>
                   <option value="toast_deployed">Toast Deployed</option>
                   <option value="toast_timeout">Toast Timeout</option>
                   <option value="toast_click">Toast Clicks</option>
+                  <option value="update_check">Update Check</option>
+                  <option value="update_available">Update Available</option>
+                  <option value="update_downloaded">Update Downloaded</option>
+                  <option value="update_installed">Update Installed</option>
+                  <option value="update_error">Update Error</option>
                 </select>
                 <button type="button" class="secondary" id="refreshLogsBtn" style="margin-left: auto;">Refresh</button>
                 <button type="button" class="ghost" id="clearLogsBtn" style="color: #ef4444;">Delete Logs</button>
