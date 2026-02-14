@@ -43,7 +43,7 @@ class NotificationWindow {
     this.pendingPayload = null;
 
     // Default to full size initially, will be resized when payload is received
-    // Using Windows native dialog style with only close button
+    // Using frameless window with custom title bar
     this.window = new BrowserWindow({
       width: 340,
       height: 200,
@@ -52,7 +52,7 @@ class NotificationWindow {
       maxWidth: 600,
       maxHeight: 400,
       show: false,
-      frame: true,
+      frame: false,
       resizable: true,
       alwaysOnTop: true,
       focusable: true, // Allow interaction with the toast
