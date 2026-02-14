@@ -40,12 +40,12 @@ body[data-theme='dark'] {
   color: #f1f1f1;
 }
 
-/* Title Bar with drag area and close button */
+/* Compact Title Bar with drag area and close button */
 .title-bar {
   display: flex;
   align-items: center;
-  height: 28px;
-  padding: 0 4px 0 0;
+  height: 20px;
+  padding: 0 4px;
   background: transparent;
   flex-shrink: 0;
 }
@@ -58,8 +58,8 @@ body[data-theme='dark'] {
 }
 
 .title-bar-close {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: #888;
@@ -67,27 +67,28 @@ body[data-theme='dark'] {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 3px;
   transition: background-color 0.15s ease, color 0.15s ease;
   -webkit-app-region: no-drag;
   flex-shrink: 0;
+  padding: 0;
 }
 
 .title-bar-close:hover {
-  background: rgba(200, 50, 50, 0.85);
+  background: #e81123;
   color: white;
 }
 
 .title-bar-close:active {
-  background: rgba(180, 40, 40, 1);
+  background: #c41020;
 }
 
 body[data-theme='dark'] .title-bar-close {
-  color: #aaa;
+  color: #999;
 }
 
 body[data-theme='dark'] .title-bar-close:hover {
-  background: rgba(220, 60, 60, 0.9);
+  background: #e81123;
   color: white;
 }
 
