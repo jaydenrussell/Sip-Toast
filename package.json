@@ -16,15 +16,13 @@
     "dev": "electronmon .",
     "lint": "eslint \"src/**/*.js\"",
     "prepackage": "node scripts/increment-version.js",
-    "package": "electron-builder --win --config.win.target=msi",
+    "package": "electron-builder --win --config.win.target=dir",
     "build": "npm run package",
-    "package:appx": "electron-builder --win --config.win.target=appx",
-    "package:msi": "electron-builder --win --config.win.target=msi",
-    "package:both": "electron-builder --win",
-    "package:msi-unsigned": "electron-builder --win --config.win.target=msi --config.win.sign=null",
+    "package:squirrel": "electron-builder --win --config.win.target=squirrel",
+    "package:dir": "electron-builder --win --config.win.target=dir",
     "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
     "release": "node scripts/create-release.js",
-    "build-and-release": "npm run package && npm run release"
+    "build-and-release": "npm run package:squirrel && npm run release"
   },
   "dependencies": {
     "axios": "^1.6.8",
@@ -63,7 +61,7 @@
     "win": {
       "target": [
         {
-          "target": "msi",
+          "target": "squirrel",
           "arch": [
             "x64"
           ]
@@ -71,6 +69,8 @@
       ],
       "icon": "Images/app.ico",
       "artifactName": "${productName} ${version}.${ext}"
+    },
+    "squirrelWindows": {
     },
     "appx": {
       "identityName": "YourSolution.SIPToast",
