@@ -25,16 +25,16 @@
     "build-and-release": "npm run package:nsis && npm run release"
   },
   "dependencies": {
-    "axios": "^1.6.8",
-    "electron-store": "^7.0.3",
-    "electron-updater": "^6.7.3",
+    "axios": "^1.7.9",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9",
     "eventemitter3": "^5.0.1",
     "sip": "^0.0.6",
-    "winston": "^3.11.0"
+    "winston": "^3.17.0"
   },
   "devDependencies": {
-    "electron": "^31.3.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
     "electronmon": "^2.0.2",
     "eslint": "^9.12.0"
   },
