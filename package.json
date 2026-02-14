@@ -1,7 +1,7 @@
 {
   "name": "sip-toast",
-  "version": "0.67.117",
-  "buildDate": "2026-02-12T20:31:25.279Z",
+  "version": "0.70.3",
+  "buildDate": "2026-02-14T05:59:34.216Z",
   "description": "Windows 11-ready SIP caller ID toast that looks up clients via Acuity Scheduling.",
   "main": "src/main/main.js",
   "author": "Jayden Russell",
@@ -21,24 +21,24 @@
     "package:appx": "electron-builder --win --config.win.target=appx",
     "package:msi": "electron-builder --win --config.win.target=msi",
     "package:both": "electron-builder --win",
-    "package:msi-unsigned": "electron-builder --win --config.win.target=msi --csc.link=null --csc.keyPassword=null",
+    "package:msi-unsigned": "electron-builder --win --config.win.target=msi --config.win.sign=null",
     "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
     "release": "node scripts/create-release.js",
     "build-and-release": "npm run package && npm run release"
   },
   "dependencies": {
     "axios": "^1.6.8",
-    "electron-store": "^11.0.2",
+    "electron-store": "^7.0.3",
     "electron-updater": "^6.7.3",
     "eventemitter3": "^5.0.1",
     "sip": "^0.0.6",
     "winston": "^3.11.0"
   },
   "devDependencies": {
-    "electron": "^40.4.0",
-    "electron-builder": "^26.7.0",
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3",
     "electronmon": "^2.0.2",
-    "eslint": "^10.0.0"
+    "eslint": "^9.12.0"
   },
   "build": {
     "appId": "com.yoursolution.siptoast",
@@ -55,13 +55,11 @@
     },
     "extraFiles": [
       {
-        "from": "build/update.exe",
-        "to": "update.exe"
+        "from": "scripts/update-helper.bat",
+        "to": "resources/update-helper.bat"
       }
     ],
-    "extraResources": [
-      "app-update.yml"
-    ],
+    "extraResources": [],
     "win": {
       "target": [
         {
@@ -90,7 +88,7 @@
       "menuCategory": "Utilities",
       "warningsAsErrors": false
     },
-    "msiProjectCreated": "scripts/inject-wix-fragment.js",
+    "msiProjectCreated": null,
     "afterPack": "scripts/optimize-build.js",
     "asar": true,
     "asarUnpack": [],

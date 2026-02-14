@@ -141,6 +141,157 @@ const logToastClick = (phoneNumber, success = true) => {
   return event;
 };
 
+// Log update check
+const logUpdateCheck = (trigger = 'manual') => {
+  const event = {
+    type: 'update_check',
+    timestamp: new Date().toISOString(),
+    data: {
+      trigger // 'manual', 'auto', 'app_load'
+    }
+  };
+  
+  eventLogger.info(`UPDATE_CHECK: Check triggered by ${trigger}`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log update available
+const logUpdateAvailable = (version, downloadUrl = null) => {
+  const event = {
+    type: 'update_available',
+    timestamp: new Date().toISOString(),
+    data: {
+      version,
+      downloadUrl
+    }
+  };
+  
+  eventLogger.info(`UPDATE_AVAILABLE: Version ${version} is available`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log update downloaded
+const logUpdateDownloaded = (version, filePath = null) => {
+  const event = {
+    type: 'update_downloaded',
+    timestamp: new Date().toISOString(),
+    data: {
+      version,
+      filePath
+    }
+  };
+  
+  eventLogger.info(`UPDATE_DOWNLOADED: Version ${version} downloaded`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log update installed
+const logUpdateInstalled = (version) => {
+  const event = {
+    type: 'update_installed',
+    timestamp: new Date().toISOString(),
+    data: {
+      version
+    }
+  };
+  
+  eventLogger.info(`UPDATE_INSTALLED: Version ${version} installed`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log update error
+const logUpdateError = (errorMessage, context = '') => {
+  const event = {
+    type: 'update_error',
+    timestamp: new Date().toISOString(),
+    data: {
+      error: errorMessage,
+      context
+    }
+  };
+  
+  eventLogger.error(`UPDATE_ERROR: ${errorMessage} (${context})`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log SIP registration attempt
+const logSipRegistering = (eventData) => {
+  const event = {
+    type: 'sip_registering',
+    timestamp: new Date().toISOString(),
+    data: {
+      server: eventData.server,
+      transport: eventData.transport,
+      username: eventData.username
+    }
+  };
+  
+  eventLogger.info(`SIP_REGISTERING: Attempting to register to ${eventData.server} (${eventData.transport})`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log SIP successful registration
+const logSipRegistered = (eventData) => {
+  const event = {
+    type: 'sip_registered',
+    timestamp: new Date().toISOString(),
+    data: {
+      server: eventData.server,
+      transport: eventData.transport,
+      username: eventData.username,
+      expires: eventData.expires
+    }
+  };
+  
+  eventLogger.info(`SIP_REGISTERED: Successfully registered to ${eventData.server} as ${eventData.username}`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log SIP disconnection
+const logSipDisconnected = (eventData) => {
+  const event = {
+    type: 'sip_disconnected',
+    timestamp: new Date().toISOString(),
+    data: {
+      server: eventData.server,
+      transport: eventData.transport,
+      username: eventData.username,
+      reason: eventData.reason || 'stopped'
+    }
+  };
+  
+  eventLogger.info(`SIP_DISCONNECTED: Disconnected from ${eventData.server} (reason: ${eventData.reason || 'stopped'})`, event);
+  addToBuffer(event);
+  return event;
+};
+
+// Log SIP error
+const logSipError = (errorMessage, eventData) => {
+  const event = {
+    type: 'sip_error',
+    timestamp: new Date().toISOString(),
+    data: {
+      server: eventData.server,
+      transport: eventData.transport,
+      username: eventData.username,
+      error: errorMessage,
+      statusCode: eventData.statusCode,
+      cause: eventData.cause
+    }
+  };
+  
+  eventLogger.error(`SIP_ERROR: ${errorMessage} (server: ${eventData.server})`, event);
+  addToBuffer(event);
+  return event;
+};
+
 // Get recent events
 const getRecentEvents = (count = 100, filterType = null) => {
   let events = eventLogBuffer.slice(-count);
@@ -204,12 +355,10 @@ const loadEventsFromFile = (clearBuffer = false) => {
     // Clear buffer if requested (to avoid duplicates on reload)
     if (clearBuffer) {
       eventLogBuffer.length = 0;
-      console.log('Event log buffer cleared for reload');
     }
     
     // Use current log directory (in case it changed)
     const jsonFilePath = getEventJsonFilePath();
-    console.log(`Loading events from: ${jsonFilePath}`);
     
     // First try to load from JSON file (preferred format)
     if (fs.existsSync(jsonFilePath)) {
@@ -217,45 +366,37 @@ const loadEventsFromFile = (clearBuffer = false) => {
       if (jsonContent.trim()) {
         const lines = jsonContent.split('\n').filter(line => line.trim());
         let loadedCount = 0;
-        let duplicateCount = 0;
         lines.forEach(line => {
           try {
             const event = JSON.parse(line);
             // Validate event structure
             if (event && event.type && event.timestamp && event.data) {
               // Only add if not already in buffer (avoid duplicates)
-              // Use a more robust comparison that handles different property orders
               const exists = eventLogBuffer.some(e => 
                 e.type === event.type && 
-                e.timestamp === event.timestamp
+                e.timestamp === event.timestamp &&
+                JSON.stringify(e.data) === JSON.stringify(event.data)
               );
               if (!exists) {
                 eventLogBuffer.push(event);
                 loadedCount++;
-              } else {
-                duplicateCount++;
               }
             }
           } catch (error) {
             // Skip invalid JSON lines
-            console.debug(`Skipping invalid JSON line: ${error.message}`);
           }
         });
-        console.log(`Loaded ${loadedCount} events from JSON file (duplicates skipped: ${duplicateCount}, total in buffer: ${eventLogBuffer.length})`);
+        if (loadedCount > 0) {
+          console.log(`Loaded ${loadedCount} events from JSON file (total: ${eventLogBuffer.length})`);
+        }
         return;
-      } else {
-        console.log('JSON file exists but is empty');
       }
-    } else {
-      console.log('JSON file does not exist yet');
     }
     
     // Fallback: Try to parse winston log format if JSON file doesn't exist
     if (fs.existsSync(eventLogFilePath)) {
-      console.log(`Attempting to load from winston log file: ${eventLogFilePath}`);
       const fileContent = fs.readFileSync(eventLogFilePath, 'utf8');
       if (!fileContent.trim()) {
-        console.log('Winston log file is empty');
         return;
       }
       
@@ -277,15 +418,9 @@ const loadEventsFromFile = (clearBuffer = false) => {
               try {
                 const parsed = JSON.parse(jsonStr);
                 if (parsed.type && parsed.timestamp && parsed.data) {
-                  // This is our structured event - check for duplicates
-                  const exists = eventLogBuffer.some(e => 
-                    e.type === parsed.type && 
-                    e.timestamp === parsed.timestamp
-                  );
-                  if (!exists) {
-                    eventLogBuffer.push(parsed);
-                    loadedCount++;
-                  }
+                  // This is our structured event
+                  eventLogBuffer.push(parsed);
+                  loadedCount++;
                   return;
                 }
               } catch (e) {
@@ -297,30 +432,21 @@ const loadEventsFromFile = (clearBuffer = false) => {
             const typeMatch = message.match(/^(SIP_INCOMING|TOAST_DEPLOYED|TOAST_TIMEOUT|TOAST_CLICK):/);
             if (typeMatch) {
               const type = typeMatch[1].toLowerCase().replace(/_/g, '_');
-              const exists = eventLogBuffer.some(e => 
-                e.type === type && 
-                e.timestamp === isoTimestamp
-              );
-              if (!exists) {
-                eventLogBuffer.push({
-                  type,
-                  timestamp: isoTimestamp,
-                  data: { rawMessage: message }
-                });
-                loadedCount++;
-              }
+              eventLogBuffer.push({
+                type,
+                timestamp: isoTimestamp,
+                data: { rawMessage: message }
+              });
+              loadedCount++;
             }
           }
         } catch (error) {
           // Skip lines that can't be parsed
-          console.debug(`Skipping unparseable log line: ${error.message}`);
         }
       });
       if (loadedCount > 0) {
-        console.log(`Loaded ${loadedCount} events from winston log file (total: ${eventLogBuffer.length})`);
+        console.log(`Loaded ${loadedCount} events from winston log file`);
       }
-    } else {
-      console.log('No existing log files found, starting with empty event buffer');
     }
   } catch (error) {
     // If file reading fails, just continue with empty buffer
@@ -337,6 +463,15 @@ module.exports = {
   logToastDeployed,
   logToastTimeout,
   logToastClick,
+  logUpdateCheck,
+  logUpdateAvailable,
+  logUpdateDownloaded,
+  logUpdateInstalled,
+  logUpdateError,
+  logSipRegistering,
+  logSipRegistered,
+  logSipDisconnected,
+  logSipError,
   getRecentEvents,
   getEventsByType,
   getEventsInRange,

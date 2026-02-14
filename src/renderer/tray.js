@@ -1,134 +1,104 @@
-// Global error handler
-window.addEventListener('error', (event) => {
-  console.error('[Global Error]', event.error);
-});
-
-window.addEventListener('unhandledrejection', (event) => {
-  console.error('[Unhandled Promise Rejection]', event.reason);
-});
-
 const form = document.getElementById('settingsForm');
 const saveStatus = document.getElementById('saveStatus');
 const restartButton = document.getElementById('restartSip');
 const simulateButton = document.getElementById('simulateCall');
 const sipStatus = document.getElementById('sipStatus');
 const autoLaunchToggle = document.getElementById('autoLaunchToggle');
-const autoLaunchInput = form ? form.querySelector('[name="app.launchAtLogin"]') : null;
+const autoLaunchInput = form.querySelector('[name="app.launchAtLogin"]');
 const sectionTitle = document.getElementById('sectionTitle');
 const sectionSubtitle = document.getElementById('sectionSubtitle');
 
-console.log('[Init] DOM elements initialized:', {
-  form: !!form,
-  saveStatus: !!saveStatus,
-  restartButton: !!restartButton,
-  simulateButton: !!simulateButton,
-  sipStatus: !!sipStatus,
-  autoLaunchToggle: !!autoLaunchToggle,
-  sectionTitle: !!sectionTitle,
-  sectionSubtitle: !!sectionSubtitle
-});
-
 let currentSettings = null;
 
-// DOM Cache - Cache frequently accessed elements
-const $ = (selector) => {
-  const cache = $.cache || ($.cache = new Map());
-  if (!cache.has(selector)) {
-    const el = document.querySelector(selector);
-    if (el) cache.set(selector, el);
-  }
-  return cache.get(selector);
-};
-
-// Cache field names split to avoid repeated string operations
-const fieldNames = [
-  'sip.server', 'sip.port', 'sip.transport', 'sip.domain', 'sip.username', 'sip.password',
-  'acuity.enabled', 'acuity.userId', 'acuity.apiKey',
-  'toast.autoDismissMs', 'toast.numberFont', 'toast.numberFontSize', 'toast.callerIdFont', 'toast.callerIdFontSize',
-  'updates.enabled', 'updates.checkFrequency'
-];
-
-// Optimized field parts cache
-const fieldPartsCache = new Map();
-const getFieldParts = (name) => {
-  if (!fieldPartsCache.has(name)) {
-    fieldPartsCache.set(name, name.split('.'));
-  }
-  return fieldPartsCache.get(name);
-};
-
-// Section data cache
+// Sidebar navigation
+const navItems = document.querySelectorAll('.nav-item');
 const sections = {
   sip: { title: 'SIP Provider', subtitle: 'Configure your SIP connection settings' },
   acuity: { title: 'Acuity Scheduler', subtitle: 'Configure API credentials for client lookups' },
   options: { title: 'Options', subtitle: 'Application settings and controls' },
-  updates: { title: 'Updates', subtitle: 'Check for and install application updates' },
   firewall: { title: 'Firewall', subtitle: 'Check Windows Firewall configuration' },
+  updates: { title: 'Updates', subtitle: 'Check for and install application updates' },
   logs: { title: 'Event Logs', subtitle: 'View SIP calls, toast notifications, and user interactions' },
   about: { title: 'About', subtitle: 'Application information' }
 };
 
-// Optimized navigation with event delegation
-const initNavigation = () => {
-  const navContainer = document.querySelector('.sidebar-nav');
-  if (!navContainer) {
-    console.error('[Navigation] Sidebar nav container not found!');
-    return;
-  }
-  
-  console.log('[Navigation] Sidebar nav found, attaching click listener');
-  
-  navContainer.addEventListener('click', (e) => {
-    console.log('[Navigation] Click event triggered on:', e.target);
-    const item = e.target.closest('.nav-item');
-    console.log('[Navigation] Found nav item:', item);
-    
-    if (!item) {
-      console.log('[Navigation] No nav item found from click target');
-      return;
-    }
-    
+navItems.forEach((item) => {
+  item.addEventListener('click', () => {
     const section = item.dataset.section;
-    console.log('[Navigation] Section to switch to:', section);
     
-    if (!section || !sections[section]) {
-      console.log('[Navigation] Invalid section:', section);
-      return;
-    }
-    
-    // Update nav state
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    // Update active nav item
+    navItems.forEach((nav) => nav.classList.remove('active'));
     item.classList.add('active');
     
-    // Update sections
-    document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+    // Show/hide sections
+    document.querySelectorAll('.content-section').forEach((sec) => {
+      sec.classList.remove('active');
+    });
     const targetSection = document.getElementById(`section-${section}`);
-    console.log('[Navigation] Target section element:', targetSection);
-    
     if (targetSection) {
       targetSection.classList.add('active');
-      console.log('[Navigation] Activated section:', section);
-    } else {
-      console.error('[Navigation] Section element not found:', `section-${section}`);
     }
     
     // Update header
-    const titleEl = document.getElementById('sectionTitle');
-    const subtitleEl = document.getElementById('sectionSubtitle');
-    if (titleEl) titleEl.textContent = sections[section].title;
-    if (subtitleEl) subtitleEl.textContent = sections[section].subtitle;
+    if (sections[section]) {
+      sectionTitle.textContent = sections[section].title;
+      sectionSubtitle.textContent = sections[section].subtitle;
+    }
     
-    // Lazy load section data
-    const loaders = {
-      logs: () => { loadEventLogs(); loadLogFilePath(); },
-      firewall: checkFirewall,
-      updates: () => { loadUpdateStatus(); loadUpdateInformation(); }
-    };
-    if (loaders[section]) {
-      console.log('[Navigation] Calling lazy loader for:', section);
-      loaders[section]();
+    // Load event logs if logs section is shown
+    if (section === 'logs') {
+      loadEventLogs();
+      loadLogFilePath();
+    }
+    
+    // Load firewall status if firewall section is shown
+    if (section === 'firewall') {
+      // Don't auto-check, let user click the button
+    }
+    
+    // Load update status if options section is shown
+    if (section === 'options') {
+      loadUpdateStatus();
+    }
+    
+    // Load update status if updates section is shown
+    if (section === 'updates') {
+      loadUpdateStatusNew();
     }
   });
+});
+
+// Cache field names split to avoid repeated string operations
+const fieldNames = [
+  'sip.server',
+  'sip.port',
+  'sip.transport',
+  'sip.domain',
+  'sip.username',
+  'sip.password',
+  'acuity.enabled',
+  'acuity.userId',
+  'acuity.apiKey',
+  'toast.autoDismissMs',
+  'toast.numberFont',
+  'toast.numberFontSize',
+  'toast.callerIdFont',
+  'toast.callerIdFontSize',
+  'updates.enabled',
+  'updates.checkFrequency'
+];
+
+// Cache split results for field names (memory optimization)
+const fieldNameCache = new Map();
+const getFieldParts = (name) => {
+  let parts = fieldNameCache.get(name);
+  if (!parts) {
+    parts = name.split('.');
+    if (fieldNameCache.size < 50) { // Limit cache size
+      fieldNameCache.set(name, parts);
+    }
+  }
+  return parts;
 };
 
 const getInput = (name) => form.querySelector(`[name="${name}"]`);
@@ -139,80 +109,25 @@ const updateToggleVisual = (state) => {
 };
 
 const renderSettings = (settings) => {
-  // Ensure settings object exists with all required sections
-  console.log('[Render] renderSettings called with:', JSON.stringify(settings, null, 2));
-  const safeSettings = settings || {};
-  
-  // Ensure each section exists to prevent undefined errors
-  const sip = safeSettings.sip || {};
-  const acuity = safeSettings.acuity || {};
-  const toast = safeSettings.toast || {};
-  const app = safeSettings.app || {};
-  const updates = safeSettings.updates || {};
-  
-  console.log('[Render] Parsed sections:', {
-    sip: Object.keys(sip),
-    acuity: Object.keys(acuity),
-    toast: Object.keys(toast),
-    app: Object.keys(app),
-    updates: Object.keys(updates)
-  });
-  
   fieldNames.forEach((name) => {
     const input = getInput(name);
-    if (!input) {
-      console.warn(`[Render] Input not found for field: ${name}`);
-      return;
-    }
+    if (!input) return;
     
     // Use cached split result
     const parts = getFieldParts(name);
     const [section, key] = parts;
-    
-    // Get value from the appropriate section with safe fallback
-    let value = null;
-    if (section === 'sip') {
-      value = sip[key];
-    } else if (section === 'acuity') {
-      value = acuity[key];
-    } else if (section === 'toast') {
-      value = toast[key];
-    } else if (section === 'app') {
-      value = app[key];
-    } else if (section === 'updates') {
-      value = updates[key];
-    }
-    
-    console.log(`[Render] Field ${name}: value=${value}, inputType=${input.tagName}`);
+    let value = (settings[section] && settings[section][key]);
     
     // Set default value for port based on transport
-    if (key === 'port' && (value === null || value === undefined || value === '')) {
+    if (key === 'port' && !value) {
       const transportInput = form.querySelector('[name="sip.transport"]');
       const transport = transportInput ? transportInput.value : 'udp';
       value = transport === 'tls' ? 5061 : 5060;
     }
     
     // Set default transport if not set
-    if (key === 'transport' && (value === null || value === undefined || value === '')) {
+    if (key === 'transport' && !value) {
       value = 'udp';
-    }
-    
-    // Set default toast timeout if not set (handle 0 as valid)
-    if (key === 'autoDismissMs' && (value === null || value === undefined || value === '' || value === 0)) {
-      value = 20000; // Default 20 seconds
-    }
-    
-    // Set default font sizes if not set
-    if (key === 'numberFontSize' && (value === null || value === undefined || value === '')) {
-      value = 15;
-    }
-    if (key === 'callerIdFontSize' && (value === null || value === undefined || value === '')) {
-      value = 20;
-    }
-    
-    // Set default fonts if not set
-    if ((key === 'numberFont' || key === 'callerIdFont') && (value === null || value === undefined || value === '')) {
-      value = 'Segoe UI Variable, Segoe UI, sans-serif';
     }
     
     // Handle select elements - check if value exists in options
@@ -226,18 +141,21 @@ const renderSettings = (settings) => {
       }
     }
     
-    // Ensure we always set a value, even if empty string
-    input.value = value !== null && value !== undefined ? value : '';
-    console.log(`[Render] Final value for ${name}: "${input.value}"`);
+    input.value = value || '';
   });
 
-  const launchAtLogin = typeof app.launchAtLogin === 'boolean' ? app.launchAtLogin : true;
+  const launchAtLogin =
+    (settings.app && typeof settings.app.launchAtLogin === 'boolean'
+      ? settings.app.launchAtLogin
+      : true);
   updateToggleVisual(launchAtLogin);
   
   // Handle Acuity enabled toggle
   const acuityEnabledToggle = document.getElementById('acuityEnabledToggle');
   if (acuityEnabledToggle) {
-    const acuityEnabled = typeof acuity.enabled === 'boolean' ? acuity.enabled : false;
+    const acuityEnabled = settings.acuity && typeof settings.acuity.enabled === 'boolean'
+      ? settings.acuity.enabled
+      : false;
     acuityEnabledToggle.setAttribute('aria-checked', acuityEnabled ? 'true' : 'false');
     const acuityEnabledInput = form.querySelector('[name="acuity.enabled"]');
     if (acuityEnabledInput) {
@@ -248,7 +166,9 @@ const renderSettings = (settings) => {
   // Handle Auto-update enabled toggle
   const autoUpdateToggle = document.getElementById('autoUpdateToggle');
   if (autoUpdateToggle) {
-    const updatesEnabled = typeof updates.enabled === 'boolean' ? updates.enabled : true;
+    const updatesEnabled = settings.updates && typeof settings.updates.enabled === 'boolean'
+      ? settings.updates.enabled
+      : true;
     autoUpdateToggle.setAttribute('aria-checked', updatesEnabled ? 'true' : 'false');
     const autoUpdateInput = form.querySelector('[name="updates.enabled"]');
     if (autoUpdateInput) {
@@ -258,8 +178,8 @@ const renderSettings = (settings) => {
 
   // Handle update check frequency
   const updateFrequencySelect = document.getElementById('updateFrequencySelect');
-  if (updateFrequencySelect) {
-    updateFrequencySelect.value = updates.checkFrequency || 'daily';
+  if (updateFrequencySelect && settings.updates) {
+    updateFrequencySelect.value = settings.updates.checkFrequency || 'daily';
   }
 
 };
@@ -298,18 +218,7 @@ const collectPayload = () => {
     
     // Convert numeric fields
     if (key === 'port' || key === 'autoDismissMs' || key === 'numberFontSize' || key === 'callerIdFontSize') {
-      if (key === 'port') {
-        value = value ? Number(value) : 5060;
-      } else if (key === 'autoDismissMs') {
-        const numValue = value ? Number(value) : 0;
-        value = numValue >= 1000 ? numValue : 20000; // Default 20s if invalid
-      } else if (key === 'numberFontSize') {
-        const numValue = value ? Number(value) : 0;
-        value = numValue >= 10 ? numValue : 15; // Default 15px if invalid
-      } else if (key === 'callerIdFontSize') {
-        const numValue = value ? Number(value) : 0;
-        value = numValue >= 10 ? numValue : 20; // Default 20px if invalid
-      }
+      value = value ? Number(value) : (key === 'port' ? 5060 : null);
     }
     
     payload[section][key] = value;
@@ -384,41 +293,14 @@ const setSaveStatus = (message, tone = 'neutral') => {
 
 
 const loadSettings = async () => {
-  try {
-    console.log('[Settings] Loading settings from main process...');
-    const settings = await window.trayAPI.getSettings();
-    console.log('[Settings] Raw settings received:', JSON.stringify(settings, null, 2));
-    
-    currentSettings = settings;
-    console.log('[Settings] currentSettings updated, calling renderSettings...');
-    renderSettings(currentSettings);
-    console.log('[Settings] renderSettings completed');
-  } catch (error) {
-    console.error('[Settings] ERROR loading settings:', error);
-    console.error('[Settings] Stack:', error.stack);
-    // Use default settings on error
-    currentSettings = {
-      sip: { server: null, port: 5060, transport: 'udp', domain: null, username: null, password: null, uri: null, displayName: null },
-      acuity: { enabled: false, userId: null, apiKey: null },
-      toast: { autoDismissMs: 20000, numberFont: 'Segoe UI Variable, Segoe UI, sans-serif', numberFontSize: 15, callerIdFont: 'Segoe UI Variable, Segoe UI, sans-serif', callerIdFontSize: 20 },
-      app: { launchAtLogin: true },
-      updates: { enabled: true, checkFrequency: 'daily', lastCheckTime: null }
-    };
-    console.log('[Settings] Using default fallback settings');
-    renderSettings(currentSettings);
-  }
+  currentSettings = await window.trayAPI.getSettings();
+  renderSettings(currentSettings);
 };
 
 const updateSipStatus = (status) => {
-  if (!status) {
-    console.warn('[SIP] updateSipStatus called with null/undefined status');
-    sipStatus.textContent = 'Unknown';
-    sipStatus.dataset.state = 'unknown';
-    return;
-  }
+  if (!status) return;
   sipStatus.textContent = status.state.replace('-', ' ');
   sipStatus.dataset.state = status.state;
-  console.log('[SIP] Status updated to:', status.state);
 };
 
 const saveSettings = async (section = 'all') => {
@@ -457,21 +339,17 @@ const saveSettings = async (section = 'all') => {
   }
 };
 
-if (form) {
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await saveSettings('all');
-  });
-}
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  await saveSettings('all');
+});
 
-if (restartButton) {
-  restartButton.addEventListener('click', async () => {
-    setSaveStatus('Restarting SIP…');
-    await window.trayAPI.restartSip();
-    setSaveStatus('Restart signal sent', 'success');
-    await window.trayAPI.logAction('SIP connection restarted');
-  });
-}
+restartButton.addEventListener('click', async () => {
+  setSaveStatus('Restarting SIP…');
+  await window.trayAPI.restartSip();
+  setSaveStatus('Restart signal sent', 'success');
+  await window.trayAPI.logAction('SIP connection restarted');
+});
 
 // Save buttons
 const saveSipBtn = document.getElementById('saveSipBtn');
@@ -484,24 +362,7 @@ const sipDebugSection = document.getElementById('sipDebugSection');
 const acuityDebugSection = document.getElementById('acuityDebugSection');
 const toastTimeoutInput = document.getElementById('toastTimeoutInput');
 const sipTransportSelect = document.getElementById('sipTransport');
-const sipPortInput = form ? form.querySelector('[name="sip.port"]') : null;
-const reloadSettingsBtn = document.getElementById('reloadSettingsBtn');
-
-// Reload settings button
-if (reloadSettingsBtn) {
-  reloadSettingsBtn.addEventListener('click', async () => {
-    console.log('[Settings] Manual reload triggered');
-    setSaveStatus('Reloading settings...', 'neutral');
-    try {
-      await loadSettings();
-      setSaveStatus('Settings reloaded', 'success');
-      console.log('[Settings] Settings reloaded successfully');
-    } catch (error) {
-      console.error('[Settings] Error reloading settings:', error);
-      setSaveStatus('Error reloading settings', 'error');
-    }
-  });
-}
+const sipPortInput = form.querySelector('[name="sip.port"]');
 
 // Update port when transport changes
 if (sipTransportSelect && sipPortInput) {
@@ -661,42 +522,19 @@ const installUpdateBtn = document.getElementById('installUpdateBtn');
 const updateStatusDisplay = (status) => {
   if (!updateStatusContainer || !updateStatusText) return;
   
-  // Handle checking state
   if (status.checking) {
     updateStatusContainer.style.display = 'block';
-    updateStatusText.textContent = status.checkingMessage || 'Checking for updates...';
+    updateStatusText.textContent = 'Checking for updates...';
     updateStatusText.style.color = 'var(--text-primary)';
     updateStatusActions.style.display = 'none';
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = true;
-    if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'none';
-    if (installUpdateBtn) installUpdateBtn.style.display = 'none';
-    return;
-  }
-  
-  // Handle error state
-  if (status.error) {
+  } else if (status.error) {
     updateStatusContainer.style.display = 'block';
     updateStatusText.textContent = `Error: ${status.error}`;
     updateStatusText.style.color = '#ef4444';
     updateStatusActions.style.display = 'none';
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-    return;
-  }
-  
-  // Handle update downloaded state
-  if (status.updateDownloaded) {
-    updateStatusContainer.style.display = 'block';
-    updateStatusText.textContent = status.message || 'Update downloaded and ready to install';
-    updateStatusText.style.color = '#10b981';
-    updateStatusActions.style.display = 'block';
-    if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'none';
-    if (installUpdateBtn) installUpdateBtn.style.display = 'inline-block';
-    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-    return;
-  }
-  
-  // Handle update available state
-  if (status.updateAvailable) {
+  } else if (status.updateAvailable) {
     updateStatusContainer.style.display = 'block';
     updateStatusText.textContent = `Update available: Version ${status.version || 'Unknown'}`;
     updateStatusText.style.color = '#10b981';
@@ -704,15 +542,21 @@ const updateStatusDisplay = (status) => {
     if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'inline-block';
     if (installUpdateBtn) installUpdateBtn.style.display = 'none';
     if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
-    return;
+  } else if (status.updateDownloaded) {
+    updateStatusContainer.style.display = 'block';
+    updateStatusText.textContent = 'Update downloaded and ready to install';
+    updateStatusText.style.color = '#10b981';
+    updateStatusActions.style.display = 'block';
+    if (downloadUpdateBtn) downloadUpdateBtn.style.display = 'none';
+    if (installUpdateBtn) installUpdateBtn.style.display = 'inline-block';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
+  } else {
+    updateStatusContainer.style.display = 'block';
+    updateStatusText.textContent = `No updates available. Current version: ${status.currentVersion || 'Unknown'}`;
+    updateStatusText.style.color = 'var(--text-muted)';
+    updateStatusActions.style.display = 'none';
+    if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
   }
-  
-  // Handle no updates state
-  updateStatusContainer.style.display = 'block';
-  updateStatusText.textContent = status.message || `No updates available. Current version: ${status.currentVersion || 'Unknown'}`;
-  updateStatusText.style.color = 'var(--text-muted)';
-  updateStatusActions.style.display = 'none';
-  if (checkUpdatesBtn) checkUpdatesBtn.disabled = false;
 };
 
 // Check for updates button handler
@@ -720,21 +564,16 @@ if (checkUpdatesBtn) {
   checkUpdatesBtn.addEventListener('click', async () => {
     try {
       updateStatusDisplay({ checking: true });
-      // Try GitHub API first, fall back to electron-updater
-      let result;
-      try {
-        result = await window.trayAPI.checkForUpdatesGithub();
-      } catch {
-        result = await window.trayAPI.checkForUpdates();
-      }
+      const result = await window.trayAPI.checkForUpdates();
       
       if (result.error) {
         updateStatusDisplay({ error: result.error });
       } else {
+        // Get current status
         const status = await window.trayAPI.getUpdateStatus();
         updateStatusDisplay({
           checking: false,
-          updateAvailable: result.updateAvailable || status.updateAvailable || false,
+          updateAvailable: result.updateAvailable || false,
           version: result.version || status.currentVersion,
           currentVersion: status.currentVersion
         });
@@ -749,42 +588,39 @@ if (checkUpdatesBtn) {
 if (downloadUpdateBtn) {
   downloadUpdateBtn.addEventListener('click', async () => {
     try {
-      updateStatusDisplay({ checking: true, checkingMessage: 'Downloading update...' });
+      updateStatusDisplay({ checking: true });
       const result = await window.trayAPI.downloadUpdate();
+      
       if (result.error) {
         updateStatusDisplay({ error: result.error });
       } else {
+        // Get updated status
         const status = await window.trayAPI.getUpdateStatus();
         updateStatusDisplay({
           checking: false,
-          checkingMessage: null,
-          updateDownloaded: true,
-          updateAvailable: false,
-          currentVersion: status.currentVersion,
-          message: result.message || 'Update downloaded successfully'
+          updateDownloaded: status.updateDownloaded || false,
+          currentVersion: status.currentVersion
         });
-        // Refresh update info display
-        loadUpdateInformation();
       }
     } catch (error) {
-      console.error('Download update error:', error);
-      updateStatusDisplay({ error: error.message || 'Failed to download update' });
+      updateStatusDisplay({ error: error.message });
     }
   });
 }
 
-// Install update button handler
+// Install update button handler - now triggers download + install
 if (installUpdateBtn) {
   installUpdateBtn.addEventListener('click', async () => {
-    if (!confirm('This will install the update and restart the application. Continue?')) {
+    if (!confirm('This will download and install the update. The application will restart after installation. Continue?')) {
       return;
     }
     
     try {
-      const result = await window.trayAPI.installUpdate();
+      const result = await window.trayAPI.downloadUpdate();
       if (result.error) {
         alert(`Failed to install update: ${result.error}`);
       }
+      // App will restart, so no need to update UI
     } catch (error) {
       alert(`Failed to install update: ${error.message}`);
     }
@@ -807,354 +643,6 @@ const loadUpdateStatus = async () => {
   }
 };
 
-// Function to load detailed update information
-const loadUpdateInformation = async () => {
-  try {
-    const status = await window.trayAPI.getUpdateStatus();
-    const settings = await window.trayAPI.getSettings();
-    
-    // Update current version info
-    const currentVersionInfo = document.getElementById('currentVersionInfo');
-    if (currentVersionInfo) {
-      currentVersionInfo.textContent = status.currentVersion || 'Unknown';
-    }
-    
-    // Update latest version info
-    const latestVersionInfo = document.getElementById('latestVersionInfo');
-    if (latestVersionInfo) {
-      latestVersionInfo.textContent = status.updateAvailable ? (status.version || 'Unknown') : 'Up to date';
-    }
-    
-    // Update last check info
-    const lastCheckInfo = document.getElementById('lastCheckInfo');
-    if (lastCheckInfo) {
-      const updateSettings = settings.updates || {};
-      const lastCheckTime = updateSettings.lastCheckTime;
-      if (lastCheckTime) {
-        const date = new Date(lastCheckTime);
-        lastCheckInfo.textContent = date.toLocaleString();
-      } else {
-        lastCheckInfo.textContent = 'Never';
-      }
-    }
-    
-    // Update update status info
-    const updateStatusInfo = document.getElementById('updateStatusInfo');
-    if (updateStatusInfo) {
-      if (status.checking) {
-        updateStatusInfo.textContent = 'Checking for updates...';
-        updateStatusInfo.style.color = '#f59e0b';
-      } else if (status.updateAvailable) {
-        updateStatusInfo.textContent = 'Update available';
-        updateStatusInfo.style.color = '#10b981';
-      } else if (status.updateDownloaded) {
-        updateStatusInfo.textContent = 'Update downloaded';
-        updateStatusInfo.style.color = '#10b981';
-      } else {
-        updateStatusInfo.textContent = 'Up to date';
-        updateStatusInfo.style.color = '#10b981';
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load update information:', error);
-  }
-};
-
-// ==========================================
-// Title Bar Update Button Handlers - Discord-style
-// ==========================================
-
-// Update dropdown elements
-const updateBtn = document.getElementById('updateBtn');
-const updateDropdown = document.getElementById('updateDropdown');
-const updateOverlay = document.getElementById('updateOverlay');
-const updateDropdownClose = document.getElementById('updateDropdownClose');
-const updateDropdownContent = document.getElementById('updateDropdownContent');
-const updateActionBtn = document.getElementById('updateActionBtn');
-
-// Update button click handler - show dropdown
-if (updateBtn) {
-  updateBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleUpdateDropdown();
-  });
-}
-
-// Close dropdown handlers
-if (updateOverlay) {
-  updateOverlay.addEventListener('click', hideUpdateDropdown);
-}
-
-if (updateDropdownClose) {
-  updateDropdownClose.addEventListener('click', hideUpdateDropdown);
-}
-
-// Toggle update dropdown visibility
-function toggleUpdateDropdown() {
-  if (!updateDropdown || !updateOverlay) return;
-  
-  const isVisible = updateDropdown.style.display === 'block';
-  if (isVisible) {
-    hideUpdateDropdown();
-  } else {
-    showUpdateDropdown();
-  }
-}
-
-// Show update dropdown
-function showUpdateDropdown() {
-  if (!updateDropdown || !updateOverlay) return;
-  
-  updateDropdown.style.display = 'block';
-  updateOverlay.style.display = 'block';
-  
-  // Load current update status
-  loadUpdateDropdownContent();
-}
-
-// Hide update dropdown
-function hideUpdateDropdown() {
-  if (!updateDropdown || !updateOverlay) return;
-  
-  updateDropdown.style.display = 'none';
-  updateOverlay.style.display = 'none';
-}
-
-// Load update dropdown content based on current status
-async function loadUpdateDropdownContent() {
-  if (!updateDropdownContent || !updateActionBtn) return;
-  
-  try {
-    const status = await window.trayAPI.getUpdateStatus();
-    
-    if (status.checking) {
-      updateDropdownContent.innerHTML = `
-        <div class="update-version-info">
-          <h4>Checking for updates...</h4>
-          <p>Please wait while we check for the latest version.</p>
-        </div>
-      `;
-      updateActionBtn.textContent = 'Checking...';
-      updateActionBtn.disabled = true;
-      updateActionBtn.className = 'update-action-button primary';
-      return;
-    }
-    
-    if (status.updateDownloaded) {
-      updateDropdownContent.innerHTML = `
-        <div class="update-version-info">
-          <h4>Update Ready!</h4>
-          <p>Version ${status.version} has been downloaded and is ready to install.</p>
-        </div>
-        <div class="update-downloaded-info">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-          <span>Download complete</span>
-        </div>
-      `;
-      updateActionBtn.textContent = 'Install & Restart';
-      updateActionBtn.disabled = false;
-      updateActionBtn.className = 'update-action-button success';
-      updateActionBtn.onclick = installUpdate;
-      return;
-    }
-    
-    if (status.updateAvailable) {
-      const releaseNotes = status.releaseNotes || 'No release notes available.';
-      
-      // Truncate release notes if too long
-      const truncatedNotes = releaseNotes.length > 300 
-        ? releaseNotes.substring(0, 300) + '...'
-        : releaseNotes;
-      
-      updateDropdownContent.innerHTML = `
-        <div class="update-version-info">
-          <h4>Update Available</h4>
-          <p>Version ${status.version} is now available. You are currently running version ${status.currentVersion}.</p>
-        </div>
-        <div class="update-progress-container" id="updateProgressContainer" style="display: none;">
-          <div class="update-progress-label">
-            <span>Downloading...</span>
-            <span id="updateProgressPercent">0%</span>
-          </div>
-          <div class="update-progress-bar">
-            <div class="update-progress-fill" id="updateProgressFill" style="width: 0%;"></div>
-          </div>
-        </div>
-        <div class="update-release-notes">${escapeHtml(truncatedNotes)}</div>
-      `;
-      updateActionBtn.textContent = 'Download Update';
-      updateActionBtn.disabled = false;
-      updateActionBtn.className = 'update-action-button primary';
-      updateActionBtn.onclick = downloadAndInstallUpdate;
-      return;
-    }
-    
-    // No update available
-    updateDropdownContent.innerHTML = `
-      <div class="update-version-info">
-        <h4>You're Up to Date!</h4>
-        <p>You are running the latest version (${status.currentVersion}). We'll notify you when a new update is available.</p>
-      </div>
-    `;
-    updateActionBtn.textContent = 'Check for Updates';
-    updateActionBtn.disabled = false;
-    updateActionBtn.className = 'update-action-button primary';
-    updateActionBtn.onclick = checkForUpdates;
-  } catch (error) {
-    updateDropdownContent.innerHTML = `
-      <div class="update-error">
-        Failed to load update status: ${escapeHtml(error.message)}
-      </div>
-    `;
-    updateActionBtn.textContent = 'Retry';
-    updateActionBtn.disabled = false;
-    updateActionBtn.className = 'update-action-button primary';
-    updateActionBtn.onclick = () => {
-      loadUpdateDropdownContent();
-    };
-  }
-}
-
-// Helper function to escape HTML
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// Check for updates
-async function checkForUpdates() {
-  if (!updateActionBtn) return;
-  
-  updateActionBtn.textContent = 'Checking...';
-  updateActionBtn.disabled = true;
-  
-  try {
-    const result = await window.trayAPI.checkForUpdates();
-    loadUpdateDropdownContent();
-    
-    // Also reload the main update status
-    loadUpdateStatus();
-    loadUpdateInformation();
-  } catch (error) {
-    updateDropdownContent.innerHTML = `
-      <div class="update-error">
-        Failed to check for updates: ${escapeHtml(error.message)}
-      </div>
-    `;
-    updateActionBtn.textContent = 'Retry';
-    updateActionBtn.disabled = false;
-  }
-}
-
-// Download and install update
-async function downloadAndInstallUpdate() {
-  if (!updateActionBtn) return;
-  
-  updateActionBtn.textContent = 'Downloading...';
-  updateActionBtn.disabled = true;
-  
-  // Show progress container
-  const progressContainer = document.getElementById('updateProgressContainer');
-  if (progressContainer) {
-    progressContainer.style.display = 'block';
-  }
-  
-  try {
-    const result = await window.trayAPI.downloadUpdate();
-    
-    // Listen for download progress
-    const checkProgress = setInterval(async () => {
-      const status = await window.trayAPI.getUpdateStatus();
-      
-      if (status.updateProgress !== undefined && status.updateProgress > 0) {
-        const progressFill = document.getElementById('updateProgressFill');
-        const progressPercent = document.getElementById('updateProgressPercent');
-        
-        if (progressFill) {
-          progressFill.style.width = status.updateProgress + '%';
-        }
-        if (progressPercent) {
-          progressPercent.textContent = status.updateProgress + '%';
-        }
-      }
-      
-      if (status.updateDownloaded) {
-        clearInterval(checkProgress);
-        loadUpdateDropdownContent();
-        
-        // Also reload the main update status
-        loadUpdateStatus();
-        loadUpdateInformation();
-      }
-    }, 500);
-    
-    // Set a timeout to stop checking after 5 minutes
-    setTimeout(() => {
-      clearInterval(checkProgress);
-    }, 300000);
-    
-  } catch (error) {
-    updateDropdownContent.innerHTML = `
-      <div class="update-error">
-        Failed to download update: ${escapeHtml(error.message)}
-      </div>
-    `;
-    updateActionBtn.textContent = 'Retry Download';
-    updateActionBtn.disabled = false;
-    
-    const progressContainer = document.getElementById('updateProgressContainer');
-    if (progressContainer) {
-      progressContainer.style.display = 'none';
-    }
-  }
-}
-
-// Install update
-async function installUpdate() {
-  if (!updateActionBtn) return;
-  
-  updateActionBtn.textContent = 'Installing...';
-  updateActionBtn.disabled = true;
-  
-  try {
-    await window.trayAPI.installUpdate();
-  } catch (error) {
-    updateDropdownContent.innerHTML = `
-      <div class="update-error">
-        Failed to install update: ${escapeHtml(error.message)}
-      </div>
-    `;
-    updateActionBtn.textContent = 'Retry';
-    updateActionBtn.disabled = false;
-  }
-}
-
-// Listen for update status changes from main process
-window.trayAPI.onUpdateStatus((status) => {
-  // Update the title bar button visibility
-  if (updateBtn) {
-    if (status.updateAvailable) {
-      updateBtn.style.display = 'flex';
-      updateBtn.classList.add('update-available');
-    } else if (status.updateDownloaded) {
-      updateBtn.style.display = 'flex';
-      updateBtn.classList.add('update-downloaded');
-    } else {
-      updateBtn.style.display = 'none';
-      updateBtn.classList.remove('update-available', 'update-downloaded');
-    }
-  }
-  
-  // If dropdown is open, refresh content
-  if (updateDropdown && updateDropdown.style.display === 'block') {
-    loadUpdateDropdownContent();
-  }
-});
-
 if (saveAllBtn) {
   saveAllBtn.addEventListener('click', async () => {
     await saveSettings('all');
@@ -1163,15 +651,15 @@ if (saveAllBtn) {
 
 if (simulateButton) {
   simulateButton.addEventListener('click', async () => {
-    setSaveStatus('Simulating toast notification with current settings…');
+    setSaveStatus('Simulating SIP call and Acuity API query…');
     try {
-      await window.trayAPI.logAction('Test toast notification initiated');
+      await window.trayAPI.logAction('Test SIP call initiated');
       await window.trayAPI.simulateCall();
-      setSaveStatus('Test toast notification shown', 'success');
-      await window.trayAPI.logAction('Test toast notification completed');
+      setSaveStatus('Test call simulated - check toast notification', 'success');
+      await window.trayAPI.logAction('Test SIP call completed - toast notification shown');
     } catch (error) {
       setSaveStatus('Simulation failed', 'error');
-      await window.trayAPI.logAction(`Test toast notification failed: ${error.message}`);
+      await window.trayAPI.logAction(`Test SIP call failed: ${error.message}`);
     }
   });
 }
@@ -1244,67 +732,11 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     loadAboutInfo();
     setupWindowControls();
-    setupResponsiveLayout();
   });
 } else {
   loadAboutInfo();
   setupWindowControls();
-  setupResponsiveLayout();
 }
-
-// Responsive layout management
-const setupResponsiveLayout = () => {
-  // Handle window resize events from main process
-  window.addEventListener('resize', () => {
-    adjustLayoutForSize();
-  });
-  
-  // Handle custom resize events from main process
-  if (window.trayAPI && window.trayAPI.onWindowResized) {
-    window.trayAPI.onWindowResized((event, bounds) => {
-      adjustLayoutForSize(bounds);
-    });
-  }
-  
-  // Initial layout adjustment
-  adjustLayoutForSize();
-};
-
-const adjustLayoutForSize = (bounds = null) => {
-  const width = bounds ? bounds.width : window.innerWidth;
-  const height = bounds ? bounds.height : window.innerHeight;
-  
-  // Apply responsive classes based on window size
-  const body = document.body;
-  
-  if (width <= 800) {
-    body.classList.add('responsive-small');
-  } else {
-    body.classList.remove('responsive-small');
-  }
-  
-  if (width <= 600) {
-    body.classList.add('responsive-xs');
-  } else {
-    body.classList.remove('responsive-xs');
-  }
-  
-  // Ensure content fits without scrolling at 800x600
-  if (width <= 800 && height <= 600) {
-    body.classList.add('compact-layout');
-    // Force content to fit
-    const contentSection = document.querySelector('.content-section.active');
-    if (contentSection) {
-      const card = contentSection.querySelector('.card');
-      if (card) {
-        // Adjust card padding for compact layout
-        card.style.padding = '8px 12px';
-      }
-    }
-  } else {
-    body.classList.remove('compact-layout');
-  }
-};
 
 // Event Log functionality
 const eventLogStream = document.getElementById('eventLogStream');
@@ -1334,6 +766,10 @@ const formatEventTimestamp = (isoString) => {
 const getEventTypeLabel = (type) => {
   const labels = {
     'sip_incoming': '📞 SIP Call',
+    'sip_registering': '📡 SIP Registering',
+    'sip_registered': '✅ SIP Registered',
+    'sip_disconnected': '❌ SIP Disconnected',
+    'sip_error': '⚠️ SIP Error',
     'toast_deployed': '🔔 Toast Deployed',
     'toast_timeout': '⏱️ Toast Timeout',
     'toast_click': '👆 Toast Click'
@@ -1364,6 +800,16 @@ const formatEventData = (event) => {
   let details = '';
   if (type === 'sip_incoming') {
     details = `${data.displayName || 'Unknown'} (${data.number || 'N/A'})`;
+  } else if (type === 'sip_registering') {
+    details = `Connecting to ${data.server || 'N/A'} via ${data.transport || 'UDP'}`;
+  } else if (type === 'sip_registered') {
+    details = `Connected to ${data.server || 'N/A'} as ${data.username || 'N/A'}`;
+  } else if (type === 'sip_disconnected') {
+    details = `Disconnected from ${data.server || 'N/A'} (${data.reason || 'stopped'})`;
+  } else if (type === 'sip_error') {
+    details = `${data.error || 'Unknown error'}`;
+    if (data.server) details += ` - Server: ${data.server}`;
+    if (data.statusCode) details += ` (Status: ${data.statusCode})`;
   } else if (type === 'toast_deployed') {
     details = `${data.callerLabel || 'Unknown'} - ${data.phoneNumber || 'N/A'}`;
     if (data.hasClientInfo) details += ' [Client Match]';
@@ -1510,30 +956,22 @@ const firewallInstructionsSection = document.getElementById('firewallInstruction
 const firewallInstructionsContent = document.getElementById('firewallInstructionsContent');
 
 const checkFirewall = async () => {
-  if (!checkFirewallBtn) return;
-  
-  // Get all UI elements with null checks
-  const loadingEl = firewallLoading;
-  const errorEl = firewallError;
-  const statusContainerEl = firewallStatusContainer;
-  const refreshBtn = refreshFirewallBtn;
+  if (!checkFirewallBtn || !firewallStatusContainer) return;
   
   try {
     // Show loading state
-    if (statusContainerEl) statusContainerEl.style.display = 'none';
-    if (errorEl) errorEl.style.display = 'none';
-    if (loadingEl) loadingEl.style.display = 'block';
+    firewallStatusContainer.style.display = 'none';
+    firewallError.style.display = 'none';
+    firewallLoading.style.display = 'block';
     checkFirewallBtn.disabled = true;
-    checkFirewallBtn.textContent = 'Checking...';
     
     // Check firewall status
     const status = await window.trayAPI.checkFirewall();
     
     // Hide loading
-    if (loadingEl) loadingEl.style.display = 'none';
+    firewallLoading.style.display = 'none';
     checkFirewallBtn.disabled = false;
-    checkFirewallBtn.textContent = 'Check Firewall Status';
-    if (refreshBtn) refreshBtn.style.display = 'inline-block';
+    refreshFirewallBtn.style.display = 'inline-block';
     
     // Display results
     displayFirewallStatus(status);
@@ -1542,41 +980,17 @@ const checkFirewall = async () => {
     const instructions = await window.trayAPI.getFirewallInstructions();
     displayFirewallInstructions(instructions);
     
-    // Ensure container is visible
-    if (statusContainerEl) statusContainerEl.style.display = 'block';
-    
   } catch (error) {
     console.error('Failed to check firewall:', error);
-    if (loadingEl) loadingEl.style.display = 'none';
-    if (errorEl) {
-      errorEl.style.display = 'block';
-      errorEl.textContent = `Error checking firewall: ${error.message}`;
-    }
+    firewallLoading.style.display = 'none';
+    firewallError.style.display = 'block';
+    firewallError.textContent = `Error checking firewall: ${error.message}`;
     checkFirewallBtn.disabled = false;
-    checkFirewallBtn.textContent = 'Check Firewall Status';
-    // Show status container even on error with default message
-    if (statusContainerEl) {
-      statusContainerEl.style.display = 'block';
-      if (firewallStatusText) {
-        firewallStatusText.textContent = 'Error';
-        firewallStatusText.style.color = '#ef4444';
-      }
-    }
   }
 };
 
 const displayFirewallStatus = (status) => {
-  // Guard against null status
-  if (!status) {
-    console.error('Firewall status is null');
-    return;
-  }
-  
-  // Ensure container exists
-  if (!firewallStatusContainer) {
-    console.error('Firewall status container not found');
-    return;
-  }
+  if (!firewallStatusContainer) return;
   
   // Status text with color coding
   const statusColors = {
@@ -1714,57 +1128,196 @@ if (refreshFirewallBtn) {
   refreshFirewallBtn.addEventListener('click', checkFirewall);
 }
 
+// ======= NEW UPDATES SECTION =======
+
+// New Updates section elements
+const currentVersionEl = document.getElementById('currentVersion');
+const updateStatusChecking = document.getElementById('updateStatusChecking');
+const updateStatusAvailable = document.getElementById('updateStatusAvailable');
+const updateStatusDownloading = document.getElementById('updateStatusDownloading');
+const updateStatusReady = document.getElementById('updateStatusReady');
+const updateStatusUptodate = document.getElementById('updateStatusUptodate');
+const updateStatusError = document.getElementById('updateStatusError');
+const availableVersion = document.getElementById('availableVersion');
+const downloadProgress = document.getElementById('downloadProgress');
+const downloadProgressBar = document.getElementById('downloadProgressBar');
+const updateErrorText = document.getElementById('updateErrorText');
+const checkUpdatesBtnNew = document.getElementById('checkUpdatesBtnNew');
+const downloadUpdateBtnNew = document.getElementById('downloadUpdateBtnNew');
+const installUpdateBtnNew = document.getElementById('installUpdateBtnNew');
+const autoUpdateToggleNew = document.getElementById('autoUpdateToggleNew');
+const updateFrequencySelectNew = document.getElementById('updateFrequencySelectNew');
+const saveUpdateSettingsBtn = document.getElementById('saveUpdateSettingsBtn');
+
+// Sidebar update status chip
+const updateStatusChip = document.getElementById('updateStatus');
+
+// Update the new Updates section UI
+const updateNewSectionUI = (status) => {
+  // Update current version
+  if (currentVersionEl) {
+    currentVersionEl.textContent = status.currentVersion || 'Unknown';
+  }
+  
+  // Hide all status displays first
+  if (updateStatusChecking) updateStatusChecking.style.display = 'none';
+  if (updateStatusAvailable) updateStatusAvailable.style.display = 'none';
+  if (updateStatusDownloading) updateStatusDownloading.style.display = 'none';
+  if (updateStatusReady) updateStatusReady.style.display = 'none';
+  if (updateStatusUptodate) updateStatusUptodate.style.display = 'none';
+  if (updateStatusError) updateStatusError.style.display = 'none';
+  
+  // Update button states
+  const showDownloadBtn = status.updateAvailable && !status.updateDownloaded;
+  const showInstallBtn = status.updateDownloaded;
+  
+  if (checkUpdatesBtnNew) checkUpdatesBtnNew.disabled = status.checking;
+  if (downloadUpdateBtnNew) downloadUpdateBtnNew.style.display = showDownloadBtn ? 'inline-block' : 'none';
+  if (installUpdateBtnNew) installUpdateBtnNew.style.display = showInstallBtn ? 'inline-block' : 'none';
+  
+  // Show appropriate status
+  if (status.checking) {
+    if (updateStatusChecking) updateStatusChecking.style.display = 'flex';
+  } else if (status.error) {
+    if (updateStatusError) {
+      updateStatusError.style.display = 'flex';
+      if (updateErrorText) updateErrorText.textContent = status.error || 'Unable to check for updates';
+    }
+  } else if (status.updateDownloaded) {
+    if (updateStatusReady) updateStatusReady.style.display = 'flex';
+    // Show in sidebar
+    if (updateStatusChip) {
+      updateStatusChip.style.display = 'flex';
+      updateStatusChip.querySelector('.update-text').textContent = 'Update Ready';
+    }
+  } else if (status.updateAvailable) {
+    if (updateStatusAvailable) updateStatusAvailable.style.display = 'flex';
+    if (availableVersion) availableVersion.textContent = `Version ${status.availableVersion || 'Unknown'} available`;
+    // Show in sidebar
+    if (updateStatusChip) {
+      updateStatusChip.style.display = 'flex';
+      updateStatusChip.querySelector('.update-text').textContent = 'Update Available';
+    }
+  } else if (status.downloadProgress > 0 && status.downloadProgress < 100) {
+    if (updateStatusDownloading) updateStatusDownloading.style.display = 'flex';
+    if (downloadProgress) downloadProgress.textContent = `Downloading... ${status.downloadProgress}%`;
+    if (downloadProgressBar) downloadProgressBar.style.width = `${status.downloadProgress}%`;
+  } else {
+    if (updateStatusUptodate) updateStatusUptodate.style.display = 'flex';
+    // Hide sidebar chip
+    if (updateStatusChip) {
+      updateStatusChip.style.display = 'none';
+    }
+  }
+};
+
+// Load update status for new Updates section
+const loadUpdateStatusNew = async () => {
+  try {
+    const status = await window.trayAPI.getUpdateStatus();
+    updateNewSectionUI(status);
+  } catch (error) {
+    console.error('Failed to load update status:', error);
+  }
+};
+
+// Check for updates button handler (new section)
+if (checkUpdatesBtnNew) {
+  checkUpdatesBtnNew.addEventListener('click', async () => {
+    try {
+      const result = await window.trayAPI.checkForUpdates();
+      // Status will be updated via the onUpdateStatus listener
+    } catch (error) {
+      console.error('Failed to check for updates:', error);
+    }
+  });
+}
+
+// Download update button handler (new section)
+if (downloadUpdateBtnNew) {
+  downloadUpdateBtnNew.addEventListener('click', async () => {
+    try {
+      const result = await window.trayAPI.downloadUpdate();
+      // Status will be updated via the onUpdateStatus listener
+    } catch (error) {
+      console.error('Failed to download update:', error);
+    }
+  });
+}
+
+// Install update button handler (new section) - now triggers download + install
+if (installUpdateBtnNew) {
+  installUpdateBtnNew.addEventListener('click', async () => {
+    if (!confirm('This will download and install the update. The application will restart after installation. Continue?')) {
+      return;
+    }
+    
+    try {
+      // Now calls downloadAndInstall which downloads MSI and runs installer
+      const result = await window.trayAPI.downloadUpdate();
+      if (result.error) {
+        alert(`Failed to install update: ${result.error}`);
+      }
+      // App will restart after installation, so no need to update UI
+    } catch (error) {
+      alert(`Failed to install update: ${error.message}`);
+    }
+  });
+}
+
+// Auto-update toggle handler (new section)
+if (autoUpdateToggleNew) {
+  const autoUpdateInputNew = form.querySelector('[name="updates.enabled"]');
+  autoUpdateToggleNew.addEventListener('click', () => {
+    const current = autoUpdateToggleNew.getAttribute('aria-checked') === 'true';
+    const newState = !current;
+    autoUpdateToggleNew.setAttribute('aria-checked', newState ? 'true' : 'false');
+    if (autoUpdateInputNew) {
+      autoUpdateInputNew.value = newState ? 'true' : 'false';
+    }
+  });
+}
+
+// Save update settings button handler
+if (saveUpdateSettingsBtn) {
+  saveUpdateSettingsBtn.addEventListener('click', async () => {
+    const updatesPayload = {
+      updates: {
+        enabled: autoUpdateToggleNew?.getAttribute('aria-checked') === 'true',
+        checkFrequency: updateFrequencySelectNew?.value || 'daily'
+      }
+    };
+    
+    try {
+      await window.trayAPI.saveSettings(updatesPayload);
+      setSaveStatus('Update settings saved', 'success');
+    } catch (error) {
+      setSaveStatus('Failed to save update settings', 'error');
+    }
+  });
+}
+
+// Listen for update status changes from main process
+window.trayAPI.onUpdateStatus((status) => {
+  updateNewSectionUI(status);
+});
+
 
 const bootstrap = async () => {
-  console.log('[Bootstrap] Starting bootstrap...');
-  
-  try {
-    console.log('[Bootstrap] Loading settings...');
-    await loadSettings();
-    console.log('[Bootstrap] Settings loaded successfully');
-  } catch (error) {
-    console.error('[Bootstrap] Error loading settings:', error);
-  }
-  
-  try {
-    console.log('[Bootstrap] Getting SIP status...');
-    const status = await window.trayAPI.getSipStatus();
-    updateSipStatus(status);
-    console.log('[Bootstrap] SIP status updated:', status);
-  } catch (error) {
-    console.error('[Bootstrap] Error getting SIP status:', error);
-  }
-  
-  // Initialize navigation system
-  try {
-    console.log('[Bootstrap] Initializing navigation...');
-    initNavigation();
-    console.log('[Bootstrap] Navigation initialized');
-  } catch (error) {
-    console.error('[Bootstrap] Error initializing navigation:', error);
-  }
+  await loadSettings();
+  const status = await window.trayAPI.getSipStatus();
+  updateSipStatus(status);
   
   // Apply initial theme
-  try {
-    const initialTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', initialTheme);
-    console.log('[Bootstrap] Theme set to:', initialTheme);
-  } catch (error) {
-    console.error('[Bootstrap] Error setting theme:', error);
-  }
+  const initialTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', initialTheme);
   
   // Load event logs if on logs section
-  try {
-    const activeSection = document.querySelector('.content-section.active');
-    if (activeSection && activeSection.id === 'section-logs') {
-      loadEventLogs();
-      loadLogFilePath();
-    }
-  } catch (error) {
-    console.error('[Bootstrap] Error loading logs:', error);
+  const activeSection = document.querySelector('.content-section.active');
+  if (activeSection && activeSection.id === 'section-logs') {
+    loadEventLogs();
+    loadLogFilePath();
   }
-  
-  console.log('[Bootstrap] Bootstrap complete');
 };
 
 bootstrap();

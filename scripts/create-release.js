@@ -68,18 +68,47 @@ try {
   process.exit(1);
 }
 
-// Find MSI installer
-const msiFiles = fs.readdirSync(distPath).filter(file => file.endsWith('.msi'));
-if (msiFiles.length === 0) {
-  console.error('❌ Error: No MSI installer found in dist/ directory');
-  console.error('   Build the application first with: npm run package');
-  process.exit(1);
+// Find MSI installer matching the version
+const allMsiFiles = fs.readdirSync(distPath).filter(file => file.endsWith('.msi'));
+
+// Filter to find MSI files that match the version we're releasing
+// Match patterns like: "SIP Toast 0.68.4.msi", "Sip-Toast-0.68.4.msi", "sip-toast-0.68.4.msi"
+const versionEscaped = version.replace(/\./g, '\\.');
+const versionPattern = new RegExp(`(^|[\\s_-])v?${versionEscaped}(\\.msi|$)`, 'i');
+const matchingMsiFiles = allMsiFiles.filter(file => versionPattern.test(file));
+
+let msiFile;
+let msiPath;
+
+if (matchingMsiFiles.length > 0) {
+  // Use the matching version MSI
+  msiFile = matchingMsiFiles[0];
+  msiPath = path.join(distPath, msiFile);
+  console.log(`📁 Found matching MSI installer for v${version}: ${msiFile}`);
+} else {
+  // Fallback: try to find any MSI (for backwards compatibility or manual builds)
+  if (allMsiFiles.length === 0) {
+    console.error('❌ Error: No MSI installer found in dist/ directory');
+    console.error('   Build the application first with: npm run package');
+    process.exit(1);
+  }
+  
+  // Log warning about version mismatch
+  console.warn(`⚠️  Warning: No MSI file matching version ${version} found`);
+  console.warn(`   Available MSI files: ${allMsiFiles.join(', ')}`);
+  
+  // Use the most recent MSI file (by modification time)
+  const msiStats = allMsiFiles.map(file => ({
+    name: file,
+    path: path.join(distPath, file),
+    mtime: fs.statSync(path.join(distPath, file)).mtime
+  }));
+  msiStats.sort((a, b) => b.mtime - a.mtime);
+  
+  msiFile = msiStats[0].name;
+  msiPath = msiStats[0].path;
+  console.warn(`   Using most recent MSI: ${msiFile} (may not match version)`);
 }
-
-const msiFile = msiFiles[0];
-const msiPath = path.join(distPath, msiFile);
-
-console.log(`📁 Found MSI installer: ${msiFile}`);
 
 // Check if tag already exists
 (async () => {

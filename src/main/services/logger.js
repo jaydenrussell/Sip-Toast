@@ -5,9 +5,9 @@ const os = require('os');
 const fs = require('fs');
 const EventEmitter = require('events');
 
-// Reduced log buffer size for memory efficiency
-const LOG_BUFFER_SIZE = 50; // 50 entries ~25KB (reduced from 100)
-const LOG_BUFFER_SIZE_MINIMIZED = 25; // 25 entries ~12KB when minimized
+// Dynamic log buffer size - reduces when minimized to save memory
+let LOG_BUFFER_SIZE = 100; // Normal size (100 entries ~50KB)
+const LOG_BUFFER_SIZE_MINIMIZED = 50; // Reduced when minimized (50 entries ~25KB)
 const logEmitter = new EventEmitter();
 const memoryBuffer = [];
 
@@ -15,8 +15,10 @@ const memoryBuffer = [];
 const adjustLogBufferSize = (isMinimized) => {
   const targetSize = isMinimized ? LOG_BUFFER_SIZE_MINIMIZED : LOG_BUFFER_SIZE;
   if (memoryBuffer.length > targetSize) {
+    // Trim buffer if it's larger than target
     memoryBuffer.splice(0, memoryBuffer.length - targetSize);
   }
+  LOG_BUFFER_SIZE = targetSize;
 };
 
 const resolveLogDirectory = () => {
@@ -24,7 +26,10 @@ const resolveLogDirectory = () => {
     if (app?.getPath) {
       return path.join(app.getPath('userData'), 'logs');
     }
-  } catch { /* Fallback below */ }
+  } catch (error) {
+    // Fallback below if app isn't ready yet.
+  }
+
   return path.join(os.homedir(), 'AppData', 'Roaming', 'sip-toast', 'logs');
 };
 
@@ -43,57 +48,83 @@ const loggerInstance = createLogger({
     new transports.Console({ format: format.simple() }),
     new transports.File({
       filename: logFilePath,
-      maxsize: 1024 * 1024, // Reduced to 1MB
-      maxFiles: 3, // Reduced from 5
+      maxsize: 2 * 1024 * 1024,
+      maxFiles: 5,
       tailable: true
     })
   ]
 });
 
-// Optimized sanitization - reduced regex complexity
-const sensitivePatterns = [
-  /password\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
-  /api[_-]?key\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
-  /apiKey\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
-  /auth[_-]?token\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
-  /secret\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
-  /userId\s*[:=]\s*['"]?[^'",\s]+['"]?/gi
-];
-
+// Security: Sanitize log messages to remove sensitive data
 const sanitizeMessage = (message) => {
-  const msg = typeof message === 'string' ? message : String(message);
-  let result = msg;
-  for (const pattern of sensitivePatterns) {
-    result = result.replace(pattern, (match) => `${match.split(/[:=]/)[0]}=[REDACTED]`);
+  if (typeof message !== 'string') {
+    message = String(message);
   }
-  return result;
+  
+  // Remove potential password/API key patterns
+  // Match patterns like: password=xxx, apiKey=xxx, api_key=xxx, etc.
+  const sensitivePatterns = [
+    /password\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
+    /api[_-]?key\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
+    /apiKey\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
+    /auth[_-]?token\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
+    /secret\s*[:=]\s*['"]?[^'",\s]+['"]?/gi,
+    /userId\s*[:=]\s*['"]?[^'",\s]+['"]?/gi
+  ];
+  
+  let sanitized = message;
+  for (const pattern of sensitivePatterns) {
+    sanitized = sanitized.replace(pattern, (match) => {
+      // Replace with redacted version
+      const prefix = match.split(/[:=]/)[0];
+      return `${prefix}=[REDACTED]`;
+    });
+  }
+  
+  return sanitized;
 };
 
 const pushToBuffer = (entry) => {
+  // Use circular buffer approach - more memory efficient
+  // Security: Sanitize messages to remove sensitive data
   const sanitizedMessage = sanitizeMessage(entry.message);
   const optimizedEntry = {
     level: entry.level,
-    message: sanitizedMessage.length > 300 
-      ? sanitizedMessage.substring(0, 300) + '...' 
+    message: sanitizedMessage.length > 500 
+      ? sanitizedMessage.substring(0, 500) + '...' 
       : sanitizedMessage,
     timestamp: entry.timestamp
+    // Don't store meta to save memory
   };
   
-  const currentBufferSize = LOG_BUFFER_SIZE;
+  // Use current buffer size (may be reduced when minimized)
+  const currentBufferSize = typeof LOG_BUFFER_SIZE === 'number' ? LOG_BUFFER_SIZE : 100;
   if (memoryBuffer.length >= currentBufferSize) {
-    memoryBuffer.shift();
+    memoryBuffer.shift(); // Remove oldest entry
   }
   memoryBuffer.push(optimizedEntry);
   
-  logEmitter.emit('entry', { ...entry, message: sanitizeMessage(entry.message) });
+  // Emit sanitized entry for real-time display
+  const sanitizedEntry = {
+    ...entry,
+    message: sanitizeMessage(entry.message)
+  };
+  logEmitter.emit('entry', sanitizedEntry);
 };
 
 const originalLog = loggerInstance.log.bind(loggerInstance);
 loggerInstance.log = (level, message, ...meta) => {
-  const payload = typeof level === 'object' 
-    ? level 
-    : { level, message, meta };
-  
+  let payload;
+  if (typeof level === 'object') {
+    payload = level;
+  } else {
+    payload = { level, message };
+    if (meta.length) {
+      payload.meta = meta;
+    }
+  }
+
+  // Security: Sanitize message before logging
   const rawMessage = typeof payload.message === 'string' 
     ? payload.message 
     : JSON.stringify(payload.message);
@@ -107,13 +138,19 @@ loggerInstance.log = (level, message, ...meta) => {
   };
 
   pushToBuffer(entry);
-  return originalLog({ ...payload, message: sanitizedMessage });
+  
+  // Log sanitized message to file/console
+  const sanitizedPayload = {
+    ...payload,
+    message: sanitizedMessage
+  };
+  return originalLog(sanitizedPayload);
 };
 
 module.exports = {
   logger: loggerInstance,
   logEmitter,
-  getRecentLogs(count = 50) { // Default to 50 instead of 100
+  getRecentLogs(count = 100) {
     return memoryBuffer.slice(-count);
   },
   getLogFilePath() {
@@ -121,3 +158,4 @@ module.exports = {
   },
   adjustLogBufferSize
 };
+

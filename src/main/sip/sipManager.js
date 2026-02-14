@@ -6,6 +6,19 @@ const dns = require('dns').promises;
 const { URL } = require('url');
 const os = require('os');
 
+// Lazy load eventLogger to avoid issues before app is ready
+let _eventLogger = null;
+const getEventLogger = () => {
+  if (!_eventLogger) {
+    try {
+      _eventLogger = require('../services/eventLogger');
+    } catch (e) {
+      // Event logger not ready yet
+    }
+  }
+  return _eventLogger;
+};
+
 class SipManager extends EventEmitter {
   constructor(config) {
     super();
@@ -23,55 +36,7 @@ class SipManager extends EventEmitter {
   async updateConfig(nextConfig) {
     logger.info('SIP configuration updated');
     this.config = nextConfig;
-    // Rebuild SIP URI from updated config
-    const transport = this.config.transport || 'udp';
-    const domain = this.config.domain || this.serverHost;
-    const scheme = transport === 'tls' ? 'sips' : 'sip';
-    this.config.uri = `${scheme}:${this.config.username}@${domain}`;
     await this.start();
-  }
-
-  async _checkServerReachability(server) {
-    try {
-      // Parse server - could be domain:port or just domain
-      let hostname = server;
-      let port = 5060;
-      
-      if (server.includes(':')) {
-        const parts = server.split(':');
-        hostname = parts[0];
-        port = parseInt(parts[1]) || 5060;
-      }
-      
-      // Remove protocol if present
-      hostname = hostname.replace(/^sips?:\/\//, '');
-      
-      logger.info(`🔍 Checking server reachability: ${hostname}:${port}`);
-      
-      // Try DNS lookup
-      try {
-        await Promise.race([
-          dns.lookup(hostname),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('DNS lookup timeout')), 3000))
-        ]);
-        logger.info(`✅ DNS lookup successful for ${hostname}`);
-        return { reachable: true, error: null, hostname, port };
-      } catch (dnsError) {
-        logger.error(`❌ DNS lookup failed for ${hostname}: ${dnsError.message}`);
-        return { 
-          reachable: false, 
-          error: `Server ${hostname} is not reachable. DNS lookup failed. Check your internet connection and server address.`,
-          hostname,
-          port
-        };
-      }
-    } catch (error) {
-      logger.error(`❌ Invalid server address format: ${error.message}`);
-      return { 
-        reachable: false, 
-        error: `Invalid server address format. Expected format: server.example.com or server.example.com:5060` 
-      };
-    }
   }
 
   _parseServerAddress(server) {
@@ -128,17 +93,6 @@ class SipManager extends EventEmitter {
     logger.info(`   SIP URI: ${this.config.uri}`);
     logger.info(`   Username: ${this.config.username || 'N/A'}`);
     logger.info(`   Port: ${this.config.port || 5060}`);
-    
-    // Check server reachability first
-    const reachability = await this._checkServerReachability(this.config.server);
-    if (!reachability.reachable) {
-      logger.error(`❌ ${reachability.error}`);
-      this._setState('error', { cause: reachability.error });
-      return;
-    }
-
-    this.serverHost = reachability.hostname;
-    this.serverPort = reachability.port;
     
     // Set connection timeout
     const connectionTimeout = setTimeout(() => {
@@ -580,7 +534,32 @@ class SipManager extends EventEmitter {
   }
 
   _setState(state, meta) {
+    const previousState = this.state;
     this.state = state;
+    
+    // Log state changes to Event Log
+    const evtLogger = getEventLogger();
+    if (evtLogger) {
+      const eventData = {
+        previousState,
+        currentState: state,
+        server: this.serverHost ? `${this.serverHost}:${this.serverPort}` : null,
+        transport: this.config?.transport || 'udp',
+        username: this.config?.username || null,
+        ...meta
+      };
+      
+      if (state === 'registered' && previousState !== 'registered') {
+        evtLogger.logSipRegistered(eventData);
+      } else if (state === 'error' && previousState !== 'error') {
+        evtLogger.logSipError(meta?.cause || 'Unknown error', eventData);
+      } else if (state === 'registering' && previousState !== 'registering') {
+        evtLogger.logSipRegistering(eventData);
+      } else if (state === 'idle' && previousState !== 'idle') {
+        evtLogger.logSipDisconnected(eventData);
+      }
+    }
+    
     this.emit('status', {
       state,
       meta,

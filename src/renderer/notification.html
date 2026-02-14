@@ -9,14 +9,24 @@
   </head>
   <body>
     <div id="toast" class="toast" role="status" aria-live="polite">
-      <div class="accent"></div>
-      <div class="content">
-        <div class="label">Caller ID</div>
-        <div id="caller" class="caller"></div>
-        <div id="number" class="number"></div>
-        <div id="callerIdInfo" class="caller-id-info" style="display: none;"></div>
-        <div id="clientInfo" class="client-info" style="display: none;"></div>
-        <div id="note" class="note"></div>
+      <div class="title-bar">
+        <div class="title-bar-drag"></div>
+        <button class="title-bar-close" id="titleBarClose" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="toast-body">
+        <div class="accent"></div>
+        <div class="content" id="toastContent">
+          <div class="label">Caller ID</div>
+          <div id="caller" class="caller"></div>
+          <div id="number" class="number"></div>
+          <div id="callerIdInfo" class="caller-id-info" style="display: none;"></div>
+          <div id="clientInfo" class="client-info" style="display: none;"></div>
+          <div id="note" class="note"></div>
+        </div>
       </div>
       <div id="copiedBadge" class="copied-badge">Copied!</div>
     </div>

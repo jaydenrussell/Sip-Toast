@@ -10,30 +10,8 @@ Minimal Electron companion that sits in the Windows 11 system tray, listens to S
 - System tray presence only; starts with Windows and stays minimized.
 - Configurable auto-dismiss timing and secure credential storage via `electron-store`.
 
-### 🪟 Windows 11 Installation
-
-#### System Requirements
-- **Windows 10 version 1809 or later** (Windows 11 recommended)
-- **64-bit (x64) processor** - Required
-- **Microsoft Visual C++ Redistributable 2015-2022** (usually pre-installed)
-- **Internet connectivity** - Required for SIP and API calls
-
-#### Quick Installation
-1. **Download the latest installer** from [Releases](https://github.com/jaydenrussell/Sip-Toast/releases)
-2. **Run the MSI installer** (`SIP Toast X.X.X.msi`)
-3. **Launch the application** from Start Menu or Desktop shortcut
-4. **Configure settings** using the system tray icon
-
-#### Verify Installation
-Run the dependency checker to ensure your system is ready:
-```powershell
-# Download and run the dependency checker
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jaydenrussell/Sip-Toast/main/check-dependencies.ps1" -OutFile "check-dependencies.ps1"
-.\check-dependencies.ps1
-```
-
-#### Manual Installation (Development)
-1. Install Node.js 20+ from [nodejs.org](https://nodejs.org/)
+### Getting Started
+1. Install Node.js 20+.
 2. Install dependencies:
    ```bash
    npm install
@@ -74,50 +52,4 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jaydenrussell/Sip-Toas
 ### Security
 - Store SIP passwords and Acuity keys in Windows Credential Manager or update `settings.js` to read from environment variables before production use.
 - The current implementation uses `electron-store`; consider integrating `keytar` for encrypted storage in future iterations.
-
-### 🔧 Troubleshooting
-
-#### Application Won't Start
-1. **Check Windows version**: Must be Windows 10+ (Settings > System > About)
-2. **Install Visual C++ Redistributable**: Download from [Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe)
-3. **Check logs**: `%APPDATA%\sip-toast\logs\sip-toast.log`
-
-#### SIP Connection Issues
-1. **Verify network connectivity**: Can you ping your SIP server?
-2. **Check firewall**: Ensure outbound connections are allowed on SIP ports (5060/5061)
-3. **Verify credentials**: Test with your SIP provider's web interface
-4. **Check logs**: Look for specific error messages in the log file
-
-#### Acuity API Issues
-1. **Verify API credentials**: Test in Acuity Scheduling web interface
-2. **Check internet connectivity**: Required for API calls
-3. **Review logs**: Look for authentication errors
-
-#### Toast Notifications Not Appearing
-1. **Check Windows notification settings**: Settings > System > Notifications
-2. **Verify SIP connection**: Must be registered to receive calls
-3. **Check auto-dismiss timeout**: May be set too low in settings
-
-#### Works on One Computer but Not Another
-1. **Run dependency checker**: `.\check-dependencies.ps1`
-2. **Compare Windows versions**: Both must be Windows 10+
-3. **Check Visual C++ Redistributable**: Install if missing
-4. **Verify network/firewall settings**: May differ between computers
-
-### 📦 Dependencies
-
-All runtime dependencies are **automatically bundled** with the MSI installer:
-
-**Bundled (No installation needed):**
-- Electron 31.3.0 runtime
-- All npm packages (axios, electron-store, sip, winston, etc.)
-- Application code and resources
-
-**System Requirements (Must be present):**
-- Windows 10+ (Windows 11 recommended)
-- 64-bit (x64) processor
-- Visual C++ Redistributable 2015-2022 (usually pre-installed)
-- Internet connectivity
-
-For detailed dependency information, see [DEPENDENCIES.md](DEPENDENCIES.md).
 

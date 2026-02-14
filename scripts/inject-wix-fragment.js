@@ -17,7 +17,7 @@ exports.default = async function(context) {
   const outDir = context?.outDir;
   const packager = context?.packager || context;
   
-  console.log('Injecting WiX fragments for running process detection and update launcher...');
+  console.log('Injecting WiX fragment for running process detection...');
   console.log('Project dir:', projectDir);
   console.log('Context keys:', context ? Object.keys(context) : 'no context');
   
@@ -123,67 +123,54 @@ exports.default = async function(context) {
     return;
   }
   
-  // Inject both fragments: check-running-process.wxs and update-exe.wxs
-  const fragments = [
-    { file: 'check-running-process.wxs', marker: 'CheckRunningProcess' },
-    { file: 'update-exe.wxs', marker: 'UpdateLauncher' }
-  ];
+  // Read our custom fragment
+  const fragmentPath = path.join(projectDir || process.cwd(), 'build', 'check-running-process.wxs');
+  if (!fs.existsSync(fragmentPath)) {
+    console.warn('⚠️  Custom WiX fragment not found at:', fragmentPath);
+    return;
+  }
   
   try {
     let wxsContent = fs.readFileSync(wxsFile, 'utf8');
-    let injectedAny = false;
     
-    for (const fragment of fragments) {
-      const fragmentPath = path.join(projectDir || process.cwd(), 'build', fragment.file);
-      
-      if (!fs.existsSync(fragmentPath)) {
-        console.warn(`⚠️  Custom WiX fragment not found at: ${fragmentPath}`);
-        continue;
-      }
-      
-      // Check if this fragment is already injected
-      if (wxsContent.includes(fragment.marker)) {
-        console.log(`✓ Fragment ${fragment.file} already injected`);
-        continue;
-      }
-      
-      // Read fragment content
-      const fragmentContent = fs.readFileSync(fragmentPath, 'utf8');
-      
-      // Extract the fragment inner content (without outer Wix/Fragment tags)
-      const fragmentMatch = fragmentContent.match(/<Fragment>([\s\S]*?)<\/Fragment>/);
-      if (!fragmentMatch) {
-        console.error(`❌ Could not parse fragment content for ${fragment.file}`);
-        continue;
-      }
-      
-      const fragmentInner = fragmentMatch[1];
-      
-      // Find the closing </Product> tag and insert our fragment before it
-      const productEndMatch = wxsContent.match(/(\s*)<\/Product>/);
-      if (!productEndMatch) {
-        console.error(`❌ Could not find </Product> tag in generated file`);
-        continue;
-      }
-      
-      const productIndent = productEndMatch[1] || '  ';
-      const insertPosition = productEndMatch.index;
-      
-      // Insert the fragment before </Product>
-      wxsContent = wxsContent.slice(0, insertPosition) + 
-                  productIndent + fragmentInner.trim().split('\n').join('\n' + productIndent) + '\n' +
-                  wxsContent.slice(insertPosition);
-      
-      console.log(`✓ Successfully injected WiX fragment: ${fragment.file}`);
-      injectedAny = true;
+    // Check if fragment is already injected
+    if (wxsContent.includes('CheckRunningProcess')) {
+      console.log('✓ Fragment already injected');
+      return;
     }
     
-    if (injectedAny) {
-      fs.writeFileSync(wxsFile, wxsContent, 'utf8');
-      console.log('✓ All fragments injected into:', path.basename(wxsFile));
+    // Read fragment content
+    const fragmentContent = fs.readFileSync(fragmentPath, 'utf8');
+    
+    // Extract the fragment inner content (without outer Wix/Fragment tags)
+    const fragmentMatch = fragmentContent.match(/<Fragment>([\s\S]*?)<\/Fragment>/);
+    if (!fragmentMatch) {
+      console.error('❌ Could not parse fragment content');
+      return;
     }
+    
+    const fragmentInner = fragmentMatch[1];
+    
+    // Find the closing </Product> tag and insert our fragment before it
+    // The fragment content needs to be inside the Product element, not at Wix level
+    const productEndMatch = wxsContent.match(/(\s*)<\/Product>/);
+    if (!productEndMatch) {
+      console.error('❌ Could not find </Product> tag in generated file');
+      return;
+    }
+    
+    const productIndent = productEndMatch[1] || '  ';
+    const insertPosition = productEndMatch.index;
+    
+    // Insert the fragment before </Product>
+    wxsContent = wxsContent.slice(0, insertPosition) + 
+                productIndent + fragmentInner.trim().split('\n').join('\n' + productIndent) + '\n' +
+                wxsContent.slice(insertPosition);
+    
+    fs.writeFileSync(wxsFile, wxsContent, 'utf8');
+    console.log('✓ Successfully injected WiX fragment into:', path.basename(wxsFile));
   } catch (error) {
-    console.error('❌ Error injecting fragments:', error.message);
+    console.error('❌ Error injecting fragment:', error.message);
   }
 };
 

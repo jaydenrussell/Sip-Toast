@@ -6,99 +6,98 @@ const { logger } = require('./logger');
 
 const execAsync = promisify(exec);
 
-// Cache for firewall results (5 minute TTL)
-const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000;
-
-/**
- * Get cached result or compute new one (handles async properly)
- */
-const getCachedResult = async (key, computeFn) => {
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.value;
-  }
-  const result = await computeFn();
-  cache.set(key, { value: result, timestamp: Date.now() });
-  return result;
-};
-
 /**
  * Check Windows Firewall configuration for SIP Toast
- * Optimized: parallel execution and caching
+ * Returns firewall status and recommendations
  */
 async function checkFirewallStatus() {
-  return await getCachedResult('firewallStatus', async () => {
-    const results = {
-      firewallEnabled: false,
-      outboundAllowed: true,
-      inboundAllowed: false,
-      appRules: [],
-      portRules: [],
-      recommendations: [],
-      status: 'unknown',
-      details: {}
-    };
+  const results = {
+    firewallEnabled: false,
+    outboundAllowed: true, // Default assumption
+    inboundAllowed: false, // Not needed for this app
+    appRules: [],
+    portRules: [],
+    recommendations: [],
+    status: 'unknown',
+    details: {}
+  };
 
-    try {
-      // Parallel firewall checks for better performance
-      const [firewallStatus, appRules, outboundStatus, portRules] = await Promise.all([
-        checkFirewallEnabled(),
-        checkApplicationRules(),
-        checkOutboundStatus(),
-        checkPortRules()
-      ]);
+  try {
+    // Check if Windows Firewall is enabled
+    const firewallStatus = await checkFirewallEnabled();
+    results.firewallEnabled = firewallStatus.enabled;
+    results.details.firewallStatus = firewallStatus;
 
-      results.firewallEnabled = firewallStatus.enabled;
-      results.details.firewallStatus = firewallStatus;
-      results.appRules = appRules;
-      results.outboundAllowed = outboundStatus.allowed;
-      results.portRules = portRules;
+    if (!firewallStatus.enabled) {
+      results.status = 'disabled';
+      results.recommendations.push({
+        type: 'info',
+        message: 'Windows Firewall is disabled. This is generally safe if you have other firewall software.',
+        action: null
+      });
+      return results;
+    }
 
-      // Determine overall status
-      if (appRules.length > 0 && appRules.some(rule => rule.enabled && rule.direction === 'outbound')) {
-        results.status = 'configured';
-        results.recommendations.push({
-          type: 'success',
-          message: 'Firewall rules found for SIP Toast. Outbound connections should work.',
-          action: null
-        });
-      } else if (outboundStatus.allowed) {
-        results.status = 'permissive';
-        results.recommendations.push({
-          type: 'warning',
-          message: 'No specific firewall rules found, but outbound connections appear to be allowed by default.',
-          action: 'Consider adding explicit firewall rules for better security.'
-        });
-      } else {
-        results.status = 'restrictive';
-        results.recommendations.push({
-          type: 'error',
-          message: 'Outbound connections may be blocked. SIP Toast requires outbound connections to work.',
-          action: 'Add firewall rules to allow SIP Toast outbound connections.'
-        });
-      }
+    // Check application-specific firewall rules
+    const appRules = await checkApplicationRules();
+    results.appRules = appRules;
+    results.details.appRules = appRules;
 
-      if (appRules.length === 0) {
-        results.recommendations.push({
-          type: 'info',
-          message: 'No specific firewall rules found for SIP Toast.',
-          action: 'Windows Firewall will prompt you when the app first connects, or you can add rules manually.'
-        });
-      }
-    } catch (error) {
-      logger.error(`Firewall check error: ${error.message}`);
-      results.status = 'error';
-      results.details.error = error.message;
+    // Check if outbound connections are generally allowed
+    const outboundStatus = await checkOutboundStatus();
+    results.outboundAllowed = outboundStatus.allowed;
+    results.details.outboundStatus = outboundStatus;
+
+    // Check common SIP ports
+    const portRules = await checkPortRules();
+    results.portRules = portRules;
+    results.details.portRules = portRules;
+
+    // Determine overall status
+    if (appRules.length > 0 && appRules.some(rule => rule.enabled && rule.direction === 'outbound')) {
+      results.status = 'configured';
+      results.recommendations.push({
+        type: 'success',
+        message: 'Firewall rules found for SIP Toast. Outbound connections should work.',
+        action: null
+      });
+    } else if (outboundStatus.allowed) {
+      results.status = 'permissive';
+      results.recommendations.push({
+        type: 'warning',
+        message: 'No specific firewall rules found, but outbound connections appear to be allowed by default.',
+        action: 'Consider adding explicit firewall rules for better security.'
+      });
+    } else {
+      results.status = 'restrictive';
       results.recommendations.push({
         type: 'error',
-        message: `Unable to check firewall status: ${error.message}`,
-        action: 'Check Windows Firewall settings manually.'
+        message: 'Outbound connections may be blocked. SIP Toast requires outbound connections to work.',
+        action: 'Add firewall rules to allow SIP Toast outbound connections.'
       });
     }
 
-    return results;
-  });
+    // Add specific recommendations based on findings
+    if (appRules.length === 0) {
+      results.recommendations.push({
+        type: 'info',
+        message: 'No specific firewall rules found for SIP Toast.',
+        action: 'Windows Firewall will prompt you when the app first connects, or you can add rules manually.'
+      });
+    }
+
+  } catch (error) {
+    logger.error(`Firewall check error: ${error.message}`);
+    results.status = 'error';
+    results.details.error = error.message;
+    results.recommendations.push({
+      type: 'error',
+      message: `Unable to check firewall status: ${error.message}`,
+      action: 'Check Windows Firewall settings manually.'
+    });
+  }
+
+  return results;
 }
 
 /**
@@ -106,60 +105,87 @@ async function checkFirewallStatus() {
  */
 async function checkFirewallEnabled() {
   try {
-    const { stdout } = await execAsync('netsh advfirewall show allprofiles state', { timeout: 5000 });
-    return { enabled: stdout.includes('ON'), details: stdout };
+    const { stdout } = await execAsync('netsh advfirewall show allprofiles state');
+    const enabled = stdout.includes('ON');
+    
+    return {
+      enabled,
+      details: stdout
+    };
   } catch (error) {
-    return { enabled: null, error: error.message };
+    logger.warn(`Failed to check firewall status: ${error.message}`);
+    return {
+      enabled: null,
+      error: error.message
+    };
   }
 }
 
 /**
- * Check for application-specific firewall rules - optimized single query
+ * Check for application-specific firewall rules
  */
 async function checkApplicationRules() {
   try {
-    const appPath = getAppPath();
+    let appPath;
+    try {
+      appPath = app.getPath('exe');
+    } catch {
+      appPath = process.execPath;
+    }
     const appName = path.basename(appPath, '.exe');
     
-    // Try PowerShell first (more reliable, faster timeout)
-    try {
-      const escapedName = appName.replace(/'/g, "''");
-      const psCmd = `Get-NetFirewallRule -DisplayName -like "*${escapedName}*" -Program "${appPath}" | Select-Object DisplayName,Enabled,Direction,Action | ConvertTo-Json -Compress`;
-      const { stdout } = await execAsync(`powershell -ExecutionPolicy Bypass -Command "${psCmd}"`, { timeout: 8000 });
+    // Check for rules matching the application
+    const { stdout } = await execAsync(`netsh advfirewall firewall show rule name=all | findstr /i "${appName}"`);
+    
+    const rules = [];
+    if (stdout && stdout.trim()) {
+      // Parse rules (simplified - netsh output can be complex)
+      const lines = stdout.split('\n').filter(line => line.trim());
       
-      if (stdout?.trim() && stdout !== '[]') {
-        try {
-          const rules = JSON.parse(stdout);
-          const ruleArray = Array.isArray(rules) ? rules : [rules];
-          return ruleArray.map(rule => ({
-            name: rule.DisplayName || 'Unknown',
-            enabled: rule.Enabled === true || rule.Enabled === 'True',
-            direction: (rule.Direction || 'Outbound').toLowerCase(),
-            action: (rule.Action || 'Allow').toLowerCase()
-          }));
-        } catch { /* Parse error, continue to netsh */ }
-      }
-    } catch { /* PowerShell failed */ }
-
-    // Fallback to netsh
-    try {
-      const { stdout } = await execAsync(`netsh advfirewall firewall show rule name=all | findstr /i "${appName}"`, { timeout: 5000 });
-      const rules = [];
-      if (stdout?.trim()) {
-        for (const line of stdout.split('\n')) {
-          if (line.includes('Rule Name:')) {
-            const name = line.split('Rule Name:')[1]?.trim();
-            if (name) {
-              rules.push({ name, enabled: true, direction: 'outbound', action: 'allow' });
-            }
+      for (const line of lines) {
+        if (line.includes('Rule Name:')) {
+          const ruleName = line.split('Rule Name:')[1]?.trim();
+          if (ruleName) {
+            rules.push({
+              name: ruleName,
+              enabled: true, // Assume enabled if found
+              direction: 'outbound', // Default
+              action: 'allow'
+            });
           }
         }
       }
-      return rules;
-    } catch (error) {
-      return error.code === 1 ? [] : [];
     }
+
+    // Also check using PowerShell for more detailed info
+    try {
+      const psCommand = `Get-NetFirewallRule | Where-Object { $_.DisplayName -like "*${appName}*" -or $_.Program -like "*${appName}*" } | Select-Object DisplayName, Enabled, Direction, Action | ConvertTo-Json`;
+      const { stdout: psOutput } = await execAsync(`powershell -Command "${psCommand}"`);
+      
+      if (psOutput && psOutput.trim()) {
+        const psRules = JSON.parse(psOutput);
+        const ruleArray = Array.isArray(psRules) ? psRules : [psRules];
+        
+        return ruleArray.map(rule => ({
+          name: rule.DisplayName || 'Unknown',
+          enabled: rule.Enabled === true,
+          direction: rule.Direction?.toLowerCase() || 'outbound',
+          action: rule.Action?.toLowerCase() || 'allow'
+        }));
+      }
+    } catch (psError) {
+      // PowerShell check failed, use netsh results
+      logger.debug(`PowerShell firewall check failed: ${psError.message}`);
+    }
+
+    return rules;
   } catch (error) {
+    // No rules found or error
+    if (error.code === 1) {
+      // findstr returns code 1 when no matches found
+      return [];
+    }
+    logger.warn(`Failed to check application firewall rules: ${error.message}`);
     return [];
   }
 }
@@ -169,49 +195,76 @@ async function checkApplicationRules() {
  */
 async function checkOutboundStatus() {
   try {
-    const { stdout } = await execAsync('netsh advfirewall show allprofiles firewallpolicy', { timeout: 5000 });
-    const match = stdout.match(/Outbound.*?Action:\s*(\w+)/i);
-    return { allowed: (match ? match[1].toLowerCase() : 'allow') === 'allow', action: match?.[1]?.toLowerCase() };
+    // Check default outbound action
+    const { stdout } = await execAsync('netsh advfirewall show allprofiles firewallpolicy');
+    
+    // Parse output to find outbound action
+    const outboundMatch = stdout.match(/Outbound.*?Action:\s*(\w+)/i);
+    const outboundAction = outboundMatch ? outboundMatch[1].toLowerCase() : 'allow';
+    
+    return {
+      allowed: outboundAction === 'allow',
+      action: outboundAction,
+      details: stdout
+    };
   } catch (error) {
-    return { allowed: true, error: error.message };
+    logger.warn(`Failed to check outbound status: ${error.message}`);
+    return {
+      allowed: true, // Default assumption
+      error: error.message
+    };
   }
 }
 
 /**
- * Check firewall rules for common SIP ports - optimized parallel check
+ * Check firewall rules for common SIP ports
  */
 async function checkPortRules() {
-  const commonPorts = [5060, 5061, 443];
+  const commonPorts = [5060, 5061, 443]; // SIP UDP/TCP, SIP TLS, HTTPS
   
-  // Check all ports in parallel
-  const results = await Promise.all(commonPorts.map(async (port) => {
+  const portRules = [];
+  
+  for (const port of commonPorts) {
     try {
-      const { stdout } = await execAsync(`netsh advfirewall firewall show rule name=all | findstr /i "port=${port}"`, { timeout: 3000 });
-      return { port, hasRule: !!stdout?.trim(), direction: 'outbound' };
-    } catch {
-      return { port, hasRule: false, direction: 'outbound' };
+      // Check for outbound rules on this port
+      const { stdout } = await execAsync(`netsh advfirewall firewall show rule name=all | findstr /i "port=${port}"`);
+      
+      if (stdout && stdout.trim()) {
+        portRules.push({
+          port,
+          hasRule: true,
+          direction: 'outbound'
+        });
+      } else {
+        portRules.push({
+          port,
+          hasRule: false,
+          direction: 'outbound'
+        });
+      }
+    } catch (error) {
+      // No rule found or error
+      portRules.push({
+        port,
+        hasRule: false,
+        error: error.message
+      });
     }
-  }));
-  
-  return results;
-}
-
-/**
- * Get app executable path safely
- */
-const getAppPath = () => {
-  try {
-    return app.getPath('exe') || process.execPath;
-  } catch {
-    return process.execPath;
   }
-};
+  
+  return portRules;
+}
 
 /**
  * Get firewall configuration instructions
  */
 function getFirewallInstructions() {
-  const appPath = getAppPath();
+  let appPath;
+  try {
+    appPath = app.getPath('exe');
+  } catch {
+    appPath = '%LOCALAPPDATA%\\Programs\\sip-toast\\SIP Toast.exe';
+  }
   
   return {
     title: 'Windows Firewall Configuration',

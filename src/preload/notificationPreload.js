@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('notificationAPI', {
   },
   notifyClick: (phoneNumber, success) => {
     ipcRenderer.send('toast-clicked', phoneNumber, success);
+  },
+  closeWindow: () => {
+    ipcRenderer.send('toast:close');
   }
 });
 
