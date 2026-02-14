@@ -7,6 +7,9 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
+// Squirrel.Windows auto-updater
+const { autoUpdater } = require('electron-updater');
+
 const GITHUB_OWNER = 'jaydenrussell';
 const GITHUB_REPO = 'Sip-Toast';
 
@@ -21,6 +24,7 @@ class UpdateService extends EventEmitter {
     this.downloadUrl = null;
     this.downloadFileName = null;
     this.currentVersion = null;
+    this.updateDownloaded = false;
     
     // Get current version
     try {
@@ -28,6 +32,58 @@ class UpdateService extends EventEmitter {
     } catch (e) {
       this.currentVersion = 'Unknown';
     }
+    
+    // Set up Squirrel auto-updater events
+    this.setupAutoUpdater();
+  }
+
+  /**
+   * Set up Squirrel auto-updater event handlers
+   */
+  setupAutoUpdater() {
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+    
+    autoUpdater.on('checking-for-update', () => {
+      logger.info('🔍 Squirrel: Checking for update...');
+      this.isChecking = true;
+      this.emitStatus();
+    });
+    
+    autoUpdater.on('update-available', (info) => {
+      logger.info(`✅ Squirrel: Update available: ${info.version}`);
+      this.updateAvailable = true;
+      this.availableVersion = info.version;
+      this.downloadUrl = info.downloadUrl;
+      this.isChecking = false;
+      this.emitStatus();
+    });
+    
+    autoUpdater.on('update-not-available', (info) => {
+      logger.info(`ℹ️ Squirrel: No update available. Current version: ${info.version}`);
+      this.updateAvailable = false;
+      this.isChecking = false;
+      this.emitStatus();
+    });
+    
+    autoUpdater.on('download-progress', (progressObj) => {
+      this.downloadProgress = Math.round(progressObj.percent);
+      logger.info(`📥 Squirrel: Download progress: ${this.downloadProgress}%`);
+      this.emitStatus();
+    });
+    
+    autoUpdater.on('update-downloaded', (info) => {
+      logger.info(`✅ Squirrel: Update downloaded: ${info.version}`);
+      this.updateDownloaded = true;
+      this.downloadProgress = 100;
+      this.emitStatus();
+    });
+    
+    autoUpdater.on('error', (err) => {
+      logger.error(`❌ Squirrel: Error: ${err.message}`);
+      this.isChecking = false;
+      this.emitStatus();
+    });
   }
 
   /**
@@ -127,9 +183,107 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Check for updates manually
+   * Check for updates using Squirrel's autoUpdater
+   * This is the preferred method for Squirrel-based installs
+   */
+  async checkForUpdatesSquirrel() {
+    if (this.isChecking) {
+      logger.warn('⚠️ Update check already in progress');
+      return { checking: true };
+    }
+
+    try {
+      this.isChecking = true;
+      this.emitStatus();
+      
+      // Update last check time
+      const updateSettings = settings.get('updates', {});
+      updateSettings.lastCheckTime = new Date().toISOString();
+      settings.set('updates', updateSettings);
+      
+      logger.info('🔍 Using Squirrel to check for updates...');
+      logger.info(`🔍 Current version: ${this.currentVersion}`);
+      
+      // Set feed URL to GitHub releases
+      autoUpdater.setFeedURL({
+        provider: 'github',
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO
+      });
+      
+      // Check for update using Squirrel
+      await autoUpdater.checkForUpdates();
+      
+      // Status will be updated via event handlers
+      return {
+        checking: this.isChecking,
+        updateAvailable: this.updateAvailable,
+        version: this.availableVersion
+      };
+    } catch (error) {
+      logger.error(`❌ Squirrel update check failed: ${error.message}`);
+      this.isChecking = false;
+      this.emitStatus();
+      throw error;
+    }
+  }
+
+  /**
+   * Download update using Squirrel
+   */
+  async downloadUpdateSquirrel() {
+    if (!this.updateAvailable) {
+      throw new Error('No update available to download');
+    }
+
+    try {
+      logger.info('📥 Starting Squirrel update download...');
+      this.downloadProgress = 0;
+      this.emitStatus();
+      
+      // Download the update using Squirrel
+      await autoUpdater.downloadUpdate();
+      
+      return {
+        success: true,
+        message: 'Update downloaded, will install on restart'
+      };
+    } catch (error) {
+      logger.error(`❌ Squirrel update download failed: ${error.message}`);
+      this.emitStatus();
+      throw error;
+    }
+  }
+
+  /**
+   * Install update using Squirrel and restart
+   */
+  async installUpdateSquirrel() {
+    if (!this.updateDownloaded) {
+      throw new Error('No update downloaded to install');
+    }
+
+    logger.info('🚀 Installing Squirrel update and restarting...');
+    
+    // This will quit and install the update
+    autoUpdater.quitAndInstall(false, true);
+    
+    return {
+      success: true,
+      message: 'Update installed. Application will restart.'
+    };
+  }
+
+  /**
+   * Check for updates manually (legacy method)
    */
   async checkForUpdates(force = false) {
+    // Use Squirrel by default for packaged apps
+    if (app.isPackaged) {
+      return this.checkForUpdatesSquirrel();
+    }
+    
+    // Fall back to legacy method for development
     if (this.isChecking && !force) {
       logger.warn('⚠️ Update check already in progress');
       return { checking: true };
@@ -169,23 +323,23 @@ class UpdateService extends EventEmitter {
       logger.info(`   Update needed: ${isNewer ? 'YES' : 'NO'}`);
       
       if (isNewer) {
-        // Find MSI file in release assets
+        // Find exe file in release assets (for Squirrel)
         const allAssets = release.assets || [];
-        logger.info(`🔍 Looking for MSI file in ${allAssets.length} assets...`);
+        logger.info(`🔍 Looking for installer file in ${allAssets.length} assets...`);
         
-        const msiAsset = allAssets.find(asset => 
-          asset.name.toLowerCase().endsWith('.msi')
+        const exeAsset = allAssets.find(asset => 
+          asset.name.toLowerCase().endsWith('.exe')
         );
         
-        if (msiAsset) {
+        if (exeAsset) {
           this.updateAvailable = true;
           this.availableVersion = latestVersion;
-          this.downloadUrl = msiAsset.browser_download_url;
-          this.downloadFileName = msiAsset.name;
+          this.downloadUrl = exeAsset.browser_download_url;
+          this.downloadFileName = exeAsset.name;
           logger.info(`✅ ===============================================`);
           logger.info(`✅ UPDATE AVAILABLE: v${latestVersion}`);
-          logger.info(`   File: ${msiAsset.name}`);
-          logger.info(`   Size: ${(msiAsset.size / 1024 / 1024).toFixed(2)} MB`);
+          logger.info(`   File: ${exeAsset.name}`);
+          logger.info(`   Size: ${(exeAsset.size / 1024 / 1024).toFixed(2)} MB`);
           logger.info(`   URL:  ${this.downloadUrl}`);
           logger.info(`✅ ===============================================`);
           
@@ -193,7 +347,7 @@ class UpdateService extends EventEmitter {
           const { logUpdateAvailable } = require('./eventLogger');
           logUpdateAvailable(latestVersion, this.downloadUrl);
         } else {
-          logger.warn(`⚠️ No MSI file found in release assets!`);
+          logger.warn(`⚠️ No installer file found in release assets!`);
           logger.warn(`   Available files:`);
           allAssets.forEach(asset => {
             logger.warn(`   - ${asset.name} (${(asset.size / 1024).toFixed(1)} KB)`);
@@ -260,10 +414,16 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Download and install the update (Discord-like)
-   * Shows download progress, then launches helper to close app, install, and restart
+   * Download and install the update
+   * Uses Squirrel for packaged apps, legacy method for development
    */
   async downloadAndInstall() {
+    // Use Squirrel for packaged apps
+    if (app.isPackaged) {
+      return this.downloadAndInstallSquirrel();
+    }
+    
+    // Legacy method for development
     if (!this.updateAvailable || !this.downloadUrl) {
       throw new Error('No update available to download');
     }
@@ -386,6 +546,34 @@ class UpdateService extends EventEmitter {
       });
     } catch (error) {
       logger.error(`❌ Failed to download update: ${error.message}`);
+      this.emitStatus();
+      throw error;
+    }
+  }
+
+  /**
+   * Download and install using Squirrel (for packaged apps)
+   */
+  async downloadAndInstallSquirrel() {
+    if (!this.updateAvailable) {
+      throw new Error('No update available to download');
+    }
+
+    try {
+      logger.info('📥 Starting Squirrel update download...');
+      this.downloadProgress = 0;
+      this.emitStatus();
+      
+      // Download the update using Squirrel
+      // Squirrel will show its own UI with progress
+      await autoUpdater.downloadUpdate();
+      
+      return {
+        success: true,
+        message: 'Update downloaded, will install on restart'
+      };
+    } catch (error) {
+      logger.error(`❌ Squirrel update download failed: ${error.message}`);
       this.emitStatus();
       throw error;
     }

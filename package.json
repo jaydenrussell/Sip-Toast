@@ -18,11 +18,11 @@
     "prepackage": "node scripts/increment-version.js",
     "package": "electron-builder --win --config.win.target=dir",
     "build": "npm run package",
-    "package:squirrel": "electron-builder --win --config.win.target=squirrel",
+    "package:nsis": "electron-builder --win --config.win.target=nsis",
     "package:dir": "electron-builder --win --config.win.target=dir",
     "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
     "release": "node scripts/create-release.js",
-    "build-and-release": "npm run package:squirrel && npm run release"
+    "build-and-release": "npm run package:nsis && npm run release"
   },
   "dependencies": {
     "axios": "^1.6.8",
@@ -61,7 +61,7 @@
     "win": {
       "target": [
         {
-          "target": "squirrel",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
@@ -70,7 +70,13 @@
       "icon": "Images/app.ico",
       "artifactName": "${productName} ${version}.${ext}"
     },
-    "squirrelWindows": {
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SIP Toast"
     },
     "appx": {
       "identityName": "YourSolution.SIPToast",
