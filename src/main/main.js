@@ -340,45 +340,95 @@ const createTray = () => {
   const icon = createTrayIcon();
   tray = new Tray(icon);
 
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Open Control Center',
-      click: () => flyoutWindow?.showStandalone()
-    },
-    {
-      label: 'Refresh SIP Connection',
-      click: async () => {
-        await sipManager?.start();
-      }
-    },
-    {
-      label: 'Quit',
-      click: () => {
-        // Force quit - destroy all windows and resources
-        if (notificationWindow?.window) {
-          notificationWindow.window.destroy();
-          notificationWindow = null;
+  // Build dynamic context menu that includes update status
+  const buildContextMenu = () => {
+    const updateStatus = updateService?.getStatus() || {};
+    const updateItems = [];
+    
+    if (updateStatus.updateDownloaded) {
+      updateItems.push({
+        label: `Install Update v${updateStatus.availableVersion}`,
+        click: async () => {
+          if (updateService) {
+            await updateService.installUpdateSquirrel();
+          }
         }
-        if (flyoutWindow?.window) {
-          flyoutWindow.window.destroy();
-          flyoutWindow = null;
+      });
+    } else if (updateStatus.updateAvailable) {
+      updateItems.push({
+        label: `Download Update v${updateStatus.availableVersion}`,
+        click: async () => {
+          if (updateService) {
+            await updateService.downloadAndInstallSquirrel();
+          }
         }
-        if (sipManager) {
-          sipManager.stop();
-          sipManager = null;
+      });
+    } else if (updateStatus.checking) {
+      updateItems.push({
+        label: 'Checking for updates...',
+        enabled: false
+      });
+    } else {
+      updateItems.push({
+        label: 'Check for Updates',
+        click: async () => {
+          if (updateService) {
+            await updateService.checkForUpdates();
+          }
         }
-        if (tray) {
-          tray.destroy();
-          tray = null;
-        }
-        // Use exit instead of quit to force termination
-        app.exit(0);
-      }
+      });
     }
-  ]);
+    
+    return Menu.buildFromTemplate([
+      {
+        label: 'Open Control Center',
+        click: () => flyoutWindow?.showStandalone()
+      },
+      ...updateItems,
+      { type: 'separator' },
+      {
+        label: 'Refresh SIP Connection',
+        click: async () => {
+          await sipManager?.start();
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          // Force quit - destroy all windows and resources
+          if (notificationWindow?.window) {
+            notificationWindow.window.destroy();
+            notificationWindow = null;
+          }
+          if (flyoutWindow?.window) {
+            flyoutWindow.window.destroy();
+            flyoutWindow = null;
+          }
+          if (sipManager) {
+            sipManager.stop();
+            sipManager = null;
+          }
+          if (tray) {
+            tray.destroy();
+            tray = null;
+          }
+          // Use exit instead of quit to force termination
+          app.exit(0);
+        }
+      }
+    ]);
+  };
+  
+  // Update context menu whenever it would be shown
+  const contextMenu = buildContextMenu();
 
   tray.setToolTip('SIP Toast – Caller ID Lookup');
-  tray.setContextMenu(contextMenu);
+  // Update context menu dynamically when shown
+  tray.setContextMenu(buildContextMenu());
+  tray.on('context-menu', () => {
+    tray.setContextMenu(buildContextMenu());
+  });
   tray.on('click', () => {
     // Always show in standalone mode (not docked) so it stays visible
     if (flyoutWindow?.window?.isVisible()) {
