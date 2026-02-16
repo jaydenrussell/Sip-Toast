@@ -108,6 +108,9 @@ body[data-theme='dark'] .title-bar-close:hover {
   transition: opacity 160ms ease, transform 220ms ease;
   position: relative;
   box-sizing: border-box;
+  /* Ensure content doesn't overflow beyond window */
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .toast .content {
