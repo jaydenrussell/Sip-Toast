@@ -1,4 +1,4 @@
-const { BrowserWindow, ipcMain, nativeTheme, screen } = require('electron');
+Issueconst { BrowserWindow, ipcMain, nativeTheme, screen } = require('electron');
 const path = require('path');
 const { get, getWindowBounds, setWindowBounds } = require('../settings');
 
@@ -175,10 +175,10 @@ class NotificationWindow {
     // Use Caller ID font settings for the caller name
     const callerIdFont = get('toast.callerIdFont', 'Segoe UI Variable, Segoe UI, sans-serif');
     const callerIdFontSize = get('toast.callerIdFontSize', 20);
-    const callerIdColor = get('toast.callerIdColor', '#111111');
+    const callerIdColor = get('toast.callerIdColor', '#FFFFFF');
     const numberFont = get('toast.numberFont', 'Segoe UI Variable, Segoe UI, sans-serif');
     const numberFontSize = get('toast.numberFontSize', 15);
-    const numberColor = get('toast.numberColor', '#111111');
+    const numberColor = get('toast.numberColor', '#FFFFFF');
 
     // Send the notification data
     try {

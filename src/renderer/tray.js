@@ -82,11 +82,31 @@ const fieldNames = [
   'toast.autoDismissMs',
   'toast.numberFont',
   'toast.numberFontSize',
+  'toast.numberColor',
   'toast.callerIdFont',
   'toast.callerIdFontSize',
+  'toast.callerIdColor',
   'updates.enabled',
   'updates.checkFrequency'
 ];
+
+// Color picker event handlers - update display when color changes
+const callerIdColorInput = document.getElementById('callerIdColorInput');
+const callerIdColorValue = document.getElementById('callerIdColorValue');
+const numberColorInput = document.getElementById('numberColorInput');
+const numberColorValue = document.getElementById('numberColorValue');
+
+if (callerIdColorInput && callerIdColorValue) {
+  callerIdColorInput.addEventListener('input', (e) => {
+    callerIdColorValue.textContent = e.target.value.toUpperCase();
+  });
+}
+
+if (numberColorInput && numberColorValue) {
+  numberColorInput.addEventListener('input', (e) => {
+    numberColorValue.textContent = e.target.value.toUpperCase();
+  });
+}
 
 // Cache split results for field names (memory optimization)
 const fieldNameCache = new Map();
