@@ -12,8 +12,8 @@ class TrayWindow {
 
   createWindow() {
     const savedBounds = settings.getWindowBounds('tray');
-    const defaultWidth = 900;
-    const defaultHeight = 700;
+    const defaultWidth = 800;
+    const defaultHeight = 550;
     
     this.window = new BrowserWindow({
       width: savedBounds?.width || defaultWidth,
@@ -23,10 +23,10 @@ class TrayWindow {
       show: false,
       frame: false,
       resizable: true,
-      minWidth: 700,
-      minHeight: 600,
-      maxWidth: 2000,
-      maxHeight: 1500,
+      minWidth: 600,
+      minHeight: 500,
+      maxWidth: 1200,
+      maxHeight: 800,
       skipTaskbar: false,
       transparent: false,
       backgroundColor: '#f8f9fc',
@@ -130,8 +130,8 @@ class TrayWindow {
     this.mode = 'window';
     this.window.setAlwaysOnTop(false);
     this.window.setResizable(true);
-    this.window.setMinimumSize(700, 600);
-    this.window.setMaximumSize(2000, 1500);
+    this.window.setMinimumSize(600, 500);
+    this.window.setMaximumSize(1200, 800);
     this.window.setSkipTaskbar(false);
     
     // Memory optimization: Restore normal frame rate when shown
@@ -189,4 +189,3 @@ class TrayWindow {
 }
 
 module.exports = TrayWindow;
-
