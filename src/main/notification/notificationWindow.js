@@ -1,4 +1,4 @@
-Issueconst { BrowserWindow, ipcMain, nativeTheme, screen } = require('electron');
+const { BrowserWindow, ipcMain, nativeTheme, screen } = require('electron');
 const path = require('path');
 const { get, getWindowBounds, setWindowBounds } = require('../settings');
 
@@ -49,8 +49,6 @@ class NotificationWindow {
       height: 200,
       minWidth: 250,
       minHeight: 120,
-      maxWidth: 600,
-      maxHeight: 400,
       show: false,
       frame: false,
       resizable: true,
@@ -64,7 +62,7 @@ class NotificationWindow {
       title: '',
       // Additional options to hide min/max
       minimizable: false,
-      maximizable: false,
+      maximizable: true,
       webPreferences: {
         preload: path.join(__dirname, '..', '..', 'preload', 'notificationPreload.js'),
         nodeIntegration: false,
@@ -231,9 +229,9 @@ class NotificationWindow {
         height: Math.round(saved.height)
       };
       
-      // Ensure saved size is within min/max constraints
-      bounds.width = Math.max(250, Math.min(600, bounds.width));
-      bounds.height = Math.max(120, Math.min(400, bounds.height));
+      // Ensure saved size respects minimum constraints only (no maximum limit)
+      bounds.width = Math.max(250, bounds.width);
+      bounds.height = Math.max(120, bounds.height);
       
       // Create size object for payload (using saved bounds)
       size = {

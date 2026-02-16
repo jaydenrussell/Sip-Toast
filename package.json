@@ -1,7 +1,7 @@
 {
   "name": "sip-toast",
-  "version": "0.72.0",
-  "buildDate": "2026-02-16T14:55:00.000Z",
+  "version": "0.72.2",
+  "buildDate": "2026-02-16T20:41:14.021Z",
   "description": "Windows 11-ready SIP caller ID toast that looks up clients via Acuity Scheduling.",
   "main": "src/main/main.js",
   "author": "Jayden Russell",
@@ -72,9 +72,7 @@
       "artifactName": "${productName} ${version}.${ext}"
     },
     "squirrelWindows": {
-      "name": "SipToast",
-      "setupExe": "SIPToastSetup.exe",
-      "noMsi": true
+      "name": "SipToast"
     },
     "appx": {
       "identityName": "YourSolution.SIPToast",
