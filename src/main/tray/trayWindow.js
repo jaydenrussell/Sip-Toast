@@ -143,7 +143,7 @@ class TrayWindow {
     }
     
     const savedBounds = settings.getWindowBounds('tray');
-    if (savedBounds) {
+    if (savedBounds && typeof savedBounds.x === 'number' && typeof savedBounds.y === 'number') {
       if (savedBounds.width && savedBounds.height) {
         this.window.setBounds({
           x: Math.round(savedBounds.x),

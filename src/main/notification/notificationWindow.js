@@ -220,7 +220,7 @@ class NotificationWindow {
     let bounds;
     let size;
     
-    if (saved && saved.width && saved.height && saved.x !== undefined && saved.y !== undefined) {
+    if (saved && typeof saved.x === 'number' && typeof saved.y === 'number' && saved.width > 0 && saved.height > 0) {
       // Use saved size and position
       bounds = {
         x: Math.round(saved.x),
