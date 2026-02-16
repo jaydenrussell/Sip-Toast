@@ -51,19 +51,19 @@ const schema = {
       autoDismissMs: { type: 'number', default: 20000 },
       numberFont: { type: 'string', default: 'Segoe UI Variable, Segoe UI, sans-serif' },
       numberFontSize: { type: 'number', default: 15 },
-      numberColor: { type: 'string', default: '#111111' },
+      numberColor: { type: 'string', default: '#FFFFFF' },
       callerIdFont: { type: 'string', default: 'Segoe UI Variable, Segoe UI, sans-serif' },
       callerIdFontSize: { type: 'number', default: 20 },
-      callerIdColor: { type: 'string', default: '#111111' }
+      callerIdColor: { type: 'string', default: '#FFFFFF' }
     },
     default: {
       autoDismissMs: 20000,
       numberFont: 'Segoe UI Variable, Segoe UI, sans-serif',
       numberFontSize: 15,
-      numberColor: '#111111',
+      numberColor: '#FFFFFF',
       callerIdFont: 'Segoe UI Variable, Segoe UI, sans-serif',
       callerIdFontSize: 20,
-      callerIdColor: '#111111'
+      callerIdColor: '#FFFFFF'
     }
   },
   app: {
