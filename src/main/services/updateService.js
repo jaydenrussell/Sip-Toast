@@ -1,22 +1,29 @@
 const { logger } = require('./logger');
-const settings = require('../settings');
 const { EventEmitter } = require('events');
 const { app } = require('electron');
-
-// Squirrel.Windows auto-updater from electron-updater
 const { autoUpdater } = require('electron-updater');
 
+/**
+ * Squirrel.Windows Auto-Updater Service
+ * 
+ * Update Flow (similar to Teams/Discord):
+ * 1. Check for updates at app startup (once)
+ * 2. Download updates silently in background
+ * 3. Install automatically when app quits
+ * 4. Show subtle indicators in tray
+ */
 class UpdateService extends EventEmitter {
   constructor() {
     super();
-    this.updateCheckInterval = null;
+    
+    // State
     this.isChecking = false;
     this.updateAvailable = false;
     this.downloadProgress = 0;
     this.availableVersion = null;
     this.currentVersion = null;
     this.updateDownloaded = false;
-    this.lastCheckTime = null;
+    this.hasCheckedOnStartup = false;
     
     // Get current version
     try {
@@ -30,91 +37,99 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Set up Squirrel.Windows auto-updater event handlers
+   * Set up Squirrel.Windows auto-updater
    */
   setupAutoUpdater() {
-    // Don't auto-download - we want to control when to download
-    autoUpdater.autoDownload = false;
-    // Auto-install on app quit
+    // Set the GitHub repository as the update source
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'jaydenrussell',
+      repo: 'Sip-Toast'
+    });
+    
+    // Auto-download updates when available (silent background download)
+    autoUpdater.autoDownload = true;
+    
+    // Auto-install on app quit (seamless update experience)
     autoUpdater.autoInstallOnAppQuit = true;
-    // Allow downgrades (in case we need to rollback)
+    
+    // Don't allow downgrades
     autoUpdater.allowDowngrade = false;
     
-    // Set up event handlers
+    // Log the feed URL for debugging
+    logger.info('📦 Update feed URL configured for GitHub releases');
+    
+    // Event: Checking for update
     autoUpdater.on('checking-for-update', () => {
-      logger.info('🔍 Checking for update...');
+      logger.info('🔄 Checking for updates...');
       this.isChecking = true;
       this.emitStatus();
     });
     
+    // Event: Update available
     autoUpdater.on('update-available', (info) => {
-      logger.info(`✅ Update available: v${info.version}`);
+      logger.info(`📥 Update available: v${info.version}`);
       this.updateAvailable = true;
       this.availableVersion = info.version;
       this.isChecking = false;
-      this.lastCheckTime = new Date().toISOString();
       this.emitStatus();
-      
-      // Log update available
-      try {
-        const { logUpdateAvailable } = require('./eventLogger');
-        logUpdateAvailable(info.version, info.releaseNotes);
-      } catch (e) {}
     });
     
+    // Event: No update available
     autoUpdater.on('update-not-available', (info) => {
-      logger.info(`ℹ️ No update available. Current version: ${info.version}`);
+      logger.info(`✅ App is up to date (v${info.version})`);
       this.updateAvailable = false;
       this.isChecking = false;
-      this.lastCheckTime = new Date().toISOString();
       this.emitStatus();
     });
     
-    autoUpdater.on('download-progress', (progressObj) => {
-      this.downloadProgress = Math.round(progressObj.percent);
-      logger.info(`📥 Download progress: ${this.downloadProgress}%`);
+    // Event: Download progress
+    autoUpdater.on('download-progress', (progress) => {
+      const percent = Math.round(progress.percent);
+      if (percent % 10 === 0 || percent === 100) { // Log every 10%
+        logger.info(`📥 Downloading update: ${percent}%`);
+      }
+      this.downloadProgress = percent;
       this.emitStatus();
     });
     
+    // Event: Update downloaded and ready
     autoUpdater.on('update-downloaded', (info) => {
-      logger.info(`✅ Update downloaded: v${info.version}`);
+      logger.info(`✅ Update downloaded: v${info.version} - will install on restart`);
       this.updateDownloaded = true;
       this.downloadProgress = 100;
       this.emitStatus();
-      
-      // Log update downloaded
-      try {
-        const { logUpdateDownloaded } = require('./eventLogger');
-        logUpdateDownloaded(info.version);
-      } catch (e) {}
     });
     
-    autoUpdater.on('error', (err) => {
-      logger.error(`❌ Update error: ${err.message}`);
+    // Event: Error
+    autoUpdater.on('error', (error) => {
+      logger.error(`❌ Update error: ${error.message}`);
       this.isChecking = false;
       this.emitStatus();
-      
-      // Log update error
-      try {
-        const { logUpdateError } = require('./eventLogger');
-        logUpdateError(err.message, 'autoUpdater');
-      } catch (e) {}
     });
   }
 
   /**
-   * Emit status to all listeners
+   * Emit current status to listeners
    */
   emitStatus() {
     this.emit('update-status', this.getStatus());
   }
 
   /**
-   * Check for updates using Squirrel.Windows
+   * Check for updates
+   * Called automatically at startup
    */
   async checkForUpdates() {
     if (this.isChecking) {
-      logger.warn('⚠️ Update check already in progress');
+      logger.debug('Update check already in progress');
+      return this.getStatus();
+    }
+
+    if (!app.isPackaged) {
+      logger.debug('Skipping update check in development mode');
+      // In development, simulate an update check for testing
+      this.currentVersion = '0.0.0'; // Force update available in dev
       return this.getStatus();
     }
 
@@ -122,75 +137,23 @@ class UpdateService extends EventEmitter {
       this.isChecking = true;
       this.emitStatus();
       
-      logger.info(`🔍 Checking for updates... (current: v${this.currentVersion})`);
+      logger.info(`🔍 Checking GitHub for updates... (current: v${this.currentVersion})`);
       
-      // Check for update - autoUpdater will emit events
+      // This triggers the autoUpdater events
       const result = await autoUpdater.checkForUpdates();
       
-      // Update last check time in settings
-      const updateSettings = settings.get('updates', {});
-      updateSettings.lastCheckTime = new Date().toISOString();
-      settings.set('updates', updateSettings);
+      if (result) {
+        logger.info(`📦 Update check result: ${result.updateInfo ? `v${result.updateInfo.version}` : 'no info'}`);
+      }
       
       return this.getStatus();
     } catch (error) {
-      logger.error(`❌ Update check failed: ${error.message}`);
+      logger.error(`Update check failed: ${error.message}`);
+      logger.error(`Stack trace: ${error.stack}`);
       this.isChecking = false;
       this.emitStatus();
-      throw error;
+      return this.getStatus();
     }
-  }
-
-  /**
-   * Download the available update
-   */
-  async downloadUpdate() {
-    if (!this.updateAvailable) {
-      throw new Error('No update available to download');
-    }
-
-    try {
-      logger.info('📥 Starting update download...');
-      this.downloadProgress = 0;
-      this.emitStatus();
-      
-      // Download the update - autoUpdater will emit download-progress events
-      await autoUpdater.downloadUpdate();
-      
-      return {
-        success: true,
-        message: 'Update downloaded successfully'
-      };
-    } catch (error) {
-      logger.error(`❌ Update download failed: ${error.message}`);
-      this.emitStatus();
-      throw error;
-    }
-  }
-
-  /**
-   * Install the downloaded update and restart
-   */
-  async installUpdate() {
-    if (!this.updateDownloaded) {
-      throw new Error('No update downloaded to install');
-    }
-
-    logger.info('🚀 Installing update and restarting...');
-    
-    // Log update installed
-    try {
-      const { logUpdateInstalled } = require('./eventLogger');
-      logUpdateInstalled(this.availableVersion);
-    } catch (e) {}
-    
-    // This will quit the app and install the update
-    autoUpdater.quitAndInstall(false, true);
-    
-    return {
-      success: true,
-      message: 'Installing update...'
-    };
   }
 
   /**
@@ -203,103 +166,43 @@ class UpdateService extends EventEmitter {
       updateDownloaded: this.updateDownloaded,
       downloadProgress: this.downloadProgress,
       availableVersion: this.availableVersion,
-      currentVersion: this.currentVersion,
-      lastCheckTime: this.lastCheckTime
+      currentVersion: this.currentVersion
     };
   }
 
   /**
-   * Start automatic update checking based on settings
+   * Start automatic update checking
+   * - Check at app startup (after 30 second delay, only once)
    */
   startAutoCheck() {
-    // Clear any existing interval
-    this.stopAutoCheck();
-
-    const updateSettings = settings.get('updates', {});
-    
-    // Don't start if updates are disabled
-    if (!updateSettings.enabled) {
-      logger.info('⏸️ Auto-update is disabled');
+    // Only check once at startup
+    if (this.hasCheckedOnStartup) {
       return;
     }
-
-    // Don't start if frequency is 'never'
-    if (updateSettings.checkFrequency === 'never') {
-      logger.info('⏸️ Auto-update check frequency is set to never');
-      return;
-    }
-
-    // Calculate interval based on frequency
-    const intervals = {
-      daily: 24 * 60 * 60 * 1000,      // 24 hours
-      weekly: 7 * 24 * 60 * 60 * 1000, // 7 days
-      monthly: 30 * 24 * 60 * 60 * 1000 // 30 days
-    };
-
-    const intervalMs = intervals[updateSettings.checkFrequency] || intervals.daily;
     
-    logger.info(`🔄 Auto-update check scheduled: ${updateSettings.checkFrequency}`);
-
-    // Check on app load (with delay to let app fully start)
+    // Check at startup (delayed to let app fully load)
     setTimeout(() => {
-      this.checkOnAppLoad();
-    }, 10000); // Wait 10 seconds after app start
-
-    // Set up periodic checking
-    this.updateCheckInterval = setInterval(() => {
-      logger.info(`🔄 Periodic update check (${updateSettings.checkFrequency})`);
-      this.checkForUpdates().catch(err => {
-        logger.error(`Periodic update check failed: ${err.message}`);
-      });
-    }, intervalMs);
+      if (!this.hasCheckedOnStartup) {
+        this.hasCheckedOnStartup = true;
+        logger.info('🔄 Checking for updates at startup...');
+        this.checkForUpdates();
+      }
+    }, 30000); // 30 second delay
+    
+    logger.info(`📅 Auto-update check scheduled (30s delay at startup only)`);
   }
 
   /**
-   * Check for updates on app load
+   * Quit and install update immediately
    */
-  async checkOnAppLoad() {
-    const updateSettings = settings.get('updates', {});
-    
-    if (!updateSettings.enabled || updateSettings.checkFrequency === 'never') {
+  quitAndInstall() {
+    if (!this.updateDownloaded) {
+      logger.warn('No update downloaded to install');
       return;
     }
-
-    // Check if we already checked recently (within last hour)
-    if (updateSettings.lastCheckTime) {
-      const lastCheck = new Date(updateSettings.lastCheckTime);
-      const hoursSinceCheck = (Date.now() - lastCheck.getTime()) / (1000 * 60 * 60);
-      if (hoursSinceCheck < 1) {
-        logger.info('⏸️ Already checked for updates recently, skipping');
-        return;
-      }
-    }
-
-    logger.info('🔄 Checking for updates on app load...');
     
-    try {
-      await this.checkForUpdates();
-    } catch (error) {
-      logger.error(`Initial update check failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * Stop automatic update checking
-   */
-  stopAutoCheck() {
-    if (this.updateCheckInterval) {
-      clearInterval(this.updateCheckInterval);
-      this.updateCheckInterval = null;
-      logger.info('⏸️ Auto-update checking stopped');
-    }
-  }
-
-  /**
-   * Restart auto-check (when settings change)
-   */
-  restartAutoCheck() {
-    this.stopAutoCheck();
-    this.startAutoCheck();
+    logger.info('🔄 Quitting and installing update...');
+    autoUpdater.quitAndInstall();
   }
 }
 
