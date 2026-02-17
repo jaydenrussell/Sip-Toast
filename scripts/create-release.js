@@ -123,6 +123,16 @@ if (tagExists(tagName)) {
   } catch (error) {
     console.log(`📝 No changes to commit or commit failed (continuing)`);
   }
+  
+  // Rebuild with new version
+  console.log(`🔨 Rebuilding with version ${version}...`);
+  try {
+    execSync('npm run package:squirrel', { stdio: 'inherit' });
+    console.log(`✅ Build complete for version ${version}`);
+  } catch (error) {
+    console.error(`❌ Build failed: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 console.log(`📦 Creating release for version ${version} (tag: ${tagName})`);
@@ -274,9 +284,11 @@ console.log(`📦 Using ${installerType} installer: ${installerFile}`);
         console.log(`📦 Adding RELEASES file for auto-updates`);
       }
       
-      // Add nupkg files
+      // Add only nupkg files that match the current version
       const squirrelFiles = fs.readdirSync(squirrelPath);
-      const nupkgFiles = squirrelFiles.filter(file => file.endsWith('.nupkg'));
+      const nupkgFiles = squirrelFiles.filter(file => 
+        file.endsWith('.nupkg') && file.includes(version)
+      );
       nupkgFiles.forEach(file => {
         filesToUpload.push(path.join(squirrelPath, file));
         console.log(`📦 Adding ${file} for auto-updates`);
@@ -286,9 +298,9 @@ console.log(`📦 Using ${installerType} installer: ${installerFile}`);
     // Build the gh release create command with all files
     const filesArgs = filesToUpload.map(f => `"${f}"`).join(' ');
     
-    // Create release using GitHub CLI
+    // Create release using GitHub CLI (title matches tag name)
     execSync(
-      `gh release create ${tagName} ${filesArgs} --title "Release v${version}" --notes "${releaseNotes}"`,
+      `gh release create ${tagName} ${filesArgs} --title "${tagName}" --notes "${releaseNotes}"`,
       { stdio: 'inherit' }
     );
     
