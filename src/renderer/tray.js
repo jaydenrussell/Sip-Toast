@@ -1244,11 +1244,11 @@ const loadUpdateStatusNew = async () => {
   }
 };
 
-// Check for updates button handler (new section)
+// Check for updates button handler
 if (checkUpdatesBtnNew) {
   checkUpdatesBtnNew.addEventListener('click', async () => {
     try {
-      const result = await window.trayAPI.checkForUpdates();
+      await window.trayAPI.checkForUpdates();
       // Status will be updated via the onUpdateStatus listener
     } catch (error) {
       console.error('Failed to check for updates:', error);
@@ -1256,11 +1256,11 @@ if (checkUpdatesBtnNew) {
   });
 }
 
-// Download update button handler (new section)
+// Download update button handler
 if (downloadUpdateBtnNew) {
   downloadUpdateBtnNew.addEventListener('click', async () => {
     try {
-      const result = await window.trayAPI.downloadUpdate();
+      await window.trayAPI.downloadUpdate();
       // Status will be updated via the onUpdateStatus listener
     } catch (error) {
       console.error('Failed to download update:', error);
@@ -1268,20 +1268,16 @@ if (downloadUpdateBtnNew) {
   });
 }
 
-// Install update button handler (new section) - now triggers download + install
+// Install update button handler
 if (installUpdateBtnNew) {
   installUpdateBtnNew.addEventListener('click', async () => {
-    if (!confirm('This will download and install the update. The application will restart after installation. Continue?')) {
+    if (!confirm('This will install the update and restart the application. Continue?')) {
       return;
     }
     
     try {
-      // Now calls downloadAndInstall which downloads MSI and runs installer
-      const result = await window.trayAPI.downloadUpdate();
-      if (result.error) {
-        alert(`Failed to install update: ${result.error}`);
-      }
-      // App will restart after installation, so no need to update UI
+      await window.trayAPI.installUpdate();
+      // App will restart after installation
     } catch (error) {
       alert(`Failed to install update: ${error.message}`);
     }

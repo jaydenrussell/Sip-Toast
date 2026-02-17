@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('trayAPI', {
   getFirewallInstructions: () => ipcRenderer.invoke('firewall:instructions'),
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
   downloadUpdate: () => ipcRenderer.invoke('updates:download'),
-  openUpdatePage: () => ipcRenderer.invoke('updates:openPage'),
+  installUpdate: () => ipcRenderer.invoke('updates:install'),
   getUpdateStatus: () => ipcRenderer.invoke('updates:status'),
   onUpdateStatus: (callback) => {
     ipcRenderer.on('update:status', (_event, status) => callback(status));
