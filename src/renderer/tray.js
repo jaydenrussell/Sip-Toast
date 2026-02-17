@@ -949,6 +949,38 @@ if (refreshFirewallBtn) {
 // Sidebar update status chip - shows when update is ready
 const updateStatusChip = document.getElementById('updateStatus');
 
+// Make update chip clickable - install update or navigate to About section
+if (updateStatusChip) {
+  updateStatusChip.style.cursor = 'pointer';
+  updateStatusChip.addEventListener('click', async () => {
+    // If update is downloaded, install it directly
+    if (currentUpdateStatus && currentUpdateStatus.updateDownloaded) {
+      try {
+        await window.trayAPI.quitAndInstallUpdate();
+      } catch (error) {
+        console.error('Failed to install update:', error);
+      }
+      return;
+    }
+    
+    // Otherwise navigate to About section
+    navItems.forEach((nav) => nav.classList.remove('active'));
+    const aboutNavItem = document.querySelector('.nav-item[data-section="about"]');
+    if (aboutNavItem) {
+      aboutNavItem.classList.add('active');
+    }
+    document.querySelectorAll('.content-section').forEach((sec) => {
+      sec.classList.remove('active');
+    });
+    const aboutSection = document.getElementById('section-about');
+    if (aboutSection) {
+      aboutSection.classList.add('active');
+    }
+    sectionTitle.textContent = 'About';
+    sectionSubtitle.textContent = 'Application information';
+  });
+}
+
 // Update section elements
 const checkUpdatesBtn = document.getElementById('checkUpdatesBtn');
 const installUpdateBtn = document.getElementById('installUpdateBtn');
@@ -959,19 +991,31 @@ const updateProgressRow = document.getElementById('updateProgressRow');
 const updateDownloadProgress = document.getElementById('updateDownloadProgress');
 const updateMessage = document.getElementById('updateMessage');
 
+// Store current update status for reference
+let currentUpdateStatus = null;
+
 // Update the sidebar chip based on update status
 const updateSidebarChip = (status) => {
   if (!updateStatusChip) return;
   
+  currentUpdateStatus = status;
+  
   if (status.updateDownloaded) {
     updateStatusChip.style.display = 'flex';
     updateStatusChip.querySelector('.update-text').textContent = 'Update Ready';
+    updateStatusChip.title = 'Click to install update';
   } else if (status.updateAvailable) {
     updateStatusChip.style.display = 'flex';
-    updateStatusChip.querySelector('.update-text').textContent = 'Update Available';
+    if (status.downloadProgress > 0) {
+      updateStatusChip.querySelector('.update-text').textContent = `Downloading ${status.downloadProgress}%`;
+    } else {
+      updateStatusChip.querySelector('.update-text').textContent = 'Update Available';
+    }
+    updateStatusChip.title = 'Click to view update details';
   } else if (status.downloadProgress > 0) {
     updateStatusChip.style.display = 'flex';
     updateStatusChip.querySelector('.update-text').textContent = `Downloading ${status.downloadProgress}%`;
+    updateStatusChip.title = 'Downloading update...';
   } else {
     updateStatusChip.style.display = 'none';
   }
@@ -1082,6 +1126,17 @@ const bootstrap = async () => {
   // Apply initial theme
   const initialTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', initialTheme);
+  
+  // Load initial update status
+  try {
+    const updateStatus = await window.trayAPI.getUpdateStatus();
+    if (updateStatus && !updateStatus.error) {
+      updateSidebarChip(updateStatus);
+      updateAboutSection(updateStatus);
+    }
+  } catch (error) {
+    console.debug('Could not load initial update status:', error);
+  }
   
   // Load event logs if on logs section
   const activeSection = document.querySelector('.content-section.active');
