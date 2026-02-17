@@ -40,37 +40,36 @@ body[data-theme='dark'] {
   color: #f1f1f1;
 }
 
-/* Compact Title Bar with drag area and close button */
+/* Close button positioned at top right corner */
 .title-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 100;
   display: flex;
-  align-items: center;
-  height: 16px;
-  padding: 0 4px;
-  background: transparent;
-  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 4px 4px 0 0;
+  -webkit-app-region: no-drag;
 }
 
 .title-bar-drag {
-  flex: 1;
-  height: 100%;
-  -webkit-app-region: drag;
-  cursor: move;
+  display: none;
 }
 
 .title-bar-close {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: none;
-  background: transparent;
-  color: #888;
+  background: rgba(255, 255, 255, 0.1);
+  color: #666;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: 4px;
   transition: background-color 0.15s ease, color 0.15s ease;
   -webkit-app-region: no-drag;
-  flex-shrink: 0;
   padding: 0;
 }
 
@@ -85,6 +84,7 @@ body[data-theme='dark'] {
 
 body[data-theme='dark'] .title-bar-close {
   color: #999;
+  background: rgba(0, 0, 0, 0.2);
 }
 
 body[data-theme='dark'] .title-bar-close:hover {
