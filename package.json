@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "axios": "^1.7.9",
+    "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.3.9",
     "eventemitter3": "^5.0.1",
@@ -72,7 +73,18 @@
       "artifactName": "${productName} ${version}.${ext}"
     },
     "squirrelWindows": {
-      "name": "SipToast"
+      "name": "SipToast",
+      "title": "SIP Toast",
+      "description": "SIP Caller ID Toast Notification App",
+      "iconUrl": "https://raw.githubusercontent.com/jaydenrussell/Sip-Toast/main/Images/app.ico",
+      "loadingGif": null,
+      "setupIcon": "Images/app.ico",
+      "installerIcon": "Images/app.ico",
+      "uninstallerIcon": "Images/app.ico",
+      "setupExe": "SIP Toast Setup.exe",
+      "noMsi": true,
+      "noDelta": false,
+      "remoteReleases": "https://github.com/jaydenrussell/Sip-Toast"
     },
     "appx": {
       "identityName": "YourSolution.SIPToast",
