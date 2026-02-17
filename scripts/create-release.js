@@ -293,6 +293,18 @@ console.log(`📦 Using ${installerType} installer: ${installerFile}`);
         filesToUpload.push(path.join(squirrelPath, file));
         console.log(`📦 Adding ${file} for auto-updates`);
       });
+      
+      // Generate latest.yml for electron-updater
+      const latestYmlPath = path.join(distPath, 'latest.yml');
+      const ymlContent = `version: ${version}
+releaseDate: '${new Date().toISOString()}'
+githubArtifactName: '${installerFile}'
+path: '${installerFile}'
+sha512: ''
+`;
+      fs.writeFileSync(latestYmlPath, ymlContent);
+      filesToUpload.push(latestYmlPath);
+      console.log(`📦 Adding latest.yml for electron-updater`);
     }
     
     // Build the gh release create command with all files

@@ -356,18 +356,9 @@ const createTray = () => {
     if (updateStatus.updateDownloaded) {
       updateItems.push({
         label: `Install Update v${updateStatus.availableVersion}`,
-        click: async () => {
+        click: () => {
           if (updateService) {
-            await updateService.installUpdate();
-          }
-        }
-      });
-    } else if (updateStatus.updateAvailable) {
-      updateItems.push({
-        label: `Download Update v${updateStatus.availableVersion}`,
-        click: async () => {
-          if (updateService) {
-            await updateService.downloadUpdate();
+            updateService.quitAndInstall();
           }
         }
       });
@@ -778,7 +769,7 @@ const wireIpc = () => {
     }
   });
 
-  // Update handlers - simplified for Squirrel.Windows
+  // Update handlers - Squirrel.Windows auto-update
   ipcMain.handle('updates:check', async () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
@@ -791,35 +782,19 @@ const wireIpc = () => {
     }
   });
 
-  ipcMain.handle('updates:download', async () => {
-    if (!updateService) {
-      return { error: 'Update service not initialized' };
-    }
-    try {
-      return await updateService.downloadUpdate();
-    } catch (error) {
-      logger.error(`Update download failed: ${error.message}`);
-      return { error: error.message };
-    }
-  });
-
-  ipcMain.handle('updates:install', async () => {
-    if (!updateService) {
-      return { error: 'Update service not initialized' };
-    }
-    try {
-      return await updateService.installUpdate();
-    } catch (error) {
-      logger.error(`Update install failed: ${error.message}`);
-      return { error: error.message };
-    }
-  });
-
   ipcMain.handle('updates:status', () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
     }
     return updateService.getStatus();
+  });
+
+  ipcMain.handle('updates:quitAndInstall', () => {
+    if (!updateService) {
+      return { error: 'Update service not initialized' };
+    }
+    updateService.quitAndInstall();
+    return { success: true };
   });
 };
 

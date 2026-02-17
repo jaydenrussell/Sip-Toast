@@ -30,12 +30,12 @@ contextBridge.exposeInMainWorld('trayAPI', {
   deleteAllEvents: () => ipcRenderer.invoke('events:deleteAll'),
   checkFirewall: () => ipcRenderer.invoke('firewall:check'),
   getFirewallInstructions: () => ipcRenderer.invoke('firewall:instructions'),
+  
+  // Update API - simplified for Squirrel.Windows auto-update
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
-  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
-  installUpdate: () => ipcRenderer.invoke('updates:install'),
   getUpdateStatus: () => ipcRenderer.invoke('updates:status'),
+  quitAndInstall: () => ipcRenderer.invoke('updates:quitAndInstall'),
   onUpdateStatus: (callback) => {
     ipcRenderer.on('update:status', (_event, status) => callback(status));
   }
 });
-
