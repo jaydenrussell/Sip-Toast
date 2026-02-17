@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('trayAPI', {
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
   getUpdateStatus: () => ipcRenderer.invoke('updates:status'),
   quitAndInstall: () => ipcRenderer.invoke('updates:quitAndInstall'),
+  quitAndInstallUpdate: () => ipcRenderer.invoke('updates:quitAndInstall'),
   onUpdateStatus: (callback) => {
     ipcRenderer.on('update:status', (_event, status) => callback(status));
   }
