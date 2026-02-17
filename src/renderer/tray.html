@@ -10,7 +10,7 @@
   <body>
     <div class="title-bar">
       <div class="title-bar-content">
-        <span class="title-text">SIP Toast</span>
+        <span class="title-text">SIP Toast - Caller ID</span>
         <div class="title-bar-controls">
           <button class="title-bar-button minimize" id="minimizeBtn" title="Minimize">─</button>
           <button class="title-bar-button close" id="closeBtn" title="Close">✕</button>
@@ -455,6 +455,36 @@
                 </div>
                 <div class="about-item">
                   <strong>Build Date:</strong> <span id="aboutBuildDate">-</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="card" style="margin-top: 12px;">
+              <div class="section-heading">
+                <div>
+                  <h2>Software Updates</h2>
+                  <p class="note">Check for and install application updates</p>
+                </div>
+              </div>
+              
+              <div id="updateStatusSection">
+                <div class="debug-info" id="updateDebugInfo">
+                  <div class="debug-item">
+                    <strong>Current Version:</strong> <span id="updateCurrentVersion">-</span>
+                  </div>
+                  <div class="debug-item" id="updateAvailableRow" style="display: none;">
+                    <strong>Available Version:</strong> <span id="updateAvailableVersion">-</span>
+                  </div>
+                  <div class="debug-item" id="updateProgressRow" style="display: none;">
+                    <strong>Download Progress:</strong> <span id="updateDownloadProgress">0%</span>
+                  </div>
+                </div>
+                
+                <div id="updateMessage" style="margin-top: 12px; padding: 12px; border-radius: 8px; display: none;"></div>
+                
+                <div class="actions" style="margin-top: 16px;">
+                  <button type="button" class="primary" id="checkUpdatesBtn">Check for Updates</button>
+                  <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install Update</button>
                 </div>
               </div>
             </div>

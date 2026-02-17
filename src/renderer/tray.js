@@ -949,6 +949,16 @@ if (refreshFirewallBtn) {
 // Sidebar update status chip - shows when update is ready
 const updateStatusChip = document.getElementById('updateStatus');
 
+// Update section elements
+const checkUpdatesBtn = document.getElementById('checkUpdatesBtn');
+const installUpdateBtn = document.getElementById('installUpdateBtn');
+const updateCurrentVersion = document.getElementById('updateCurrentVersion');
+const updateAvailableRow = document.getElementById('updateAvailableRow');
+const updateAvailableVersion = document.getElementById('updateAvailableVersion');
+const updateProgressRow = document.getElementById('updateProgressRow');
+const updateDownloadProgress = document.getElementById('updateDownloadProgress');
+const updateMessage = document.getElementById('updateMessage');
+
 // Update the sidebar chip based on update status
 const updateSidebarChip = (status) => {
   if (!updateStatusChip) return;
@@ -959,14 +969,108 @@ const updateSidebarChip = (status) => {
   } else if (status.updateAvailable) {
     updateStatusChip.style.display = 'flex';
     updateStatusChip.querySelector('.update-text').textContent = 'Update Available';
+  } else if (status.downloadProgress > 0) {
+    updateStatusChip.style.display = 'flex';
+    updateStatusChip.querySelector('.update-text').textContent = `Downloading ${status.downloadProgress}%`;
   } else {
     updateStatusChip.style.display = 'none';
   }
 };
 
+// Update the About section update UI
+const updateAboutSection = (status) => {
+  if (!updateCurrentVersion) return;
+  
+  // Update current version
+  updateCurrentVersion.textContent = status.currentVersion || 'Unknown';
+  
+  // Show/hide available version row
+  if (status.updateAvailable && status.availableVersion) {
+    updateAvailableRow.style.display = 'flex';
+    updateAvailableVersion.textContent = status.availableVersion;
+  } else {
+    updateAvailableRow.style.display = 'none';
+  }
+  
+  // Show/hide download progress
+  if (status.downloadProgress > 0 && !status.updateDownloaded) {
+    updateProgressRow.style.display = 'flex';
+    updateDownloadProgress.textContent = `${status.downloadProgress}%`;
+  } else {
+    updateProgressRow.style.display = 'none';
+  }
+  
+  // Update message and buttons
+  if (status.updateDownloaded) {
+    updateMessage.style.display = 'block';
+    updateMessage.style.background = 'rgba(16, 185, 129, 0.1)';
+    updateMessage.style.color = '#10b981';
+    updateMessage.innerHTML = `✅ Update v${status.availableVersion} downloaded and ready to install. Click "Install Update" to restart and apply the update.`;
+    installUpdateBtn.style.display = 'inline-block';
+    checkUpdatesBtn.textContent = 'Check for Updates';
+    checkUpdatesBtn.disabled = false;
+  } else if (status.updateAvailable) {
+    updateMessage.style.display = 'block';
+    updateMessage.style.background = 'rgba(16, 185, 129, 0.1)';
+    updateMessage.style.color = '#10b981';
+    updateMessage.innerHTML = `📥 Update v${status.availableVersion} is available. Downloading...`;
+    installUpdateBtn.style.display = 'none';
+    checkUpdatesBtn.textContent = 'Downloading...';
+    checkUpdatesBtn.disabled = true;
+  } else if (status.checking) {
+    updateMessage.style.display = 'block';
+    updateMessage.style.background = 'rgba(59, 130, 246, 0.1)';
+    updateMessage.style.color = '#3b82f6';
+    updateMessage.innerHTML = '🔍 Checking for updates...';
+    installUpdateBtn.style.display = 'none';
+    checkUpdatesBtn.textContent = 'Checking...';
+    checkUpdatesBtn.disabled = true;
+  } else {
+    updateMessage.style.display = 'none';
+    installUpdateBtn.style.display = 'none';
+    checkUpdatesBtn.textContent = 'Check for Updates';
+    checkUpdatesBtn.disabled = false;
+  }
+};
+
+// Check for updates button handler
+if (checkUpdatesBtn) {
+  checkUpdatesBtn.addEventListener('click', async () => {
+    try {
+      checkUpdatesBtn.disabled = true;
+      checkUpdatesBtn.textContent = 'Checking...';
+      await window.trayAPI.checkForUpdates();
+    } catch (error) {
+      console.error('Failed to check for updates:', error);
+      updateMessage.style.display = 'block';
+      updateMessage.style.background = 'rgba(239, 68, 68, 0.1)';
+      updateMessage.style.color = '#ef4444';
+      updateMessage.innerHTML = `❌ Failed to check for updates: ${error.message}`;
+      checkUpdatesBtn.disabled = false;
+      checkUpdatesBtn.textContent = 'Check for Updates';
+    }
+  });
+}
+
+// Install update button handler
+if (installUpdateBtn) {
+  installUpdateBtn.addEventListener('click', async () => {
+    try {
+      installUpdateBtn.disabled = true;
+      installUpdateBtn.textContent = 'Installing...';
+      await window.trayAPI.quitAndInstallUpdate();
+    } catch (error) {
+      console.error('Failed to install update:', error);
+      installUpdateBtn.disabled = false;
+      installUpdateBtn.textContent = 'Install Update';
+    }
+  });
+}
+
 // Listen for update status changes from main process
 window.trayAPI.onUpdateStatus((status) => {
   updateSidebarChip(status);
+  updateAboutSection(status);
 });
 
 

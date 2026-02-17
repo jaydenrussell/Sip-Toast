@@ -386,13 +386,6 @@ const createTray = () => {
       ...updateItems,
       { type: 'separator' },
       {
-        label: 'Refresh SIP Connection',
-        click: async () => {
-          await sipManager?.start();
-        }
-      },
-      { type: 'separator' },
-      {
         label: 'Quit',
         click: () => {
           // Force quit - destroy all windows and resources
