@@ -19,6 +19,47 @@ const { execSync } = require('child_process');
 const packageJsonPath = path.join(__dirname, '..', 'package.json');
 const distPath = path.join(__dirname, '..', 'dist');
 
+/**
+ * Increment patch version
+ */
+const incrementVersion = (version) => {
+  const parts = version.split('.').map(n => parseInt(n, 10));
+  parts[2]++; // Increment patch version
+  return parts.join('.');
+};
+
+/**
+ * Check if a git tag exists
+ */
+const tagExists = (tagName) => {
+  try {
+    execSync(`git rev-parse ${tagName}`, { stdio: 'ignore' });
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+/**
+ * Check if a GitHub release exists
+ */
+const releaseExists = async (tagName) => {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const repoUrl = packageJson.repository?.url || '';
+    const repoMatch = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\.git/);
+    
+    if (repoMatch) {
+      const [, owner, repo] = repoMatch;
+      execSync(`gh release view ${tagName}`, { stdio: 'ignore' });
+      return true;
+    }
+  } catch (error) {
+    return false;
+  }
+  return false;
+};
+
 // Get version from command line or package.json
 const args = process.argv.slice(2);
 let version = args[0];
@@ -45,7 +86,44 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) {
   process.exit(1);
 }
 
-const tagName = `v${version}`;
+let tagName = `v${version}`;
+
+// Auto-increment version if tag already exists
+if (tagExists(tagName)) {
+  console.log(`⚠️  Tag ${tagName} already exists, auto-incrementing version...`);
+  
+  let attempts = 0;
+  const maxAttempts = 100; // Prevent infinite loop
+  
+  while (tagExists(tagName) && attempts < maxAttempts) {
+    version = incrementVersion(version);
+    tagName = `v${version}`;
+    attempts++;
+  }
+  
+  if (attempts >= maxAttempts) {
+    console.error('❌ Error: Could not find available version after 100 attempts');
+    process.exit(1);
+  }
+  
+  console.log(`✅ New version: ${version} (tag: ${tagName})`);
+  
+  // Update package.json with new version
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  packageJson.version = version;
+  packageJson.buildDate = new Date().toISOString();
+  fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+  console.log(`📝 Updated package.json to version ${version}`);
+  
+  // Commit the version change
+  try {
+    execSync(`git add package.json`, { stdio: 'inherit' });
+    execSync(`git commit -m "chore: bump version to ${version}"`, { stdio: 'inherit' });
+    console.log(`📝 Committed version change`);
+  } catch (error) {
+    console.log(`📝 No changes to commit or commit failed (continuing)`);
+  }
+}
 
 console.log(`📦 Creating release for version ${version} (tag: ${tagName})`);
 
@@ -153,37 +231,12 @@ if (!installerFile) {
 
 console.log(`📦 Using ${installerType} installer: ${installerFile}`);
 
-// Check if tag already exists
+// Create tag and release (tag should not exist due to auto-increment above)
 (async () => {
-  try {
-    execSync(`git rev-parse ${tagName}`, { stdio: 'ignore' });
-    console.log(`⚠️  Warning: Tag ${tagName} already exists`);
-    
-    const readline = require('readline').createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-    
-    const answer = await new Promise((resolve) => {
-      readline.question('Do you want to delete and recreate it? (y/N): ', resolve);
-    });
-    
-    readline.close();
-    
-    if (answer.toLowerCase() === 'y') {
-      console.log(`🗑️  Deleting existing tag ${tagName}...`);
-      try {
-        execSync(`git tag -d ${tagName}`, { stdio: 'inherit' });
-        execSync(`git push origin :refs/tags/${tagName}`, { stdio: 'inherit' });
-      } catch (error) {
-        console.error(`⚠️  Could not delete remote tag (may not exist): ${error.message}`);
-      }
-    } else {
-      console.log('❌ Aborted');
-      process.exit(1);
-    }
-  } catch (error) {
-    // Tag doesn't exist, which is fine - continue
+  // Double-check tag doesn't exist (should never happen due to auto-increment)
+  if (tagExists(tagName)) {
+    console.error(`❌ Error: Tag ${tagName} already exists. This should not happen after auto-increment.`);
+    process.exit(1);
   }
   
   // Create tag
