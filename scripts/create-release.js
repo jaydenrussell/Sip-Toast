@@ -68,47 +68,90 @@ try {
   process.exit(1);
 }
 
-// Find MSI installer matching the version
-const allMsiFiles = fs.readdirSync(distPath).filter(file => file.endsWith('.msi'));
-
-// Filter to find MSI files that match the version we're releasing
-// Match patterns like: "SIP Toast 0.68.4.msi", "Sip-Toast-0.68.4.msi", "sip-toast-0.68.4.msi"
+// Find installer files (support both Squirrel.Windows and MSI)
+const squirrelPath = path.join(distPath, 'squirrel-windows');
 const versionEscaped = version.replace(/\./g, '\\.');
-const versionPattern = new RegExp(`(^|[\\s_-])v?${versionEscaped}(\\.msi|$)`, 'i');
-const matchingMsiFiles = allMsiFiles.filter(file => versionPattern.test(file));
 
-let msiFile;
-let msiPath;
+let installerFile;
+let installerPath;
+let installerType;
 
-if (matchingMsiFiles.length > 0) {
-  // Use the matching version MSI
-  msiFile = matchingMsiFiles[0];
-  msiPath = path.join(distPath, msiFile);
-  console.log(`📁 Found matching MSI installer for v${version}: ${msiFile}`);
-} else {
-  // Fallback: try to find any MSI (for backwards compatibility or manual builds)
-  if (allMsiFiles.length === 0) {
-    console.error('❌ Error: No MSI installer found in dist/ directory');
-    console.error('   Build the application first with: npm run package');
-    process.exit(1);
+// First, check for Squirrel.Windows installer (preferred for auto-updates)
+if (fs.existsSync(squirrelPath)) {
+  const squirrelFiles = fs.readdirSync(squirrelPath);
+  
+  // Look for Setup.exe (Squirrel installer)
+  const exeFiles = squirrelFiles.filter(file => 
+    file.endsWith('.exe') && !file.includes('SipToast.exe')
+  );
+  
+  // Find matching version
+  const versionPattern = new RegExp(`(^|[\\s_-])v?${versionEscaped}(\\.exe|$)`, 'i');
+  const matchingExeFiles = exeFiles.filter(file => versionPattern.test(file));
+  
+  if (matchingExeFiles.length > 0) {
+    installerFile = matchingExeFiles[0];
+    installerPath = path.join(squirrelPath, installerFile);
+    installerType = 'Squirrel';
+    console.log(`📁 Found Squirrel installer for v${version}: ${installerFile}`);
+  } else if (exeFiles.length > 0) {
+    // Use most recent exe
+    const exeStats = exeFiles.map(file => ({
+      name: file,
+      path: path.join(squirrelPath, file),
+      mtime: fs.statSync(path.join(squirrelPath, file)).mtime
+    }));
+    exeStats.sort((a, b) => b.mtime - a.mtime);
+    
+    installerFile = exeStats[0].name;
+    installerPath = exeStats[0].path;
+    installerType = 'Squirrel';
+    console.log(`📁 Found Squirrel installer: ${installerFile}`);
   }
   
-  // Log warning about version mismatch
-  console.warn(`⚠️  Warning: No MSI file matching version ${version} found`);
-  console.warn(`   Available MSI files: ${allMsiFiles.join(', ')}`);
-  
-  // Use the most recent MSI file (by modification time)
-  const msiStats = allMsiFiles.map(file => ({
-    name: file,
-    path: path.join(distPath, file),
-    mtime: fs.statSync(path.join(distPath, file)).mtime
-  }));
-  msiStats.sort((a, b) => b.mtime - a.mtime);
-  
-  msiFile = msiStats[0].name;
-  msiPath = msiStats[0].path;
-  console.warn(`   Using most recent MSI: ${msiFile} (may not match version)`);
+  // Also look for .nupkg files for delta updates
+  const nupkgFiles = squirrelFiles.filter(file => 
+    file.endsWith('.nupkg') && file.includes(version)
+  );
+  if (nupkgFiles.length > 0) {
+    console.log(`📦 Found nupkg packages: ${nupkgFiles.join(', ')}`);
+  }
 }
+
+// Fallback to MSI if no Squirrel installer found
+if (!installerFile) {
+  const allMsiFiles = fs.readdirSync(distPath).filter(file => file.endsWith('.msi'));
+  
+  const versionPattern = new RegExp(`(^|[\\s_-])v?${versionEscaped}(\\.msi|$)`, 'i');
+  const matchingMsiFiles = allMsiFiles.filter(file => versionPattern.test(file));
+  
+  if (matchingMsiFiles.length > 0) {
+    installerFile = matchingMsiFiles[0];
+    installerPath = path.join(distPath, installerFile);
+    installerType = 'MSI';
+    console.log(`📁 Found MSI installer for v${version}: ${installerFile}`);
+  } else if (allMsiFiles.length > 0) {
+    const msiStats = allMsiFiles.map(file => ({
+      name: file,
+      path: path.join(distPath, file),
+      mtime: fs.statSync(path.join(distPath, file)).mtime
+    }));
+    msiStats.sort((a, b) => b.mtime - a.mtime);
+    
+    installerFile = msiStats[0].name;
+    installerPath = msiStats[0].path;
+    installerType = 'MSI';
+    console.warn(`⚠️  Using most recent MSI: ${installerFile}`);
+  }
+}
+
+if (!installerFile) {
+  console.error('❌ Error: No installer found in dist/ directory');
+  console.error('   Build the application first with: npm run package:squirrel');
+  process.exit(1);
+}
+
+console.log(`📦 Using ${installerType} installer: ${installerFile}`);
 
 // Check if tag already exists
 (async () => {
@@ -158,7 +201,7 @@ if (matchingMsiFiles.length > 0) {
   const releaseNotes = `## SIP Toast v${version}
   
   ### Installation
-  Download the MSI installer below and run it to install or update SIP Toast.
+  Download the installer below and run it to install or update SIP Toast.
   
   ### Auto-Update
   If you have SIP Toast installed, it will automatically check for this update based on your update settings.
@@ -167,9 +210,32 @@ if (matchingMsiFiles.length > 0) {
   See commit history for details.`;
   
   try {
+    // Collect all files to upload for Squirrel.Windows auto-updates
+    const filesToUpload = [installerPath];
+    
+    // Add RELEASES file and nupkg files for Squirrel auto-updates
+    if (installerType === 'Squirrel' && fs.existsSync(squirrelPath)) {
+      const releasesFile = path.join(squirrelPath, 'RELEASES');
+      if (fs.existsSync(releasesFile)) {
+        filesToUpload.push(releasesFile);
+        console.log(`📦 Adding RELEASES file for auto-updates`);
+      }
+      
+      // Add nupkg files
+      const squirrelFiles = fs.readdirSync(squirrelPath);
+      const nupkgFiles = squirrelFiles.filter(file => file.endsWith('.nupkg'));
+      nupkgFiles.forEach(file => {
+        filesToUpload.push(path.join(squirrelPath, file));
+        console.log(`📦 Adding ${file} for auto-updates`);
+      });
+    }
+    
+    // Build the gh release create command with all files
+    const filesArgs = filesToUpload.map(f => `"${f}"`).join(' ');
+    
     // Create release using GitHub CLI
     execSync(
-      `gh release create ${tagName} "${msiPath}" --title "Release v${version}" --notes "${releaseNotes}"`,
+      `gh release create ${tagName} ${filesArgs} --title "Release v${version}" --notes "${releaseNotes}"`,
       { stdio: 'inherit' }
     );
     
