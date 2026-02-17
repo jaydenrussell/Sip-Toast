@@ -1312,10 +1312,13 @@ if (saveUpdateSettingsBtn) {
     };
     
     try {
-      await window.trayAPI.saveSettings(updatesPayload);
+      const saved = await window.trayAPI.saveSettings(updatesPayload);
+      currentSettings = saved;
       setSaveStatus('Update settings saved', 'success');
+      await window.trayAPI.logAction('Update settings saved');
     } catch (error) {
-      setSaveStatus('Failed to save update settings', 'error');
+      console.error('Failed to save update settings:', error);
+      setSaveStatus(`Failed to save: ${error.message || 'Unknown error'}`, 'error');
     }
   });
 }
