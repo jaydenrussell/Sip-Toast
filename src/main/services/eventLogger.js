@@ -21,9 +21,10 @@ fs.mkdirSync(logDir, { recursive: true });
 const eventLogFilePath = path.join(logDir, 'sip-toast-events.log');
 const eventJsonFilePath = path.join(logDir, 'sip-toast-events.json');
 
-// Event log buffer for in-memory access
+// Event log buffer with memory limit to prevent unbounded growth
+// Events are persisted to file, so this is just a hot cache for recent events
+const MAX_IN_MEMORY_EVENTS = 1000; // Keep last 1000 events in memory (~500KB max)
 const eventLogBuffer = [];
-// Removed MAX_BUFFER_SIZE limit - keep all events in memory for full log access
 
 const eventLogger = createLogger({
   level: 'info',
@@ -64,10 +65,14 @@ const writeEventToJsonFile = (event) => {
   }
 };
 
-// Helper to add event to buffer and persist to file
+// Helper to add event to buffer with memory limit and persist to file
 const addToBuffer = (event) => {
+  // Enforce memory limit - remove oldest events if buffer is full
+  if (eventLogBuffer.length >= MAX_IN_MEMORY_EVENTS) {
+    eventLogBuffer.shift(); // Remove oldest event (O(n) but necessary for array)
+  }
   eventLogBuffer.push(event);
-  // Also write to JSON file for persistence
+  // Also write to JSON file for persistence (full history is in file)
   writeEventToJsonFile(event);
 };
 
@@ -350,6 +355,7 @@ const deleteAllEvents = () => {
 };
 
 // Load events from JSON file on startup (if file exists and has content)
+// Memory optimization: Only load the most recent MAX_IN_MEMORY_EVENTS events
 const loadEventsFromFile = (clearBuffer = false) => {
   try {
     // Clear buffer if requested (to avoid duplicates on reload)
@@ -365,8 +371,14 @@ const loadEventsFromFile = (clearBuffer = false) => {
       const jsonContent = fs.readFileSync(jsonFilePath, 'utf8');
       if (jsonContent.trim()) {
         const lines = jsonContent.split('\n').filter(line => line.trim());
+        
+        // Memory optimization: Only load the most recent events
+        // Start from the end of the file and work backwards
+        const startIndex = Math.max(0, lines.length - MAX_IN_MEMORY_EVENTS);
         let loadedCount = 0;
-        lines.forEach(line => {
+        
+        for (let i = startIndex; i < lines.length; i++) {
+          const line = lines[i];
           try {
             const event = JSON.parse(line);
             // Validate event structure
@@ -374,8 +386,7 @@ const loadEventsFromFile = (clearBuffer = false) => {
               // Only add if not already in buffer (avoid duplicates)
               const exists = eventLogBuffer.some(e => 
                 e.type === event.type && 
-                e.timestamp === event.timestamp &&
-                JSON.stringify(e.data) === JSON.stringify(event.data)
+                e.timestamp === event.timestamp
               );
               if (!exists) {
                 eventLogBuffer.push(event);
@@ -385,7 +396,7 @@ const loadEventsFromFile = (clearBuffer = false) => {
           } catch (error) {
             // Skip invalid JSON lines
           }
-        });
+        }
         if (loadedCount > 0) {
           console.log(`Loaded ${loadedCount} events from JSON file (total: ${eventLogBuffer.length})`);
         }

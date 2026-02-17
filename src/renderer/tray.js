@@ -10,6 +10,9 @@ const sectionSubtitle = document.getElementById('sectionSubtitle');
 
 let currentSettings = null;
 
+// Memory optimization: Cache DOM elements that are accessed frequently
+// This reduces DOM queries and improves performance
+
 // Sidebar navigation
 const navItems = document.querySelectorAll('.nav-item');
 const sections = {

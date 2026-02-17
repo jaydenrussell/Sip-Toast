@@ -9,15 +9,25 @@ const EventEmitter = require('events');
 let LOG_BUFFER_SIZE = 100; // Normal size (100 entries ~50KB)
 const LOG_BUFFER_SIZE_MINIMIZED = 50; // Reduced when minimized (50 entries ~25KB)
 const logEmitter = new EventEmitter();
+
+// Use a more efficient circular buffer implementation
+// This avoids O(n) shift operations and reduces memory fragmentation
 const memoryBuffer = [];
+let bufferHead = 0; // Index of oldest entry
+let bufferCount = 0; // Current number of entries
 
 // Function to adjust log buffer size based on window visibility
 const adjustLogBufferSize = (isMinimized) => {
   const targetSize = isMinimized ? LOG_BUFFER_SIZE_MINIMIZED : LOG_BUFFER_SIZE;
-  if (memoryBuffer.length > targetSize) {
-    // Trim buffer if it's larger than target
-    memoryBuffer.splice(0, memoryBuffer.length - targetSize);
+  
+  // Trim buffer if it's larger than target
+  while (bufferCount > targetSize) {
+    // Remove oldest entry by advancing head pointer (O(1) operation)
+    memoryBuffer[bufferHead] = null; // Allow GC to reclaim memory
+    bufferHead = (bufferHead + 1) % LOG_BUFFER_SIZE;
+    bufferCount--;
   }
+  
   LOG_BUFFER_SIZE = targetSize;
 };
 
@@ -85,7 +95,6 @@ const sanitizeMessage = (message) => {
 };
 
 const pushToBuffer = (entry) => {
-  // Use circular buffer approach - more memory efficient
   // Security: Sanitize messages to remove sensitive data
   const sanitizedMessage = sanitizeMessage(entry.message);
   const optimizedEntry = {
@@ -97,12 +106,18 @@ const pushToBuffer = (entry) => {
     // Don't store meta to save memory
   };
   
-  // Use current buffer size (may be reduced when minimized)
+  // Use circular buffer approach - O(1) operations
   const currentBufferSize = typeof LOG_BUFFER_SIZE === 'number' ? LOG_BUFFER_SIZE : 100;
-  if (memoryBuffer.length >= currentBufferSize) {
-    memoryBuffer.shift(); // Remove oldest entry
+  
+  if (bufferCount < currentBufferSize) {
+    // Buffer not full yet, just add
+    memoryBuffer.push(optimizedEntry);
+    bufferCount++;
+  } else {
+    // Buffer full, overwrite oldest entry (circular)
+    memoryBuffer[bufferHead] = optimizedEntry;
+    bufferHead = (bufferHead + 1) % currentBufferSize;
   }
-  memoryBuffer.push(optimizedEntry);
   
   // Emit sanitized entry for real-time display
   const sanitizedEntry = {
@@ -151,7 +166,30 @@ module.exports = {
   logger: loggerInstance,
   logEmitter,
   getRecentLogs(count = 100) {
-    return memoryBuffer.slice(-count);
+    // Handle circular buffer - return entries in chronological order
+    if (bufferCount === 0) {
+      return [];
+    }
+    
+    // If buffer is not full, just return the last 'count' entries
+    if (bufferCount < memoryBuffer.length) {
+      return memoryBuffer.slice(-count);
+    }
+    
+    // Buffer is full - need to handle circular nature
+    // Get the actual number of entries to return
+    const returnCount = Math.min(count, bufferCount);
+    
+    // Build result array in chronological order
+    const result = [];
+    const startIdx = (bufferHead + bufferCount - returnCount) % bufferCount;
+    
+    for (let i = 0; i < returnCount; i++) {
+      const idx = (startIdx + i) % bufferCount;
+      result.push(memoryBuffer[idx]);
+    }
+    
+    return result;
   },
   getLogFilePath() {
     return logFilePath;
