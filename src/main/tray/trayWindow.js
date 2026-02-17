@@ -15,11 +15,17 @@ class TrayWindow {
     const defaultWidth = 800;
     const defaultHeight = 550;
     
+    // Only set bounds if we have valid numbers
+    const hasValidX = typeof savedBounds?.x === 'number' && !isNaN(savedBounds.x);
+    const hasValidY = typeof savedBounds?.y === 'number' && !isNaN(savedBounds.y);
+    const hasValidWidth = typeof savedBounds?.width === 'number' && savedBounds.width > 0;
+    const hasValidHeight = typeof savedBounds?.height === 'number' && savedBounds.height > 0;
+    
     this.window = new BrowserWindow({
-      width: savedBounds?.width || defaultWidth,
-      height: savedBounds?.height || defaultHeight,
-      x: savedBounds?.x,
-      y: savedBounds?.y,
+      width: hasValidWidth ? savedBounds.width : defaultWidth,
+      height: hasValidHeight ? savedBounds.height : defaultHeight,
+      x: hasValidX ? Math.round(savedBounds.x) : undefined,
+      y: hasValidY ? Math.round(savedBounds.y) : undefined,
       show: false,
       frame: false,
       resizable: true,
@@ -129,8 +135,8 @@ class TrayWindow {
     this.window.setAlwaysOnTop(false);
     this.window.setResizable(true);
     this.window.setMinimumSize(600, 500);
-    // Remove maximum size constraints to allow unlimited resizing
-    this.window.setMaximumSize(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+    // Use large but reasonable max values (8192x8192 should be enough for any display)
+    this.window.setMaximumSize(8192, 8192);
     this.window.setSkipTaskbar(false);
     
     // Memory optimization: Restore normal frame rate when shown
@@ -143,8 +149,13 @@ class TrayWindow {
     }
     
     const savedBounds = settings.getWindowBounds('tray');
-    if (savedBounds && typeof savedBounds.x === 'number' && typeof savedBounds.y === 'number') {
-      if (savedBounds.width && savedBounds.height) {
+    const hasValidX = savedBounds && typeof savedBounds.x === 'number' && !isNaN(savedBounds.x);
+    const hasValidY = savedBounds && typeof savedBounds.y === 'number' && !isNaN(savedBounds.y);
+    const hasValidWidth = savedBounds && typeof savedBounds.width === 'number' && savedBounds.width > 0;
+    const hasValidHeight = savedBounds && typeof savedBounds.height === 'number' && savedBounds.height > 0;
+    
+    if (hasValidX && hasValidY) {
+      if (hasValidWidth && hasValidHeight) {
         this.window.setBounds({
           x: Math.round(savedBounds.x),
           y: Math.round(savedBounds.y),
