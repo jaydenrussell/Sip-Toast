@@ -10,18 +10,23 @@ class NotificationWindow {
     this.pendingPayload = null;
     this.currentTimeoutMs = null;
     this.currentPhoneNumber = null;
+    this._eventHandlers = {}; // Store bound handlers for cleanup
     this._createWindow();
-    ipcMain.on('toast-clicked', (event, phoneNumber, success) => {
+    
+    // Store bound handlers for proper cleanup
+    this._eventHandlers.toastClicked = (event, phoneNumber, success) => {
       // Log toast click/copy event
       const { logToastClick } = require('../services/eventLogger');
       logToastClick(phoneNumber, success);
       // Don't hide on click - let timeout handle it
-    });
+    };
 
-    // Handle close button from custom title bar
-    ipcMain.on('toast:close', () => {
+    this._eventHandlers.toastClose = () => {
       this.hide();
-    });
+    };
+    
+    ipcMain.on('toast-clicked', this._eventHandlers.toastClicked);
+    ipcMain.on('toast:close', this._eventHandlers.toastClose);
   }
 
   _calculateSize(payload) {
@@ -309,15 +314,26 @@ class NotificationWindow {
     }
     this.isReady = false;
     this.pendingPayload = null;
+    this.currentTimeoutMs = null;
+    this.currentPhoneNumber = null;
+    
     if (this.window) {
       // Remove all listeners to prevent memory leaks
       this.window.removeAllListeners();
-      this.window.destroy();
+      if (!this.window.isDestroyed()) {
+        this.window.destroy();
+      }
       this.window = null;
     }
-    // Remove IPC listeners
-    ipcMain.removeAllListeners('toast-clicked');
-    ipcMain.removeAllListeners('toast:close');
+    
+    // Remove only our specific IPC listeners (not all listeners)
+    if (this._eventHandlers.toastClicked) {
+      ipcMain.removeListener('toast-clicked', this._eventHandlers.toastClicked);
+    }
+    if (this._eventHandlers.toastClose) {
+      ipcMain.removeListener('toast:close', this._eventHandlers.toastClose);
+    }
+    this._eventHandlers = {};
   }
 }
 

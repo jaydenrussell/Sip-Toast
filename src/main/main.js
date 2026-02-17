@@ -1149,7 +1149,7 @@ app.on('before-quit', (event) => {
     notificationWindow = null;
   }
   if (sipManager) {
-    sipManager.stop();
+    sipManager.destroy(); // Use destroy() for complete cleanup
     sipManager = null;
   }
   if (flyoutWindow) {
@@ -1169,7 +1169,7 @@ app.on('will-quit', (event) => {
     notificationWindow = null;
   }
   if (sipManager) {
-    sipManager.stop();
+    sipManager.destroy(); // Use destroy() for complete cleanup
     sipManager = null;
   }
   if (flyoutWindow) {

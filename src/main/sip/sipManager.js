@@ -26,11 +26,14 @@ class SipManager extends EventEmitter {
     this.sipStack = null;
     this.registrationTimer = null;
     this.reconnectTimeout = null;
+    this.connectionTimeout = null;
     this.state = 'idle';
     this.registrationSession = null;
     this.serverHost = null;
     this.serverPort = 5060;
     this.localPort = 5060;
+    this._incomingRequestHandler = null;
+    this._isDestroyed = false;
   }
 
   async updateConfig(nextConfig) {
@@ -497,6 +500,7 @@ class SipManager extends EventEmitter {
   stop() {
     logger.info(`🛑 Stopping SIP manager (state: ${this.state}, stack: ${!!this.sipStack})`);
     
+    // Clear all timers
     if (this.registrationTimer) {
       clearTimeout(this.registrationTimer);
       this.registrationTimer = null;
@@ -523,6 +527,26 @@ class SipManager extends EventEmitter {
       // Keep the handler reference but it won't be used until start() is called again
       this._setState('idle', { reason: 'stopped' });
     }
+  }
+  
+  // Complete cleanup for app shutdown - removes all listeners and clears all resources
+  destroy() {
+    this._isDestroyed = true;
+    
+    // Stop SIP connection
+    this.stop();
+    
+    // Remove all event listeners to prevent memory leaks
+    this.removeAllListeners('incomingCall');
+    this.removeAllListeners('status');
+    
+    // Clear handler reference
+    this._incomingRequestHandler = null;
+    
+    // Clear registration session
+    this.registrationSession = null;
+    
+    logger.info('🧹 SIP manager destroyed and resources cleaned up');
   }
 
   getState() {
