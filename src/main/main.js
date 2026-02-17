@@ -1,6 +1,14 @@
 const { app, Tray, Menu, nativeImage, ipcMain, clipboard, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+// Handle Squirrel.Windows install/update/uninstall events
+// This must be at the very top before any other app code runs
+if (require('electron-squirrel-startup')) {
+  app.quit();
+  process.exit(0);
+}
+
 const SipManager = require('./sip/sipManager');
 const NotificationWindow = require('./notification/notificationWindow');
 const TrayWindow = require('./tray/trayWindow');
