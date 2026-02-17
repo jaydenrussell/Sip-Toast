@@ -328,18 +328,18 @@ const updateTrayIcon = (status) => {
     
     // Update tooltip
     if (status.updateDownloaded) {
-      tray.setToolTip('SIP Toast – Update ready to install');
+      tray.setToolTip('SIP Toast - Update ready to install');
     } else if (status.updateAvailable) {
-      tray.setToolTip(`SIP Toast – Update available: ${status.availableVersion}`);
+      tray.setToolTip(`SIP Toast - Update available: ${status.availableVersion}`);
     } else if (status.downloadProgress > 0) {
-      tray.setToolTip(`SIP Toast – Downloading update: ${status.downloadProgress}%`);
+      tray.setToolTip(`SIP Toast - Downloading update: ${status.downloadProgress}%`);
     }
   } else if (!status.checking) {
     // No update - restore original icon
     if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
       tray.setImage(originalTrayIcon);
     }
-    tray.setToolTip('SIP Toast – Caller ID Lookup');
+    tray.setToolTip('SIP Toast - Caller ID');
   }
 };
 
@@ -415,7 +415,7 @@ const createTray = () => {
   // Update context menu whenever it would be shown
   const contextMenu = buildContextMenu();
 
-  tray.setToolTip('SIP Toast – Caller ID Lookup');
+  tray.setToolTip('SIP Toast - Caller ID');
   // Update context menu dynamically when shown
   tray.setContextMenu(buildContextMenu());
   tray.on('context-menu', () => {
