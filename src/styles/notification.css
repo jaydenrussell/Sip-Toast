@@ -148,8 +148,14 @@ body[data-theme='dark'] .toast {
 }
 
 .accent {
-  width: 6px;
+  width: 8px;
   background: linear-gradient(160deg, #0f62fe, #7f5af0);
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.accent:active {
+  cursor: grabbing;
 }
 
 .toast.match .accent {
