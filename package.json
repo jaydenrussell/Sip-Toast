@@ -74,16 +74,7 @@
     },
     "squirrelWindows": {
       "name": "SipToast",
-      "title": "SIP Toast",
-      "description": "SIP Caller ID Toast Notification App",
       "iconUrl": "https://raw.githubusercontent.com/jaydenrussell/Sip-Toast/main/Images/app.ico",
-      "loadingGif": null,
-      "setupIcon": "Images/app.ico",
-      "installerIcon": "Images/app.ico",
-      "uninstallerIcon": "Images/app.ico",
-      "setupExe": "SIP Toast Setup.exe",
-      "noMsi": true,
-      "noDelta": false,
       "remoteReleases": "https://github.com/jaydenrussell/Sip-Toast"
     },
     "appx": {
