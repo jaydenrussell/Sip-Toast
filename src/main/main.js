@@ -350,7 +350,7 @@ const createTray = () => {
         label: `Install Update v${updateStatus.availableVersion}`,
         click: async () => {
           if (updateService) {
-            await updateService.installUpdateSquirrel();
+            await updateService.installUpdate();
           }
         }
       });
@@ -359,7 +359,7 @@ const createTray = () => {
         label: `Download Update v${updateStatus.availableVersion}`,
         click: async () => {
           if (updateService) {
-            await updateService.downloadAndInstallSquirrel();
+            await updateService.downloadUpdate();
           }
         }
       });
@@ -770,14 +770,13 @@ const wireIpc = () => {
     }
   });
 
-  // Update handlers
+  // Update handlers - simplified for Squirrel.Windows
   ipcMain.handle('updates:check', async () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
     }
     try {
-      const result = await updateService.checkForUpdates(true);
-      return result;
+      return await updateService.checkForUpdates();
     } catch (error) {
       logger.error(`Update check failed: ${error.message}`);
       return { error: error.message };
@@ -789,23 +788,21 @@ const wireIpc = () => {
       return { error: 'Update service not initialized' };
     }
     try {
-      const result = await updateService.downloadAndInstall();
-      return result;
+      return await updateService.downloadUpdate();
     } catch (error) {
-      logger.error(`Update download/install failed: ${error.message}`);
+      logger.error(`Update download failed: ${error.message}`);
       return { error: error.message };
     }
   });
 
-  ipcMain.handle('updates:openPage', async () => {
+  ipcMain.handle('updates:install', async () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
     }
     try {
-      const result = await updateService.openDownloadPage();
-      return result;
+      return await updateService.installUpdate();
     } catch (error) {
-      logger.error(`Open download page failed: ${error.message}`);
+      logger.error(`Update install failed: ${error.message}`);
       return { error: error.message };
     }
   });
