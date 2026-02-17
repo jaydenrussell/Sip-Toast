@@ -994,28 +994,27 @@ const updateMessage = document.getElementById('updateMessage');
 // Store current update status for reference
 let currentUpdateStatus = null;
 
-// Update the sidebar chip based on update status
+// Update the sidebar chip based on update status (Discord-style)
 const updateSidebarChip = (status) => {
   if (!updateStatusChip) return;
   
   currentUpdateStatus = status;
   
+  // Only show chip when update is DOWNLOADED and ready (Discord-style)
   if (status.updateDownloaded) {
     updateStatusChip.style.display = 'flex';
     updateStatusChip.querySelector('.update-text').textContent = 'Update Ready';
     updateStatusChip.title = 'Click to install update';
-  } else if (status.updateAvailable) {
+  } else if (status.downloading) {
+    // Show downloading progress
     updateStatusChip.style.display = 'flex';
-    if (status.downloadProgress > 0) {
-      updateStatusChip.querySelector('.update-text').textContent = `Downloading ${status.downloadProgress}%`;
-    } else {
-      updateStatusChip.querySelector('.update-text').textContent = 'Update Available';
-    }
-    updateStatusChip.title = 'Click to view update details';
-  } else if (status.downloadProgress > 0) {
-    updateStatusChip.style.display = 'flex';
-    updateStatusChip.querySelector('.update-text').textContent = `Downloading ${status.downloadProgress}%`;
+    updateStatusChip.querySelector('.update-text').textContent = `Updating ${status.downloadProgress}%`;
     updateStatusChip.title = 'Downloading update...';
+  } else if (status.checking) {
+    // Show checking status
+    updateStatusChip.style.display = 'flex';
+    updateStatusChip.querySelector('.update-text').textContent = 'Checking...';
+    updateStatusChip.title = 'Checking for updates...';
   } else {
     updateStatusChip.style.display = 'none';
   }

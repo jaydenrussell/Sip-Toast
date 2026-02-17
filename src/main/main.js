@@ -308,7 +308,7 @@ const createDownloadIcon = () => {
 // Store the original icon for switching back
 let originalTrayIcon = null;
 
-// Update tray icon based on update status (Discord-like behavior)
+// Update tray icon based on update status (Discord-style)
 const updateTrayIcon = (status) => {
   if (!tray || !tray.getImage) return;
   
@@ -321,19 +321,15 @@ const updateTrayIcon = (status) => {
     }
   }
   
-  if (status.updateAvailable || status.updateDownloaded || status.downloadProgress > 0) {
-    // Update available or downloading - show download icon
+  // Only show download icon when update is DOWNLOADED and ready (Discord-style)
+  if (status.updateDownloaded) {
+    // Update ready - show download icon
     const downloadIcon = createDownloadIcon();
     tray.setImage(downloadIcon);
-    
-    // Update tooltip
-    if (status.updateDownloaded) {
-      tray.setToolTip('SIP Toast - Update ready to install');
-    } else if (status.updateAvailable) {
-      tray.setToolTip(`SIP Toast - Update available: ${status.availableVersion}`);
-    } else if (status.downloadProgress > 0) {
-      tray.setToolTip(`SIP Toast - Downloading update: ${status.downloadProgress}%`);
-    }
+    tray.setToolTip('SIP Toast - Update ready to install');
+  } else if (status.downloading) {
+    // Downloading - show progress in tooltip
+    tray.setToolTip(`SIP Toast - Updating ${status.downloadProgress}%`);
   } else if (!status.checking) {
     // No update - restore original icon
     if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
