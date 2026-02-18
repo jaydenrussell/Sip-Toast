@@ -4,6 +4,7 @@ const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const { spawn, execFile } = require('child_process');
 
 // Lazy load eventLogger to avoid circular dependencies
 let _eventLogger = null;
@@ -20,20 +21,18 @@ const getEventLogger = () => {
 
 const GITHUB_OWNER = 'jaydenrussell';
 const GITHUB_REPO = 'Sip-Toast';
-const RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 
 /**
  * Squirrel.Windows Auto-Updater Service
  *
  * Uses Squirrel's Update.exe directly (the same way Discord/Slack/Teams do it).
- * This is the most reliable approach for Squirrel.Windows installs.
  *
  * Flow:
  * 1. Fetch latest release from GitHub API
  * 2. Compare version with current
  * 3. If newer, run: Update.exe --update <releases-url>
  * 4. Squirrel downloads and stages the update
- * 5. On next launch, Squirrel applies the update automatically
+ * 5. User clicks "Install" → Update.exe --processStart <exe> applies the update and restarts
  */
 class UpdateService extends EventEmitter {
   constructor() {
@@ -50,6 +49,7 @@ class UpdateService extends EventEmitter {
     this.lastCheckTime = null;
     this._checkTrigger = null;
     this._autoCheckInterval = null;
+    this._squirrelProc = null;
 
     try {
       this.currentVersion = app.getVersion();
@@ -64,27 +64,47 @@ class UpdateService extends EventEmitter {
 
   /**
    * Get the Squirrel Update.exe path
+   * Squirrel installs to %LocalAppData%\<AppName>\Update.exe
    */
   _getUpdateExePath() {
     if (!app.isPackaged) return null;
 
-    const appFolder = path.dirname(app.getAppPath());
+    // app.getAppPath() returns something like:
+    // C:\Users\User\AppData\Local\SIPToast\app-0.72.34\resources\app.asar
+    const appPath = app.getAppPath();
+    const appFolder = path.dirname(appPath);           // resources/
+    const versionFolder = path.dirname(appFolder);     // app-0.72.34/
+    const installFolder = path.dirname(versionFolder); // SIPToast/  ← Update.exe lives here
+
     const candidates = [
-      path.join(appFolder, '..', 'Update.exe'),           // %LocalAppData%\SIPToast\Update.exe
-      path.join(appFolder, 'Update.exe'),
+      path.join(installFolder, 'Update.exe'),
       path.join(process.env.LOCALAPPDATA || '', 'SIPToast', 'Update.exe'),
+      path.join(path.dirname(process.execPath), '..', 'Update.exe'),
     ];
 
     for (const p of candidates) {
       try {
         if (fs.existsSync(p)) {
+          logger.info(`✅ Found Update.exe at: ${p}`);
           return p;
         }
       } catch (e) {
         // ignore
       }
     }
+
+    logger.warn(`⚠️ Update.exe not found. Checked: ${candidates.join(', ')}`);
     return null;
+  }
+
+  /**
+   * Get the install folder (parent of app-x.y.z)
+   */
+  _getInstallFolder() {
+    const appPath = app.getAppPath();
+    const appFolder = path.dirname(appPath);
+    const versionFolder = path.dirname(appFolder);
+    return path.dirname(versionFolder);
   }
 
   /**
@@ -155,7 +175,9 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Run Squirrel Update.exe to download and stage the update
+   * Run Squirrel Update.exe --update to download and stage the update.
+   * Squirrel handles the download internally. We wait for it to finish
+   * by monitoring the process exit code.
    */
   _runSquirrelUpdate(releasesUrl) {
     return new Promise((resolve, reject) => {
@@ -165,61 +187,80 @@ class UpdateService extends EventEmitter {
         return;
       }
 
-      logger.info(`🔄 Running Squirrel update: ${updateExe} --update ${releasesUrl}`);
+      logger.info(`🔄 Running: "${updateExe}" --update "${releasesUrl}"`);
 
-      const { spawn } = require('child_process');
+      // Run Update.exe and wait for it to complete
+      // Do NOT detach - we need to know when it finishes
       const proc = spawn(updateExe, ['--update', releasesUrl], {
-        detached: true,
-        stdio: 'ignore',
+        stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
       });
 
+      this._squirrelProc = proc;
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      // Simulate progress while Squirrel downloads
+      let progressTimer = null;
+      let fakeProgress = 0;
+      progressTimer = setInterval(() => {
+        // Slowly increment progress up to 90% while waiting
+        if (fakeProgress < 90) {
+          fakeProgress += Math.random() * 3;
+          this.downloadProgress = Math.min(Math.round(fakeProgress), 90);
+          this.emitStatus();
+        }
+      }, 1500);
+
       proc.on('error', (err) => {
+        clearInterval(progressTimer);
+        this._squirrelProc = null;
         logger.error(`❌ Squirrel Update.exe error: ${err.message}`);
         reject(err);
       });
 
-      // Squirrel runs in background - we don't wait for it to finish
-      // It will stage the update and the next launch will apply it
-      proc.unref();
+      proc.on('close', (code) => {
+        clearInterval(progressTimer);
+        this._squirrelProc = null;
 
-      // Poll for completion by checking for new app version folder
-      let pollCount = 0;
-      const maxPolls = 120; // 2 minutes max
-      const pollInterval = setInterval(() => {
-        pollCount++;
-        const progress = Math.min(Math.round((pollCount / maxPolls) * 100), 95);
-        this.downloadProgress = progress;
-        this.emitStatus();
+        if (stdout) logger.info(`Squirrel stdout: ${stdout.trim()}`);
+        if (stderr) logger.warn(`Squirrel stderr: ${stderr.trim()}`);
 
-        // Check if Squirrel has staged the update (new version folder appears)
-        const appFolder = path.dirname(app.getAppPath());
-        const parentFolder = path.dirname(appFolder);
-
-        try {
-          const entries = fs.readdirSync(parentFolder);
-          const newVersionFolder = entries.find(e => {
-            if (!e.startsWith('app-')) return false;
-            const ver = e.replace('app-', '');
-            return this.availableVersion && this._isNewerVersion(ver, this.currentVersion);
-          });
-
-          if (newVersionFolder) {
-            clearInterval(pollInterval);
-            logger.info(`✅ Squirrel staged update in: ${newVersionFolder}`);
-            resolve();
-          }
-        } catch (e) {
-          // ignore read errors
-        }
-
-        if (pollCount >= maxPolls) {
-          clearInterval(pollInterval);
-          // Resolve anyway - Squirrel may still be running
-          logger.warn('⚠️ Squirrel update polling timed out - update may still be in progress');
+        if (code === 0) {
+          logger.info(`✅ Squirrel update completed successfully (exit code: ${code})`);
           resolve();
+        } else {
+          // Squirrel sometimes exits with non-zero even on success
+          // Check if the new version folder was created
+          const installFolder = this._getInstallFolder();
+          try {
+            const entries = fs.readdirSync(installFolder);
+            const newVersionFolder = entries.find(e => {
+              if (!e.startsWith('app-')) return false;
+              const ver = e.replace('app-', '');
+              return this.availableVersion && this._isNewerVersion(ver, this.currentVersion);
+            });
+
+            if (newVersionFolder) {
+              logger.info(`✅ Squirrel staged update in: ${newVersionFolder} (exit code: ${code})`);
+              resolve();
+            } else {
+              reject(new Error(`Squirrel exited with code ${code}. stdout: ${stdout} stderr: ${stderr}`));
+            }
+          } catch (e) {
+            reject(new Error(`Squirrel exited with code ${code}. stdout: ${stdout} stderr: ${stderr}`));
+          }
         }
-      }, 1000);
+      });
     });
   }
 
@@ -262,7 +303,6 @@ class UpdateService extends EventEmitter {
     }
 
     logger.info(`🔍 Checking GitHub for updates... (current: v${this.currentVersion}, trigger: ${trigger})`);
-    logger.info(`   GitHub: https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`);
 
     try {
       const release = await this._fetchLatestRelease();
@@ -281,14 +321,12 @@ class UpdateService extends EventEmitter {
         this.isDownloading = true;
         this.downloadProgress = 0;
 
-        // Log to event logger
         if (evtLogger) {
           evtLogger.logUpdateAvailable(remoteVersion, release.published_at);
         }
 
         this.emitStatus();
 
-        // Run Squirrel update in background
         const releasesUrl = this._getReleasesUrl(releaseTag);
         logger.info(`🔄 Starting Squirrel update from: ${releasesUrl}`);
 
@@ -299,12 +337,11 @@ class UpdateService extends EventEmitter {
           this.isDownloading = false;
           this.downloadProgress = 100;
 
-          // Log to event logger
           if (evtLogger) {
             evtLogger.logUpdateDownloaded(remoteVersion);
           }
 
-          logger.info(`✅ Update v${remoteVersion} staged - will apply on next restart`);
+          logger.info(`✅ Update v${remoteVersion} staged - ready to install`);
           this.emitStatus();
         } catch (downloadError) {
           logger.error(`❌ Failed to download update: ${downloadError.message}`);
@@ -384,7 +421,14 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Quit and install update - restarts the app via Squirrel
+   * Quit and install update using Squirrel's --processStart mechanism.
+   *
+   * The correct Squirrel install flow is:
+   * 1. Update.exe --update <url>  → stages the new version in app-X.Y.Z/
+   * 2. Update.exe --processStart <exe> --process-start-args <args>
+   *    → applies the staged update, then launches the new version
+   *
+   * We must NOT use app.relaunch() as that relaunches the OLD version.
    */
   quitAndInstall() {
     if (!this.updateDownloaded) {
@@ -392,7 +436,13 @@ class UpdateService extends EventEmitter {
       return;
     }
 
-    logger.info('🔄 Restarting app to apply update...');
+    const updateExe = this._getUpdateExePath();
+    if (!updateExe) {
+      logger.error('❌ Cannot install: Update.exe not found');
+      return;
+    }
+
+    logger.info(`🔄 Installing update v${this.availableVersion} via Squirrel --processStart...`);
 
     // Log to event logger before installing
     const evtLogger = getEventLogger();
@@ -400,10 +450,29 @@ class UpdateService extends EventEmitter {
       evtLogger.logUpdateInstalled(this.availableVersion);
     }
 
-    // Squirrel applies the staged update on next launch
-    // Simply restart the app - Squirrel will handle the rest
-    app.relaunch();
-    app.exit(0);
+    // Get the executable name (SIPToast.exe)
+    const exeName = path.basename(process.execPath);
+
+    logger.info(`   Update.exe: ${updateExe}`);
+    logger.info(`   Exe name: ${exeName}`);
+
+    // Spawn Update.exe --processStart which will:
+    // 1. Apply the staged update
+    // 2. Launch the new version of the app
+    // Then we exit the current (old) version
+    const proc = spawn(updateExe, ['--processStart', exeName], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false
+    });
+
+    proc.unref();
+
+    // Give Squirrel a moment to start, then exit the old app
+    setTimeout(() => {
+      logger.info('🚪 Exiting old version...');
+      app.exit(0);
+    }, 1500);
   }
 }
 
