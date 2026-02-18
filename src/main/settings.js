@@ -1,5 +1,14 @@
-const Store = require('electron-store');
 const { encrypt, decrypt } = require('./services/encryption');
+
+// electron-store v11 uses ES modules, need to handle the import differently
+let Store;
+try {
+  // Try default export first (v11+)
+  Store = require('electron-store').default;
+} catch (e) {
+  // Fallback to commonjs export (v8-10)
+  Store = require('electron-store');
+}
 
 // Fields that should be encrypted at rest
 const ENCRYPTED_FIELDS = [
