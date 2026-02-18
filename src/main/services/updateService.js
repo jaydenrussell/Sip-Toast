@@ -61,11 +61,22 @@ class UpdateService extends EventEmitter {
    */
   setupAutoUpdater() {
     // Set the GitHub repository as the update source
-    autoUpdater.setFeedURL({
+    const feedURL = {
       provider: 'github',
       owner: 'jaydenrussell',
-      repo: 'Sip-Toast'
-    });
+      repo: 'Sip-Toast',
+      releaseType: 'release'
+    };
+    
+    try {
+      autoUpdater.setFeedURL(feedURL);
+      logger.info('📦 Update feed URL configured for GitHub releases');
+      logger.info(`   Provider: github`);
+      logger.info(`   Owner: jaydenrussell`);
+      logger.info(`   Repo: Sip-Toast`);
+    } catch (error) {
+      logger.error(`❌ Failed to set feed URL: ${error.message}`);
+    }
     
     // Auto-download updates when available (silent background download)
     // This is how Discord/Teams work - download first, ask later
@@ -81,9 +92,9 @@ class UpdateService extends EventEmitter {
     // Enable differential downloads (smaller updates)
     autoUpdater.disableDifferentialDownload = false;
     
-    // Log the feed URL for debugging
-    logger.info('📦 Update feed URL configured for GitHub releases');
+    // Log the current version
     logger.info(`📦 Current version: v${this.currentVersion}`);
+    logger.info(`📦 App packaged: ${app.isPackaged}`);
     
     // Event: Checking for update
     autoUpdater.on('checking-for-update', () => {
