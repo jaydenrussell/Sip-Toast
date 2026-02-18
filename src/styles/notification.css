@@ -129,8 +129,7 @@ body[data-theme='dark'] .title-bar-close:hover {
 
 /* Make the accent bar a drag handle for better UX */
 .toast-body .accent {
-  -webkit-app-region: drag;
-  cursor: move;
+  cursor: grab;
   flex-shrink: 0;
 }
 
