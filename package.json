@@ -1,7 +1,7 @@
 {
   "name": "sip-toast",
-  "version": "0.72.33",
-  "buildDate": "2026-02-18T06:32:14.052Z",
+  "version": "0.72.34",
+  "buildDate": "2026-02-18T06:53:22.961Z",
   "description": "Windows 11-ready SIP caller ID toast that looks up clients via Acuity Scheduling.",
   "main": "src/main/main.js",
   "author": "Jayden Russell",
@@ -15,15 +15,9 @@
     "start": "electron .",
     "dev": "electronmon .",
     "lint": "eslint \"src/**/*.js\"",
-    "prepackage": "node scripts/increment-version.js",
-    "package": "electron-builder --win --config.win.target=dir",
-    "build": "npm run package",
     "package:squirrel": "electron-builder --win --config.win.target=squirrel",
-    "package:nsis": "electron-builder --win --config.win.target=nsis",
-    "package:dir": "electron-builder --win --config.win.target=dir",
     "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
-    "release": "node scripts/create-release.js",
-    "build-and-release": "npm run package:squirrel && npm run release"
+    "release": "node scripts/create-release.js"
   },
   "dependencies": {
     "axios": "^1.13.5",
@@ -47,13 +41,10 @@
       "Images/**/*",
       "package.json"
     ],
-    "fileAssociations": [],
     "directories": {
       "output": "dist",
       "buildResources": "build"
     },
-    "extraFiles": [],
-    "extraResources": [],
     "win": {
       "target": [
         {
@@ -70,26 +61,8 @@
       "name": "SIPToast",
       "iconUrl": "https://raw.githubusercontent.com/jaydenrussell/Sip-Toast/main/Images/app.ico"
     },
-    "appx": {
-      "identityName": "YourSolution.SIPToast",
-      "publisher": "CN=Jayden Russell",
-      "publisherDisplayName": "Jayden Russell",
-      "applicationId": "SIPToast",
-      "displayName": "SIP Toast",
-      "backgroundColor": "#f8f9fc"
-    },
-    "msi": {
-      "oneClick": false,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "SIP Toast - Caller ID",
-      "menuCategory": "Utilities",
-      "warningsAsErrors": false
-    },
-    "msiProjectCreated": null,
     "afterPack": "scripts/optimize-build.js",
     "asar": true,
-    "asarUnpack": [],
     "npmRebuild": false,
     "nodeGypRebuild": false,
     "compression": "maximum",
