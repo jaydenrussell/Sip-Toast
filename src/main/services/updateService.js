@@ -478,7 +478,7 @@ class UpdateService extends EventEmitter {
     //
     // Note: exeName must be just the filename, not a full path.
     // Squirrel looks for it relative to the install folder.
-    const proc = spawn(updateExe, ['--processStart', exeName, '--process-start-args', '--squirrel-firstrun'], {
+    const proc = spawn(updateExe, ['--processStart', exeName], {
       detached: true,
       stdio: 'ignore',
       cwd: installFolder,
@@ -487,11 +487,16 @@ class UpdateService extends EventEmitter {
 
     proc.unref();
 
+    // Also use app.relaunch() as a backup - Squirrel should have swapped
+    // the new version into place, so relaunch will start the new version
+    logger.info('🔄 Scheduling app relaunch...');
+    app.relaunch();
+
     // Exit the old version after giving Squirrel time to start
     setTimeout(() => {
       logger.info('🚪 Exiting old version to complete update...');
       app.exit(0);
-    }, 2000);
+    }, 1500);
   }
 }
 

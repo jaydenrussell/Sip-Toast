@@ -68,6 +68,9 @@ class NotificationWindow {
       // Additional options to hide min/max
       minimizable: false,
       maximizable: true,
+      // thickFrame enables Windows resize handles on frameless windows
+      // This allows resizing from edges while keeping the frameless look
+      thickFrame: true,
       webPreferences: {
         preload: path.join(__dirname, '..', '..', 'preload', 'notificationPreload.js'),
         nodeIntegration: false,
