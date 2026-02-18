@@ -40,6 +40,10 @@
             <span class="nav-icon">📋</span>
             <span class="nav-label">Event Logs</span>
           </button>
+          <button class="nav-item" data-section="updates">
+            <span class="nav-icon">🔄</span>
+            <span class="nav-label">Updates</span>
+          </button>
           <button class="nav-item" data-section="about">
             <span class="nav-icon">ℹ️</span>
             <span class="nav-label">About</span>
@@ -437,29 +441,9 @@
             </div>
           </section>
 
-          <!-- About Section -->
-          <section class="content-section" id="section-about">
+          <!-- Updates Section -->
+          <section class="content-section" id="section-updates">
             <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>About</h2>
-                  <p class="note">Application information</p>
-                </div>
-              </div>
-              <div class="about-info" id="aboutInfo">
-                <div class="about-item">
-                  <strong>Application Name:</strong> <span id="aboutAppName">-</span>
-                </div>
-                <div class="about-item">
-                  <strong>Version:</strong> <span id="aboutVersion">-</span>
-                </div>
-                <div class="about-item">
-                  <strong>Build Date:</strong> <span id="aboutBuildDate">-</span>
-                </div>
-              </div>
-            </div>
-            
-            <div class="card" style="margin-top: 12px;">
               <div class="section-heading">
                 <div>
                   <h2>Software Updates</h2>
@@ -485,6 +469,29 @@
                 <div class="actions" style="margin-top: 16px;">
                   <button type="button" class="primary" id="checkUpdatesBtn">Check for Updates</button>
                   <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install Update</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- About Section -->
+          <section class="content-section" id="section-about">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>About</h2>
+                  <p class="note">Application information</p>
+                </div>
+              </div>
+              <div class="about-info" id="aboutInfo">
+                <div class="about-item">
+                  <strong>Application Name:</strong> <span id="aboutAppName">-</span>
+                </div>
+                <div class="about-item">
+                  <strong>Version:</strong> <span id="aboutVersion">-</span>
+                </div>
+                <div class="about-item">
+                  <strong>Build Date:</strong> <span id="aboutBuildDate">-</span>
                 </div>
               </div>
             </div>

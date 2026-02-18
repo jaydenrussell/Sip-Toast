@@ -18,6 +18,7 @@ const sections = {
   options: { title: 'Options', subtitle: 'Application settings and controls' },
   firewall: { title: 'Firewall', subtitle: 'Check Windows Firewall configuration' },
   logs: { title: 'Event Logs', subtitle: 'View SIP calls, toast notifications, and user interactions' },
+  updates: { title: 'Updates', subtitle: 'Check for and install software updates' },
   about: { title: 'About', subtitle: 'Application information' }
 };
 
@@ -981,21 +982,21 @@ if (updateStatusChip) {
       return;
     }
     
-    // Otherwise navigate to About section
+    // Otherwise navigate to Updates section
     navItems.forEach((nav) => nav.classList.remove('active'));
-    const aboutNavItem = document.querySelector('.nav-item[data-section="about"]');
-    if (aboutNavItem) {
-      aboutNavItem.classList.add('active');
+    const updatesNavItem = document.querySelector('.nav-item[data-section="updates"]');
+    if (updatesNavItem) {
+      updatesNavItem.classList.add('active');
     }
     document.querySelectorAll('.content-section').forEach((sec) => {
       sec.classList.remove('active');
     });
-    const aboutSection = document.getElementById('section-about');
-    if (aboutSection) {
-      aboutSection.classList.add('active');
+    const updatesSection = document.getElementById('section-updates');
+    if (updatesSection) {
+      updatesSection.classList.add('active');
     }
-    sectionTitle.textContent = 'About';
-    sectionSubtitle.textContent = 'Application information';
+    sectionTitle.textContent = 'Updates';
+    sectionSubtitle.textContent = 'Check for and install software updates';
   });
 }
 
