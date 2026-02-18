@@ -1,55 +1,179 @@
-## SIP Toast
+# SIP Toast
 
-Minimal Electron companion that sits in the Windows 11 system tray, listens to SIP providers for incoming calls, performs an Acuity Scheduling lookup, and displays a modern toast notification with caller and appointment context. Clicking or waiting dismisses the toast; no call control UI is provided.
+A modern Windows 11-ready SIP caller ID application that displays toast notifications with caller information and Acuity Scheduling integration.
 
-### Features
-- Background SIP registration using `JsSIP` with automatic reconnection.
-- Client lookups against Acuity Scheduling (using basic auth).
-- Windows 11-inspired translucent toast window with light/dark support.
-- Fluent tray flyout that exposes SIP + Acuity configuration and a live log console.
-- System tray presence only; starts with Windows and stays minimized.
-- Configurable auto-dismiss timing and secure credential storage via `electron-store`.
+## Features
 
-### Getting Started
-1. Install Node.js 20+.
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Configure credentials by launching once (which creates settings) or editing `%APPDATA%/sip-toast/config.json`. Required fields:
-   ```json
-   {
-     "sip": {
-       "websocket": "wss://your-sbc.example.com:7443/ws",
-       "uri": "sip:1001@your-sbc.example.com",
-       "username": "1001",
-       "password": "superSecret",
-       "displayName": "Front Desk"
-     },
-     "acuity": {
-       "userId": "ACUITY_USER_ID",
-       "apiKey": "ACUITY_API_KEY"
-     }
-   }
-   ```
-4. Run in development:
-   ```bash
-   npm run dev
-   ```
-5. Build an installer:
-   ```bash
-   npm run package
-   ```
+- **SIP Integration** - Native SIP stack for reliable call detection with UDP/TCP/TLS transport support
+- **Acuity Scheduling** - Automatic client lookup for incoming calls
+- **Windows 11 Toast Notifications** - Modern, translucent toast with light/dark theme support
+- **System Tray App** - Runs quietly in the background with minimal resource usage
+- **Auto-Update** - Discord-style silent background updates via Squirrel.Windows
+- **Secure Storage** - Credentials encrypted using Windows DPAPI via Electron's safeStorage
+- **Event Logging** - Persistent log of all SIP calls and toast interactions
 
-### Behavior Notes
-- Notifications contain only caller info and lookup results; clicking the toast hides it.
-- Left-click the tray icon to open the Control Center flyout where you can edit SIP/Acuity settings, restart registration, or watch the live log stream.
-- Auto-start is configurable inside the Control Center (Launch with Windows toggle).
-- Toast appearance adapts to system theme and auto-dismisses after the configured duration (`toast.autoDismissMs`).
-- Logs are stored at `%USERPROFILE%/AppData/Roaming/sip-toast.log`.
-- Use the “Simulate Toast” button in the Control Center to trigger a demo incoming-call notification without needing a live SIP call.
+## Installation
 
-### Security
-- Store SIP passwords and Acuity keys in Windows Credential Manager or update `settings.js` to read from environment variables before production use.
-- The current implementation uses `electron-store`; consider integrating `keytar` for encrypted storage in future iterations.
+Download the latest installer from [Releases](https://github.com/jaydenrussell/Sip-Toast/releases).
 
+The app will:
+1. Install to `%LocalAppData%\SIPToast`
+2. Start automatically with Windows
+3. Run in the system tray
+
+## Configuration
+
+### SIP Provider Settings
+
+Open the Control Center by clicking the tray icon and navigate to **SIP Provider**:
+
+| Field | Description |
+|-------|-------------|
+| Server | SIP server hostname or IP (e.g., `sip.example.com`) |
+| Port | SIP port (default: 5060 for UDP/TCP, 5061 for TLS) |
+| Transport | UDP, TCP, or TLS |
+| Domain | SIP domain (optional, defaults to server hostname) |
+| Username | SIP extension/username |
+| Password | SIP password (encrypted) |
+
+### Acuity Scheduler Settings
+
+Navigate to **Acuity Scheduler** to configure client lookups:
+
+| Field | Description |
+|-------|-------------|
+| Enabled | Toggle Acuity integration on/off |
+| User ID | Your Acuity user ID |
+| API Key | Your Acuity API key (encrypted) |
+
+### Options
+
+- **Auto-dismiss timeout** - How long toast notifications display (default: 20 seconds)
+- **Launch at startup** - Start automatically with Windows
+
+## Security
+
+### Credential Storage
+
+Sensitive credentials (SIP password, Acuity API key) are encrypted using:
+
+- **Windows**: DPAPI (Data Protection API) via Electron's `safeStorage`
+- **Fallback**: AES-256-GCM with machine-specific key derivation
+
+Credentials are:
+- Never stored in plain text
+- Bound to the current Windows user account
+- Cannot be transferred to another machine
+
+### Encryption Details
+
+The app uses Electron's `safeStorage` API which leverages:
+- Windows DPAPI for secure credential storage
+- User-specific encryption keys managed by the OS
+- No additional dependencies required
+
+## Development
+
+### Prerequisites
+
+- Node.js 20+
+- npm 10+
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/jaydenrussell/Sip-Toast.git
+cd Sip-Toast
+
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run dev
+
+# Build installer
+npm run package:squirrel
+
+# Create a release
+npm run release
+```
+
+### Project Structure
+
+```
+src/
+├── main/
+│   ├── main.js           # Main Electron process
+│   ├── settings.js       # Settings management with encryption
+│   ├── sip/              # SIP stack integration
+│   ├── notification/     # Toast notification window
+│   ├── tray/             # System tray and control center
+│   └── services/         # Utilities (logger, encryption, etc.)
+├── preload/              # Context bridge scripts
+├── renderer/             # UI (HTML, JS, CSS)
+└── styles/               # Stylesheets
+```
+
+### Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm start` | Run the app |
+| `npm run dev` | Run with hot reload |
+| `npm run lint` | Run ESLint |
+| `npm run package:squirrel` | Build Squirrel.Windows installer |
+| `npm run release` | Build and create GitHub release |
+
+## Auto-Update
+
+The app uses Squirrel.Windows for automatic updates:
+
+1. **Silent Check** - Checks for updates 30 seconds after startup
+2. **Background Download** - Updates download silently without user interaction
+3. **Apply on Restart** - Update installs when the app naturally restarts
+4. **No Forced Restarts** - Users are never interrupted
+
+## Logs
+
+- **Application logs**: `%APPDATA%\sip-toast\logs\sip-toast.log`
+- **Event logs**: `%APPDATA%\sip-toast\events.json`
+
+View live logs in the Control Center under **Event Logs**.
+
+## Troubleshooting
+
+### SIP Connection Issues
+
+1. Check firewall settings (Control Center → Firewall)
+2. Verify server address and port
+3. Ensure username/password are correct
+4. Try different transport (UDP/TCP/TLS)
+
+### Toast Not Showing
+
+1. Check Windows notification settings
+2. Verify app is running in system tray
+3. Check if "Focus Assist" is enabled
+
+### Update Issues
+
+1. Check internet connection
+2. Verify GitHub releases are accessible
+3. Check `%LocalAppData%\SIPToast\Update.exe` exists
+
+## License
+
+MIT License - See [LICENSE](LICENSE) for details.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## Support
+
+- [GitHub Issues](https://github.com/jaydenrussell/Sip-Toast/issues)
+- [Releases](https://github.com/jaydenrussell/Sip-Toast/releases)
