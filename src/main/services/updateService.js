@@ -1,10 +1,9 @@
 const { logger } = require('./logger');
 const { EventEmitter } = require('events');
-const { app, dialog } = require('electron');
-const { autoUpdater } = require('electron-updater');
+const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const https = require('https');
 
 // Lazy load eventLogger to avoid circular dependencies
 let _eventLogger = null;
@@ -19,33 +18,27 @@ const getEventLogger = () => {
   return _eventLogger;
 };
 
+const GITHUB_OWNER = 'jaydenrussell';
+const GITHUB_REPO = 'Sip-Toast';
+const RELEASES_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+
 /**
- * Squirrel.Windows Auto-Updater Service (Discord/Teams-style)
- * 
- * Update Flow (exactly like Discord and Microsoft Teams):
- * 
- * 1. **Silent Background Check**: App checks for updates on startup (30s delay)
- * 2. **Silent Download**: Updates download in background without user interaction
- * 3. **Apply on Restart**: Update is applied when user naturally restarts the app
- * 4. **No Forced Restarts**: User is never interrupted or forced to quit
- * 5. **Update.exe**: Squirrel.Windows handles all the heavy lifting
- * 
- * How Discord/Teams do it:
- * - Check for updates shortly after app starts
- * - Download updates silently in background
- * - Show a small indicator when update is ready (optional)
- * - Apply update on next app launch (user-initiated restart)
- * - The Update.exe process handles the actual file replacement
- * 
- * Squirrel.Windows Update.exe locations:
- * - %LocalAppData%\SIPToast\Update.exe (user install)
- * - The Update.exe is placed by Squirrel in the app's parent directory
+ * Squirrel.Windows Auto-Updater Service
+ *
+ * Uses Squirrel's Update.exe directly (the same way Discord/Slack/Teams do it).
+ * This is the most reliable approach for Squirrel.Windows installs.
+ *
+ * Flow:
+ * 1. Fetch latest release from GitHub API
+ * 2. Compare version with current
+ * 3. If newer, run: Update.exe --update <releases-url>
+ * 4. Squirrel downloads and stages the update
+ * 5. On next launch, Squirrel applies the update automatically
  */
 class UpdateService extends EventEmitter {
   constructor() {
     super();
-    
-    // State
+
     this.isChecking = false;
     this.isDownloading = false;
     this.updateAvailable = false;
@@ -55,146 +48,178 @@ class UpdateService extends EventEmitter {
     this.updateDownloaded = false;
     this.hasCheckedOnStartup = false;
     this.lastCheckTime = null;
-    this._updateInfo = null;
-    this._updateFilePath = null;
-    
-    // Get current version
+    this._checkTrigger = null;
+    this._autoCheckInterval = null;
+
     try {
-      this.currentVersion = app.getVersion() || require('../../../package.json').version;
+      this.currentVersion = app.getVersion();
     } catch (e) {
       this.currentVersion = 'Unknown';
     }
-    
-    // Configure auto-updater
-    this.setupAutoUpdater();
+
+    logger.info(`📦 UpdateService initialized - current version: v${this.currentVersion}`);
+    logger.info(`📦 App packaged: ${app.isPackaged}`);
+    logger.info(`📦 Update.exe path: ${this._getUpdateExePath() || 'not found (dev mode)'}`);
   }
 
   /**
-   * Set up Squirrel.Windows auto-updater
+   * Get the Squirrel Update.exe path
    */
-  setupAutoUpdater() {
-    // Set the GitHub repository as the update source
-    const feedURL = {
-      provider: 'github',
-      owner: 'jaydenrussell',
-      repo: 'Sip-Toast',
-      releaseType: 'release'
-    };
-    
-    try {
-      autoUpdater.setFeedURL(feedURL);
-      logger.info('📦 Update feed URL configured for GitHub releases');
-      logger.info(`   Provider: github`);
-      logger.info(`   Owner: jaydenrussell`);
-      logger.info(`   Repo: Sip-Toast`);
-    } catch (error) {
-      logger.error(`❌ Failed to set feed URL: ${error.message}`);
+  _getUpdateExePath() {
+    if (!app.isPackaged) return null;
+
+    const appFolder = path.dirname(app.getAppPath());
+    const candidates = [
+      path.join(appFolder, '..', 'Update.exe'),           // %LocalAppData%\SIPToast\Update.exe
+      path.join(appFolder, 'Update.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'SIPToast', 'Update.exe'),
+    ];
+
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) {
+          return p;
+        }
+      } catch (e) {
+        // ignore
+      }
     }
-    
-    // Auto-download updates when available (silent background download)
-    // This is how Discord/Teams work - download first, ask later
-    autoUpdater.autoDownload = true;
-    
-    // Auto-install on app quit - this is the key to Discord/Teams-style updates
-    // The update is applied when the app naturally quits (user closes it)
-    autoUpdater.autoInstallOnAppQuit = true;
-    
-    // Don't allow downgrades
-    autoUpdater.allowDowngrade = false;
-    
-    // Enable differential downloads (smaller updates)
-    autoUpdater.disableDifferentialDownload = false;
-    
-    // Log the current version
-    logger.info(`📦 Current version: v${this.currentVersion}`);
-    logger.info(`📦 App packaged: ${app.isPackaged}`);
-    
-    // Event: Checking for update
-    autoUpdater.on('checking-for-update', () => {
-      logger.info('🔄 Checking for updates...');
-      this.isChecking = true;
-      // Log to event logger
-      const evtLogger = getEventLogger();
-      if (evtLogger) {
-        evtLogger.logUpdateCheck(this._checkTrigger || 'auto');
-      }
-      this._checkTrigger = null; // Reset trigger
-      this.emitStatus();
+    return null;
+  }
+
+  /**
+   * Get the GitHub releases URL for Squirrel (points to the release assets)
+   */
+  _getReleasesUrl(releaseTag) {
+    return `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${releaseTag}`;
+  }
+
+  /**
+   * Fetch latest release info from GitHub API
+   */
+  _fetchLatestRelease() {
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'api.github.com',
+        path: `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+        method: 'GET',
+        headers: {
+          'User-Agent': `SIPToast/${this.currentVersion}`,
+          'Accept': 'application/vnd.github.v3+json'
+        },
+        timeout: 15000
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          try {
+            if (res.statusCode === 200) {
+              resolve(JSON.parse(data));
+            } else {
+              reject(new Error(`GitHub API returned ${res.statusCode}: ${data}`));
+            }
+          } catch (e) {
+            reject(new Error(`Failed to parse GitHub response: ${e.message}`));
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('GitHub API request timed out'));
+      });
+
+      req.end();
     });
-    
-    // Event: Update available - download silently (Discord/Teams style)
-    autoUpdater.on('update-available', (info) => {
-      logger.info(`📥 Update found: v${info.version} - downloading silently in background...`);
-      this._updateInfo = info;
-      this.availableVersion = info.version;
-      this.isChecking = false;
-      this.isDownloading = true;
-      this.downloadProgress = 0;
-      // Log to event logger
-      const evtLogger = getEventLogger();
-      if (evtLogger) {
-        evtLogger.logUpdateAvailable(info.version, info.releaseDate);
+  }
+
+  /**
+   * Compare semver versions
+   * Returns true if remoteVersion > localVersion
+   */
+  _isNewerVersion(remoteVersion, localVersion) {
+    const parse = (v) => v.replace(/^v/, '').split('.').map(Number);
+    const remote = parse(remoteVersion);
+    const local = parse(localVersion);
+
+    for (let i = 0; i < Math.max(remote.length, local.length); i++) {
+      const r = remote[i] || 0;
+      const l = local[i] || 0;
+      if (r > l) return true;
+      if (r < l) return false;
+    }
+    return false;
+  }
+
+  /**
+   * Run Squirrel Update.exe to download and stage the update
+   */
+  _runSquirrelUpdate(releasesUrl) {
+    return new Promise((resolve, reject) => {
+      const updateExe = this._getUpdateExePath();
+      if (!updateExe) {
+        reject(new Error('Update.exe not found - app may not be installed via Squirrel'));
+        return;
       }
-      this.emitStatus();
-    });
-    
-    // Event: No update available
-    autoUpdater.on('update-not-available', (info) => {
-      logger.info(`✅ App is up to date (v${info.version})`);
-      this._updateInfo = null;
-      this.updateAvailable = false;
-      this.isChecking = false;
-      this.isDownloading = false;
-      this.lastCheckTime = new Date();
-      this.emitStatus();
-    });
-    
-    // Event: Download progress
-    autoUpdater.on('download-progress', (progress) => {
-      const percent = Math.round(progress.percent);
-      const transferred = Math.round(progress.transferred / 1024 / 1024); // MB
-      const total = Math.round(progress.total / 1024 / 1024); // MB
-      
-      if (percent % 10 === 0 || percent === 100) {
-        logger.info(`📥 Downloading update: ${percent}% (${transferred}MB / ${total}MB)`);
-      }
-      this.downloadProgress = percent;
-      this.emitStatus();
-    });
-    
-    // Event: Update downloaded and ready
-    // Discord/Teams: Show subtle notification, apply on next restart
-    autoUpdater.on('update-downloaded', (info) => {
-      logger.info(`✅ Update downloaded: v${info.version} - will install on next restart`);
-      this.updateDownloaded = true;
-      this.updateAvailable = true;
-      this.isDownloading = false;
-      this.downloadProgress = 100;
-      this.availableVersion = info.version;
-      this.lastCheckTime = new Date();
-      // Log to event logger
-      const evtLogger = getEventLogger();
-      if (evtLogger) {
-        evtLogger.logUpdateDownloaded(info.version, info.downloadedFile);
-      }
-      this.emitStatus();
-      
-      // Discord/Teams style: Log that update will be applied on restart
-      // No forced restart - user continues using the app
-      logger.info('📌 Update will be applied automatically when you restart the app');
-    });
-    
-    // Event: Error
-    autoUpdater.on('error', (error) => {
-      logger.error(`❌ Update error: ${error.message}`);
-      this.isChecking = false;
-      this.isDownloading = false;
-      // Log to event logger
-      const evtLogger = getEventLogger();
-      if (evtLogger) {
-        evtLogger.logUpdateError(error.message, this.isChecking ? 'checking' : this.isDownloading ? 'downloading' : 'unknown');
-      }
-      this.emitStatus();
+
+      logger.info(`🔄 Running Squirrel update: ${updateExe} --update ${releasesUrl}`);
+
+      const { spawn } = require('child_process');
+      const proc = spawn(updateExe, ['--update', releasesUrl], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      });
+
+      proc.on('error', (err) => {
+        logger.error(`❌ Squirrel Update.exe error: ${err.message}`);
+        reject(err);
+      });
+
+      // Squirrel runs in background - we don't wait for it to finish
+      // It will stage the update and the next launch will apply it
+      proc.unref();
+
+      // Poll for completion by checking for new app version folder
+      let pollCount = 0;
+      const maxPolls = 120; // 2 minutes max
+      const pollInterval = setInterval(() => {
+        pollCount++;
+        const progress = Math.min(Math.round((pollCount / maxPolls) * 100), 95);
+        this.downloadProgress = progress;
+        this.emitStatus();
+
+        // Check if Squirrel has staged the update (new version folder appears)
+        const appFolder = path.dirname(app.getAppPath());
+        const parentFolder = path.dirname(appFolder);
+
+        try {
+          const entries = fs.readdirSync(parentFolder);
+          const newVersionFolder = entries.find(e => {
+            if (!e.startsWith('app-')) return false;
+            const ver = e.replace('app-', '');
+            return this.availableVersion && this._isNewerVersion(ver, this.currentVersion);
+          });
+
+          if (newVersionFolder) {
+            clearInterval(pollInterval);
+            logger.info(`✅ Squirrel staged update in: ${newVersionFolder}`);
+            resolve();
+          }
+        } catch (e) {
+          // ignore read errors
+        }
+
+        if (pollCount >= maxPolls) {
+          clearInterval(pollInterval);
+          // Resolve anyway - Squirrel may still be running
+          logger.warn('⚠️ Squirrel update polling timed out - update may still be in progress');
+          resolve();
+        }
+      }, 1000);
     });
   }
 
@@ -206,39 +231,108 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Check for updates (Discord/Teams-style: silent background check)
+   * Check for updates against GitHub releases
    * @param {string} trigger - 'manual', 'auto', or 'app_load'
    */
   async checkForUpdates(trigger = 'manual') {
     if (this.isChecking || this.isDownloading) {
-      logger.debug('Update check/download already in progress');
+      logger.info('⏸️ Update check already in progress');
       return this.getStatus();
     }
 
     if (!app.isPackaged) {
-      logger.debug('Skipping update check in development mode');
+      logger.info('⚠️ Skipping update check in development mode (app not packaged)');
       return this.getStatus();
     }
 
+    const updateExe = this._getUpdateExePath();
+    if (!updateExe) {
+      logger.warn('⚠️ Update.exe not found - cannot update (not a Squirrel install)');
+      return this.getStatus();
+    }
+
+    this.isChecking = true;
+    this._checkTrigger = trigger;
+    this.emitStatus();
+
+    // Log to event logger
+    const evtLogger = getEventLogger();
+    if (evtLogger) {
+      evtLogger.logUpdateCheck(trigger);
+    }
+
+    logger.info(`🔍 Checking GitHub for updates... (current: v${this.currentVersion}, trigger: ${trigger})`);
+    logger.info(`   GitHub: https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`);
+
     try {
-      this.isChecking = true;
-      this._checkTrigger = trigger; // Store trigger for event logger
-      this.emitStatus();
-      
-      logger.info(`🔍 Checking GitHub for updates... (current: v${this.currentVersion}, trigger: ${trigger})`);
-      
-      // This triggers the autoUpdater events
-      // autoDownload is true, so it will download automatically if available
-      const result = await autoUpdater.checkForUpdates();
-      
-      if (result) {
-        logger.info(`📦 Update check result: ${result.updateInfo ? `v${result.updateInfo.version}` : 'no update'}`);
+      const release = await this._fetchLatestRelease();
+      const remoteVersion = release.tag_name.replace(/^v/, '');
+      const releaseTag = release.tag_name;
+
+      logger.info(`📦 Latest GitHub release: ${releaseTag} (current: v${this.currentVersion})`);
+
+      this.isChecking = false;
+      this.lastCheckTime = new Date();
+
+      if (this._isNewerVersion(remoteVersion, this.currentVersion)) {
+        logger.info(`📥 Update available: v${remoteVersion} (current: v${this.currentVersion})`);
+        this.availableVersion = remoteVersion;
+        this.updateAvailable = true;
+        this.isDownloading = true;
+        this.downloadProgress = 0;
+
+        // Log to event logger
+        if (evtLogger) {
+          evtLogger.logUpdateAvailable(remoteVersion, release.published_at);
+        }
+
+        this.emitStatus();
+
+        // Run Squirrel update in background
+        const releasesUrl = this._getReleasesUrl(releaseTag);
+        logger.info(`🔄 Starting Squirrel update from: ${releasesUrl}`);
+
+        try {
+          await this._runSquirrelUpdate(releasesUrl);
+
+          this.updateDownloaded = true;
+          this.isDownloading = false;
+          this.downloadProgress = 100;
+
+          // Log to event logger
+          if (evtLogger) {
+            evtLogger.logUpdateDownloaded(remoteVersion);
+          }
+
+          logger.info(`✅ Update v${remoteVersion} staged - will apply on next restart`);
+          this.emitStatus();
+        } catch (downloadError) {
+          logger.error(`❌ Failed to download update: ${downloadError.message}`);
+          this.isDownloading = false;
+          this.updateAvailable = false;
+
+          if (evtLogger) {
+            evtLogger.logUpdateError(downloadError.message, 'downloading');
+          }
+
+          this.emitStatus();
+        }
+      } else {
+        logger.info(`✅ App is up to date (v${this.currentVersion} is current)`);
+        this.updateAvailable = false;
+        this.emitStatus();
       }
-      
+
       return this.getStatus();
     } catch (error) {
-      logger.error(`Update check failed: ${error.message}`);
+      logger.error(`❌ Update check failed: ${error.message}`);
       this.isChecking = false;
+      this.isDownloading = false;
+
+      if (evtLogger) {
+        evtLogger.logUpdateError(error.message, 'checking');
+      }
+
       this.emitStatus();
       return this.getStatus();
     }
@@ -261,98 +355,55 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Start automatic update checking (Discord/Teams-style)
-   * - Check at app startup (after delay, only once)
-   * - Download silently in background
-   * - Apply on next app restart
+   * Start automatic update checking
    */
   startAutoCheck() {
-    if (this.hasCheckedOnStartup) {
-      return;
-    }
-    
-    // Check at startup (delayed to let app fully load)
-    // Discord waits about 30 seconds, Teams waits about 10 seconds
+    if (this.hasCheckedOnStartup) return;
+
     setTimeout(() => {
       if (!this.hasCheckedOnStartup) {
         this.hasCheckedOnStartup = true;
-        logger.info('🔄 Checking for updates at startup (silent background check)...');
+        logger.info('🔄 Checking for updates at startup...');
         this.checkForUpdates('app_load');
       }
-    }, 30000); // 30 second delay like Discord
-    
-    logger.info(`📅 Auto-update check scheduled (30s delay at startup)`);
+    }, 30000); // 30 second delay
+
+    logger.info('📅 Auto-update check scheduled (30s delay at startup)');
   }
 
   /**
-   * Quit and install update immediately
-   * This is called when user clicks "Install Update" button
-   * Uses Squirrel.Windows Update.exe
+   * Restart auto-check (called when update settings change)
+   */
+  restartAutoCheck() {
+    if (this._autoCheckInterval) {
+      clearInterval(this._autoCheckInterval);
+      this._autoCheckInterval = null;
+    }
+    this.hasCheckedOnStartup = false;
+    this.startAutoCheck();
+  }
+
+  /**
+   * Quit and install update - restarts the app via Squirrel
    */
   quitAndInstall() {
     if (!this.updateDownloaded) {
-      logger.warn('No update downloaded to install');
+      logger.warn('No update staged to install');
       return;
     }
-    
-    logger.info('🔄 Quitting and installing update...');
-    
+
+    logger.info('🔄 Restarting app to apply update...');
+
     // Log to event logger before installing
     const evtLogger = getEventLogger();
     if (evtLogger) {
       evtLogger.logUpdateInstalled(this.availableVersion);
     }
-    
-    // Squirrel.Windows will:
-    // 1. Close the app
-    // 2. Run Update.exe to apply the update
-    // 3. Restart the app with the new version
-    autoUpdater.quitAndInstall();
-  }
 
-  /**
-   * Check if Update.exe exists (Squirrel.Windows updater)
-   * This is the actual updater executable that handles the update process
-   */
-  static getUpdateExePath() {
-    // Squirrel.Windows places Update.exe in the app's parent directory
-    // Typical path: %LocalAppData%\SIPToast\Update.exe
-    
-    const appFolder = path.dirname(app.getAppPath());
-    const possiblePaths = [
-      path.join(appFolder, 'Update.exe'),
-      path.resolve(appFolder, '..', 'Update.exe'),
-      path.join(process.env.LOCALAPPDATA || '', 'SIPToast', 'Update.exe'),
-    ];
-    
-    for (const updateExe of possiblePaths) {
-      if (fs.existsSync(updateExe)) {
-        logger.debug(`Found Update.exe at: ${updateExe}`);
-        return updateExe;
-      }
-    }
-    
-    logger.debug('Update.exe not found - app may not be installed via Squirrel');
-    return null;
-  }
-
-  /**
-   * Check if this is a Squirrel.Windows installation
-   */
-  static isSquirrelInstall() {
-    return UpdateService.getUpdateExePath() !== null;
-  }
-
-  /**
-   * Get the app installation directory
-   */
-  static getInstallDir() {
-    // Squirrel installs to: %LocalAppData%\SIPToast\
-    const updateExe = UpdateService.getUpdateExePath();
-    if (updateExe) {
-      return path.dirname(updateExe);
-    }
-    return null;
+    // Squirrel applies the staged update on next launch
+    // Simply restart the app - Squirrel will handle the rest
+    app.relaunch();
+    app.exit(0);
   }
 }
 
