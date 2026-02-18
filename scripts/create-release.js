@@ -294,17 +294,27 @@ console.log(`📦 Using ${installerType} installer: ${installerFile}`);
         console.log(`📦 Adding ${file} for auto-updates`);
       });
       
-      // Generate latest.yml for electron-updater
+      // Generate latest.yml for electron-updater with proper SHA512 hash
       const latestYmlPath = path.join(distPath, 'latest.yml');
+      const crypto = require('crypto');
+      
+      // Calculate SHA512 hash of the installer
+      const installerBuffer = fs.readFileSync(installerPath);
+      const sha512 = crypto.createHash('sha512').update(installerBuffer).digest('base64');
+      const fileSize = installerBuffer.length;
+      
       const ymlContent = `version: ${version}
+files:
+  - url: ${installerFile}
+    sha512: ${sha512}
+    size: ${fileSize}
+path: ${installerFile}
+sha512: ${sha512}
 releaseDate: '${new Date().toISOString()}'
-githubArtifactName: '${installerFile}'
-path: '${installerFile}'
-sha512: ''
 `;
       fs.writeFileSync(latestYmlPath, ymlContent);
       filesToUpload.push(latestYmlPath);
-      console.log(`📦 Adding latest.yml for electron-updater`);
+      console.log(`📦 Adding latest.yml for electron-updater (with SHA512 hash)`);
     }
     
     // Build the gh release create command with all files
