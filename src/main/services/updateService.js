@@ -6,6 +6,19 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
+// Lazy load eventLogger to avoid circular dependencies
+let _eventLogger = null;
+const getEventLogger = () => {
+  if (!_eventLogger) {
+    try {
+      _eventLogger = require('./eventLogger');
+    } catch (e) {
+      // Event logger not ready yet
+    }
+  }
+  return _eventLogger;
+};
+
 /**
  * Squirrel.Windows Auto-Updater Service (Discord/Teams-style)
  * 
@@ -100,6 +113,12 @@ class UpdateService extends EventEmitter {
     autoUpdater.on('checking-for-update', () => {
       logger.info('🔄 Checking for updates...');
       this.isChecking = true;
+      // Log to event logger
+      const evtLogger = getEventLogger();
+      if (evtLogger) {
+        evtLogger.logUpdateCheck(this._checkTrigger || 'auto');
+      }
+      this._checkTrigger = null; // Reset trigger
       this.emitStatus();
     });
     
@@ -111,6 +130,11 @@ class UpdateService extends EventEmitter {
       this.isChecking = false;
       this.isDownloading = true;
       this.downloadProgress = 0;
+      // Log to event logger
+      const evtLogger = getEventLogger();
+      if (evtLogger) {
+        evtLogger.logUpdateAvailable(info.version, info.releaseDate);
+      }
       this.emitStatus();
     });
     
@@ -148,6 +172,11 @@ class UpdateService extends EventEmitter {
       this.downloadProgress = 100;
       this.availableVersion = info.version;
       this.lastCheckTime = new Date();
+      // Log to event logger
+      const evtLogger = getEventLogger();
+      if (evtLogger) {
+        evtLogger.logUpdateDownloaded(info.version, info.downloadedFile);
+      }
       this.emitStatus();
       
       // Discord/Teams style: Log that update will be applied on restart
@@ -160,6 +189,11 @@ class UpdateService extends EventEmitter {
       logger.error(`❌ Update error: ${error.message}`);
       this.isChecking = false;
       this.isDownloading = false;
+      // Log to event logger
+      const evtLogger = getEventLogger();
+      if (evtLogger) {
+        evtLogger.logUpdateError(error.message, this.isChecking ? 'checking' : this.isDownloading ? 'downloading' : 'unknown');
+      }
       this.emitStatus();
     });
   }
@@ -173,8 +207,9 @@ class UpdateService extends EventEmitter {
 
   /**
    * Check for updates (Discord/Teams-style: silent background check)
+   * @param {string} trigger - 'manual', 'auto', or 'app_load'
    */
-  async checkForUpdates() {
+  async checkForUpdates(trigger = 'manual') {
     if (this.isChecking || this.isDownloading) {
       logger.debug('Update check/download already in progress');
       return this.getStatus();
@@ -187,9 +222,10 @@ class UpdateService extends EventEmitter {
 
     try {
       this.isChecking = true;
+      this._checkTrigger = trigger; // Store trigger for event logger
       this.emitStatus();
       
-      logger.info(`🔍 Checking GitHub for updates... (current: v${this.currentVersion})`);
+      logger.info(`🔍 Checking GitHub for updates... (current: v${this.currentVersion}, trigger: ${trigger})`);
       
       // This triggers the autoUpdater events
       // autoDownload is true, so it will download automatically if available
@@ -241,7 +277,7 @@ class UpdateService extends EventEmitter {
       if (!this.hasCheckedOnStartup) {
         this.hasCheckedOnStartup = true;
         logger.info('🔄 Checking for updates at startup (silent background check)...');
-        this.checkForUpdates();
+        this.checkForUpdates('app_load');
       }
     }, 30000); // 30 second delay like Discord
     
@@ -260,6 +296,12 @@ class UpdateService extends EventEmitter {
     }
     
     logger.info('🔄 Quitting and installing update...');
+    
+    // Log to event logger before installing
+    const evtLogger = getEventLogger();
+    if (evtLogger) {
+      evtLogger.logUpdateInstalled(this.availableVersion);
+    }
     
     // Squirrel.Windows will:
     // 1. Close the app

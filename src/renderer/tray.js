@@ -592,7 +592,12 @@ const getEventTypeLabel = (type) => {
     'sip_error': '⚠️ SIP Error',
     'toast_deployed': '🔔 Toast Deployed',
     'toast_timeout': '⏱️ Toast Timeout',
-    'toast_click': '👆 Toast Click'
+    'toast_click': '👆 Toast Click',
+    'update_check': '🔄 Update Check',
+    'update_available': '📥 Update Available',
+    'update_downloaded': '✅ Update Downloaded',
+    'update_installed': '🎉 Update Installed',
+    'update_error': '❌ Update Error'
   };
   return labels[type] || type;
 };
@@ -637,6 +642,19 @@ const formatEventData = (event) => {
     details = `Duration: ${data.durationSeconds}s - ${data.phoneNumber || 'N/A'}`;
   } else if (type === 'toast_click') {
     details = `Copied ${data.phoneNumber || 'N/A'} to clipboard${data.success ? '' : ' (failed)'}`;
+  } else if (type === 'update_check') {
+    details = `Check triggered by ${data.trigger || 'unknown'}`;
+  } else if (type === 'update_available') {
+    details = `Version ${data.version || 'unknown'} available`;
+    if (data.downloadUrl) details += ` - ${data.downloadUrl}`;
+  } else if (type === 'update_downloaded') {
+    details = `Version ${data.version || 'unknown'} downloaded and ready`;
+    if (data.filePath) details += ` - ${data.filePath}`;
+  } else if (type === 'update_installed') {
+    details = `Version ${data.version || 'unknown'} installed - restarting app`;
+  } else if (type === 'update_error') {
+    details = `${data.error || 'Unknown error'}`;
+    if (data.context) details += ` (during ${data.context})`;
   }
   
   html += `<p style="margin: 0; flex: 1; color: var(--text-primary); word-break: break-word;">${details}</p>`;
