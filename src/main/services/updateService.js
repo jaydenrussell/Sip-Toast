@@ -343,6 +343,16 @@ class UpdateService extends EventEmitter {
 
           logger.info(`✅ Update v${remoteVersion} staged - ready to install`);
           this.emitStatus();
+
+          // Auto-install for background checks (app_load / auto triggers)
+          // For manual checks, show the "Install Update" button instead
+          if (trigger === 'app_load' || trigger === 'auto') {
+            logger.info(`🔄 Auto-installing update (trigger: ${trigger})...`);
+            // Small delay to let the status emit reach the renderer
+            setTimeout(() => {
+              this.quitAndInstall();
+            }, 2000);
+          }
         } catch (downloadError) {
           logger.error(`❌ Failed to download update: ${downloadError.message}`);
           this.isDownloading = false;
@@ -450,29 +460,38 @@ class UpdateService extends EventEmitter {
       evtLogger.logUpdateInstalled(this.availableVersion);
     }
 
-    // Get the executable name (SIPToast.exe)
+    // Get the executable name (e.g. SIPToast.exe)
+    // process.execPath is the full path to the running exe
     const exeName = path.basename(process.execPath);
+    const installFolder = this._getInstallFolder();
 
     logger.info(`   Update.exe: ${updateExe}`);
+    logger.info(`   Install folder: ${installFolder}`);
     logger.info(`   Exe name: ${exeName}`);
 
-    // Spawn Update.exe --processStart which will:
-    // 1. Apply the staged update
-    // 2. Launch the new version of the app
-    // Then we exit the current (old) version
-    const proc = spawn(updateExe, ['--processStart', exeName], {
+    // Squirrel --processStart flow:
+    // Update.exe --processStart <exeName>
+    // Squirrel will:
+    //   1. Move the staged app-X.Y.Z into place
+    //   2. Launch the new version of <exeName> from the install folder
+    // We then exit the old process.
+    //
+    // Note: exeName must be just the filename, not a full path.
+    // Squirrel looks for it relative to the install folder.
+    const proc = spawn(updateExe, ['--processStart', exeName, '--process-start-args', '--squirrel-firstrun'], {
       detached: true,
       stdio: 'ignore',
+      cwd: installFolder,
       windowsHide: false
     });
 
     proc.unref();
 
-    // Give Squirrel a moment to start, then exit the old app
+    // Exit the old version after giving Squirrel time to start
     setTimeout(() => {
-      logger.info('🚪 Exiting old version...');
+      logger.info('🚪 Exiting old version to complete update...');
       app.exit(0);
-    }, 1500);
+    }, 2000);
   }
 }
 
