@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('notificationAPI', {
   },
   closeWindow: () => {
     ipcRenderer.send('toast:close');
+  },
+  // Trigger native window drag from the accent bar (avoids blocking resize edges)
+  startDrag: () => {
+    ipcRenderer.send('toast:startDrag');
   }
 });
 
