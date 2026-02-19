@@ -640,14 +640,78 @@ class UpdateService extends EventEmitter {
   }
 
   /**
+   * Kill all other instances of the app (by process name, excluding current PID)
+   * Returns a promise that resolves when all instances are terminated
+   */
+  async _killOtherInstances() {
+    const exeName = path.basename(process.execPath);
+    const currentPid = process.pid;
+    
+    logger.info(`🔪 Killing other instances of ${exeName} (current PID: ${currentPid})...`);
+    
+    return new Promise((resolve) => {
+      // Use PowerShell to find and kill other instances by PID
+      // This is more reliable than taskkill for excluding current process
+      const psScript = `
+        $currentPid = ${currentPid}
+        $exeName = "${exeName}"
+        Get-Process -Name $exeName.Replace('.exe','') -ErrorAction SilentlyContinue | 
+          Where-Object { $_.Id -ne $currentPid } | 
+          ForEach-Object { 
+            Write-Host "Killing PID $($_.Id)"
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue 
+          }
+      `;
+      
+      const proc = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      });
+      
+      let stdout = '';
+      let stderr = '';
+      
+      proc.stdout?.on('data', (data) => {
+        stdout += data.toString();
+        logger.info(`   ${data.toString().trim()}`);
+      });
+      
+      proc.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      proc.on('close', (code) => {
+        logger.info(`   PowerShell exited with code: ${code}`);
+        if (stderr) logger.info(`   stderr: ${stderr.trim()}`);
+        
+        // Give processes a moment to fully terminate
+        setTimeout(resolve, 1500);
+      });
+      
+      proc.on('error', (err) => {
+        logger.warn(`   PowerShell error: ${err.message}`);
+        // Fallback: try taskkill anyway (will kill current too, but update should still work)
+        logger.info('   Falling back to taskkill...');
+        const fallback = spawn('taskkill', ['/F', '/IM', exeName], {
+          stdio: 'ignore',
+          windowsHide: true
+        });
+        fallback.on('close', () => setTimeout(resolve, 1500));
+        fallback.on('error', () => resolve());
+      });
+    });
+  }
+
+  /**
    * Quit and install update using Squirrel's mechanism.
    * 
    * The approach:
-   * 1. Hide all windows
-   * 2. Run Update.exe --processStartAndWait to apply update and start new version
-   * 3. Wait for Squirrel to complete, then exit
+   * 1. Kill all other instances of the app
+   * 2. Hide all windows
+   * 3. Run Update.exe --processStartAndWait to apply update and start new version
+   * 4. Force exit this process
    */
-  quitAndInstall() {
+  async quitAndInstall() {
     if (!this.updateDownloaded) {
       logger.warn('No update staged to install');
       return;
@@ -673,68 +737,45 @@ class UpdateService extends EventEmitter {
     logger.info(`   Update.exe: ${updateExe}`);
     logger.info(`   Install folder: ${installFolder}`);
     logger.info(`   Exe name: ${exeName}`);
+    logger.info(`   Current PID: ${process.pid}`);
 
-    // Hide all windows to indicate update is in progress
+    // Step 1: Kill all other instances first
+    await this._killOtherInstances();
+
+    // Step 2: Hide all windows
     const { BrowserWindow } = require('electron');
     BrowserWindow.getAllWindows().forEach(win => {
       if (!win.isDestroyed()) {
         win.hide();
+        win.destroy();
       }
     });
 
-    // Use --processStartAndWait which:
-    // 1. Applies the update (moves new version into place)
-    // 2. Starts the new version
-    // 3. Waits for it to start before returning
+    // Step 3: Run Squirrel to apply update and start new version
     logger.info('🔄 Running Squirrel --processStartAndWait...');
     
     const proc = spawn(updateExe, ['--processStartAndWait', exeName], {
-      detached: false, // Don't detach - we want to wait for it
-      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true, // Detach so Squirrel can start new instance
+      stdio: ['ignore', 'ignore', 'ignore'],
       cwd: installFolder,
       windowsHide: false
     });
 
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout?.on('data', (data) => {
-      stdout += data.toString();
-      logger.info(`   Squirrel: ${data.toString().trim()}`);
-    });
-
-    proc.stderr?.on('data', (data) => {
-      stderr += data.toString();
-      logger.warn(`   Squirrel stderr: ${data.toString().trim()}`);
-    });
+    proc.unref();
 
     proc.on('error', (err) => {
       logger.error(`❌ Failed to start Squirrel: ${err.message}`);
-      // Fallback: try to start the app directly
-      logger.info('🔄 Fallback: attempting direct relaunch...');
-      app.relaunch();
-      setTimeout(() => {
-        app.exit(0);
-      }, 1000);
     });
 
-    proc.on('close', (code) => {
-      logger.info(`   Squirrel exited with code: ${code}`);
-      if (stdout) logger.info(`   stdout: ${stdout}`);
-      if (stderr) logger.warn(`   stderr: ${stderr}`);
-      
-      // Give the new version a moment to fully start
-      setTimeout(() => {
-        logger.info('🚪 Exiting old version...');
-        app.exit(0);
-      }, 1000);
+    // Step 4: Force exit this process immediately
+    // Squirrel will start the new version
+    logger.info('🚪 Force exiting to allow update...');
+    
+    // Use setImmediate to ensure the spawn has started
+    setImmediate(() => {
+      // Force kill this process - don't give it a chance to interfere
+      process.exit(0);
     });
-
-    // Safety timeout - exit after 60 seconds even if Squirrel doesn't complete
-    setTimeout(() => {
-      logger.warn('⏰ Squirrel timeout - exiting anyway');
-      app.exit(0);
-    }, 60000);
   }
 }
 
