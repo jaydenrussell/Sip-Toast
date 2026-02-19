@@ -140,7 +140,7 @@ class NotificationWindow {
       minHeight: 140,
       show: false,
       frame: false,
-      resizable: false, // Disable resize - toast size is automatic based on content
+      resizable: true, // Enable native window resize
       alwaysOnTop: true,
       focusable: true, // Allow interaction with the toast
       skipTaskbar: true,

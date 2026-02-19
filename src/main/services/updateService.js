@@ -435,9 +435,8 @@ class UpdateService extends EventEmitter {
    * 
    * The approach:
    * 1. Hide all windows
-   * 2. Run Update.exe --processStart to apply update and start new version
-   * 3. Use app.relaunch() as backup to ensure new version starts
-   * 4. Exit this process
+   * 2. Run Update.exe --processStartAndWait to apply update and start new version
+   * 3. Wait for Squirrel to complete, then exit
    */
   quitAndInstall() {
     if (!this.updateDownloaded) {
@@ -474,39 +473,59 @@ class UpdateService extends EventEmitter {
       }
     });
 
-    // Run Squirrel's --processStart which:
+    // Use --processStartAndWait which:
     // 1. Applies the update (moves new version into place)
     // 2. Starts the new version
-    logger.info('🔄 Running Squirrel --processStart...');
+    // 3. Waits for it to start before returning
+    logger.info('🔄 Running Squirrel --processStartAndWait...');
     
-    const proc = spawn(updateExe, ['--processStart', exeName], {
-      detached: true,
-      stdio: 'ignore',
+    const proc = spawn(updateExe, ['--processStartAndWait', exeName], {
+      detached: false, // Don't detach - we want to wait for it
+      stdio: ['ignore', 'pipe', 'pipe'],
       cwd: installFolder,
       windowsHide: false
     });
 
-    proc.on('error', (err) => {
-      logger.error(`❌ Failed to start Squirrel: ${err.message}`);
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout?.on('data', (data) => {
+      stdout += data.toString();
+      logger.info(`   Squirrel: ${data.toString().trim()}`);
     });
 
-    proc.unref();
+    proc.stderr?.on('data', (data) => {
+      stderr += data.toString();
+      logger.warn(`   Squirrel stderr: ${data.toString().trim()}`);
+    });
 
-    // Use app.relaunch() as backup - this will start the NEW version
-    // after Squirrel has swapped it into place
-    logger.info('🔄 Scheduling app relaunch...');
-    
-    // Wait a moment for Squirrel to start, then relaunch and exit
-    setTimeout(() => {
-      logger.info('🔄 Relaunching app...');
+    proc.on('error', (err) => {
+      logger.error(`❌ Failed to start Squirrel: ${err.message}`);
+      // Fallback: try to start the app directly
+      logger.info('🔄 Fallback: attempting direct relaunch...');
       app.relaunch();
+      setTimeout(() => {
+        app.exit(0);
+      }, 1000);
+    });
+
+    proc.on('close', (code) => {
+      logger.info(`   Squirrel exited with code: ${code}`);
+      if (stdout) logger.info(`   stdout: ${stdout}`);
+      if (stderr) logger.warn(`   stderr: ${stderr}`);
       
-      // Exit after relaunch is scheduled
+      // Give the new version a moment to fully start
       setTimeout(() => {
         logger.info('🚪 Exiting old version...');
         app.exit(0);
-      }, 500);
-    }, 2000);
+      }, 1000);
+    });
+
+    // Safety timeout - exit after 60 seconds even if Squirrel doesn't complete
+    setTimeout(() => {
+      logger.warn('⏰ Squirrel timeout - exiting anyway');
+      app.exit(0);
+    }, 60000);
   }
 }
 

@@ -2,6 +2,10 @@ const { app, Tray, Menu, nativeImage, ipcMain, clipboard, powerMonitor } = requi
 const path = require('path');
 const fs = require('fs');
 
+// Set consistent App User Model ID so Windows recognizes the app across versions
+// This prevents the tray icon from being treated as a "new" app after updates
+app.setAppUserModelId('com.siptoast.app');
+
 // Handle Squirrel.Windows install/update/uninstall events
 // This must be at the very top before any other app code runs
 if (require('electron-squirrel-startup')) {
