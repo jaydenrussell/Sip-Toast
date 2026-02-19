@@ -3,39 +3,9 @@ const callerEl = document.getElementById('caller');
 const numberEl = document.getElementById('number');
 const noteEl = document.getElementById('note');
 const copiedBadge = document.getElementById('copiedBadge');
-const titleBarClose = document.getElementById('titleBarClose');
 let currentPhoneNumber = '';
 
-// Handle title bar close button - use pointerdown for better reliability with transparent windows
-if (titleBarClose) {
-  // Use pointerdown to capture event before it propagates
-  titleBarClose.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-  });
-  
-  titleBarClose.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    // Close the toast window via IPC
-    if (window.notificationAPI && window.notificationAPI.closeWindow) {
-      window.notificationAPI.closeWindow();
-    }
-  }, true); // Use capture phase
-  
-  // Also handle on the parent title-bar to prevent propagation
-  const titleBar = document.querySelector('.title-bar');
-  if (titleBar) {
-    titleBar.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-    }, true);
-  }
-}
-
-// Handle resize from edges
+// Handle resize from edges - use mousedown to start resize
 document.querySelectorAll('.resize-handle').forEach(handle => {
   handle.addEventListener('mousedown', (e) => {
     e.preventDefault();
