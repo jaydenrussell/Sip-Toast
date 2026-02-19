@@ -25,44 +25,9 @@ class NotificationWindow {
       this.hide();
     };
 
-    // Handle custom resize from edges using native Windows resize
-    this._eventHandlers.startResize = (_event, edge) => {
-      if (this.window && !this.window.isDestroyed()) {
-        // Map our edge names to Electron's direction constants
-        const directionMap = {
-          'top': 'top',
-          'bottom': 'bottom', 
-          'left': 'left',
-          'right': 'right',
-          'top-left': 'top-left',
-          'top-right': 'top-right',
-          'bottom-left': 'bottom-left',
-          'bottom-right': 'bottom-right'
-        };
-        
-        const direction = directionMap[edge] || 'bottom-right';
-        
-        // Use Electron's built-in beginFramelessResizeFromPoint for native feel
-        // This provides smooth, native Windows resize behavior
-        try {
-          const point = screen.getCursorScreenPoint();
-          // Convert screen point to window-relative point
-          const winBounds = this.window.getBounds();
-          const windowPoint = {
-            x: point.x - winBounds.x,
-            y: point.y - winBounds.y
-          };
-          this.window.beginFramelessResizeFromPoint(direction, windowPoint);
-        } catch (e) {
-          // Fallback for older Electron versions - use manual resize
-          this._manualResize(edge);
-        }
-      }
-    };
-    
     ipcMain.on('toast-clicked', this._eventHandlers.toastClicked);
     ipcMain.on('toast:close', this._eventHandlers.toastClose);
-    ipcMain.on('toast:startResize', this._eventHandlers.startResize);
+    // Note: Resize disabled - toast notifications are sized automatically based on content
   }
 
   _calculateSize(payload) {
@@ -175,7 +140,7 @@ class NotificationWindow {
       minHeight: 140,
       show: false,
       frame: false,
-      resizable: true,
+      resizable: false, // Disable resize - toast size is automatic based on content
       alwaysOnTop: true,
       focusable: true, // Allow interaction with the toast
       skipTaskbar: true,
