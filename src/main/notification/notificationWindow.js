@@ -46,96 +46,19 @@ class NotificationWindow {
         // This provides smooth, native Windows resize behavior
         try {
           const point = screen.getCursorScreenPoint();
-          this.window.beginFramelessResizeFromPoint(direction, point);
+          // Convert screen point to window-relative point
+          const winBounds = this.window.getBounds();
+          const windowPoint = {
+            x: point.x - winBounds.x,
+            y: point.y - winBounds.y
+          };
+          this.window.beginFramelessResizeFromPoint(direction, windowPoint);
         } catch (e) {
           // Fallback for older Electron versions - use manual resize
           this._manualResize(edge);
         }
       }
     };
-    
-    // Fallback manual resize for older Electron versions
-    _manualResize(edge) {
-      const win = this.window;
-      if (!win || win.isDestroyed()) return;
-      
-      const startPoint = screen.getCursorScreenPoint();
-      const startX = startPoint.x;
-      const startY = startPoint.y;
-      const [startWidth, startHeight] = win.getSize();
-      const [startLeft, startTop] = win.getPosition();
-      
-      let lastTime = Date.now();
-      
-      const onMove = () => {
-        const now = Date.now();
-        const delta = now - lastTime;
-        if (delta < 8) return; // Limit to ~120fps for smoother feel
-        lastTime = now;
-        
-        const currentPoint = screen.getCursorScreenPoint();
-        const deltaX = currentPoint.x - startX;
-        const deltaY = currentPoint.y - startY;
-        
-        let newWidth = startWidth;
-        let newHeight = startHeight;
-        let newLeft = startLeft;
-        let newTop = startTop;
-        
-        if (edge.includes('right')) {
-          newWidth = Math.max(250, startWidth + deltaX);
-        }
-        if (edge.includes('left')) {
-          newWidth = Math.max(250, startWidth - deltaX);
-          newLeft = startLeft + startWidth - newWidth;
-        }
-        if (edge.includes('bottom')) {
-          newHeight = Math.max(120, startHeight + deltaY);
-        }
-        if (edge.includes('top')) {
-          newHeight = Math.max(120, startHeight - deltaY);
-          newTop = startTop + startHeight - newHeight;
-        }
-        
-        win.setBounds({
-          x: newLeft,
-          y: newTop,
-          width: newWidth,
-          height: newHeight
-        }, false); // false = don't animate, for snappier feel
-      };
-      
-      let resizeInterval = setInterval(() => {
-        try {
-          if (win.isDestroyed()) {
-            clearInterval(resizeInterval);
-            return;
-          }
-          onMove();
-        } catch (e) {
-          clearInterval(resizeInterval);
-        }
-      }, 8);
-      
-      win.webContents.executeJavaScript(`
-        const stopResize = () => {
-          if (window.__resizeInterval) {
-            clearInterval(window.__resizeInterval);
-            window.__resizeInterval = null;
-          }
-          document.removeEventListener('mouseup', stopResize);
-        };
-        document.addEventListener('mouseup', stopResize, { once: true });
-        window.__resizeInterval = ${resizeInterval};
-      `);
-      
-      setTimeout(() => {
-        if (resizeInterval) {
-          clearInterval(resizeInterval);
-          resizeInterval = null;
-        }
-      }, 30000);
-    }
     
     ipcMain.on('toast-clicked', this._eventHandlers.toastClicked);
     ipcMain.on('toast:close', this._eventHandlers.toastClose);
@@ -155,6 +78,89 @@ class NotificationWindow {
     return { width: 340, height: 200 };
   }
 
+  // Fallback manual resize for older Electron versions
+  _manualResize(edge) {
+    const win = this.window;
+    if (!win || win.isDestroyed()) return;
+    
+    const startPoint = screen.getCursorScreenPoint();
+    const startX = startPoint.x;
+    const startY = startPoint.y;
+    const [startWidth, startHeight] = win.getSize();
+    const [startLeft, startTop] = win.getPosition();
+    
+    let lastTime = Date.now();
+    
+    const onMove = () => {
+      const now = Date.now();
+      const delta = now - lastTime;
+      if (delta < 8) return; // Limit to ~120fps for smoother feel
+      lastTime = now;
+      
+      const currentPoint = screen.getCursorScreenPoint();
+      const deltaX = currentPoint.x - startX;
+      const deltaY = currentPoint.y - startY;
+      
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newLeft = startLeft;
+      let newTop = startTop;
+      
+      if (edge.includes('right')) {
+        newWidth = Math.max(250, startWidth + deltaX);
+      }
+      if (edge.includes('left')) {
+        newWidth = Math.max(250, startWidth - deltaX);
+        newLeft = startLeft + startWidth - newWidth;
+      }
+      if (edge.includes('bottom')) {
+        newHeight = Math.max(120, startHeight + deltaY);
+      }
+      if (edge.includes('top')) {
+        newHeight = Math.max(120, startHeight - deltaY);
+        newTop = startTop + startHeight - newHeight;
+      }
+      
+      win.setBounds({
+        x: newLeft,
+        y: newTop,
+        width: newWidth,
+        height: newHeight
+      }, false); // false = don't animate, for snappier feel
+    };
+    
+    let resizeInterval = setInterval(() => {
+      try {
+        if (win.isDestroyed()) {
+          clearInterval(resizeInterval);
+          return;
+        }
+        onMove();
+      } catch (e) {
+        clearInterval(resizeInterval);
+      }
+    }, 8);
+    
+    win.webContents.executeJavaScript(`
+      const stopResize = () => {
+        if (window.__resizeInterval) {
+          clearInterval(window.__resizeInterval);
+          window.__resizeInterval = null;
+        }
+        document.removeEventListener('mouseup', stopResize);
+      };
+      document.addEventListener('mouseup', stopResize, { once: true });
+      window.__resizeInterval = ${resizeInterval};
+    `);
+    
+    setTimeout(() => {
+      if (resizeInterval) {
+        clearInterval(resizeInterval);
+        resizeInterval = null;
+      }
+    }, 30000);
+  }
+
   _createWindow() {
     // Reset ready state when creating a new window
     this.isReady = false;
@@ -165,8 +171,8 @@ class NotificationWindow {
     this.window = new BrowserWindow({
       width: 340,
       height: 200,
-      minWidth: 250,
-      minHeight: 120,
+      minWidth: 300,
+      minHeight: 140,
       show: false,
       frame: false,
       resizable: true,
