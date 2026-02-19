@@ -27,7 +27,12 @@ class NotificationWindow {
 
     ipcMain.on('toast-clicked', this._eventHandlers.toastClicked);
     ipcMain.on('toast:close', this._eventHandlers.toastClose);
-    // Note: Resize disabled - toast notifications are sized automatically based on content
+    
+    // Handle resize from renderer
+    this._eventHandlers.toastStartResize = (event, edge) => {
+      this._manualResize(edge);
+    };
+    ipcMain.on('toast:startResize', this._eventHandlers.toastStartResize);
   }
 
   _calculateSize(payload) {
