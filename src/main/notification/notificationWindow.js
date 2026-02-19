@@ -27,12 +27,6 @@ class NotificationWindow {
 
     ipcMain.on('toast-clicked', this._eventHandlers.toastClicked);
     ipcMain.on('toast:close', this._eventHandlers.toastClose);
-    
-    // Handle resize from renderer
-    this._eventHandlers.toastStartResize = (event, edge) => {
-      this._manualResize(edge);
-    };
-    ipcMain.on('toast:startResize', this._eventHandlers.toastStartResize);
   }
 
   _calculateSize(payload) {
@@ -137,7 +131,7 @@ class NotificationWindow {
     this.pendingPayload = null;
 
     // Default to full size initially, will be resized when payload is received
-    // Using frameless window with custom title bar
+    // Using frameless window - transparent: false allows native Windows resize to work
     this.window = new BrowserWindow({
       width: 340,
       height: 200,
@@ -145,20 +139,15 @@ class NotificationWindow {
       minHeight: 140,
       show: false,
       frame: false,
-      resizable: true, // Enable native window resize
+      resizable: true,
       alwaysOnTop: true,
-      focusable: true, // Allow interaction with the toast
+      focusable: true,
       skipTaskbar: true,
-      transparent: true,
-      backgroundColor: '#00000000',
-      // Windows-specific: custom title bar (we render our own in HTML)
-      // Set empty title (no application name displayed)
+      transparent: false, // Must be false for native resize to work on Windows
+      backgroundColor: '#f0f4f8', // Light mode default - will be updated based on theme
       title: '',
-      // Additional options to hide min/max
       minimizable: false,
       maximizable: false,
-      // Note: thickFrame doesn't work with transparent: true
-      // Resize is handled via custom implementation in the renderer
       webPreferences: {
         preload: path.join(__dirname, '..', '..', 'preload', 'notificationPreload.js'),
         nodeIntegration: false,
@@ -356,6 +345,11 @@ class NotificationWindow {
     this.window.setSize(bounds.width, bounds.height, false);
     this.window.setAlwaysOnTop(true, 'screen-saver');
     this.window.setPosition(bounds.x, bounds.y);
+    
+    // Update background color based on theme
+    const isDark = nativeTheme.shouldUseDarkColors;
+    const bgColor = isDark ? '#1d212c' : '#f0f4f8';
+    this.window.setBackgroundColor(bgColor);
     
     // Store timeout duration and phone number for logging
     this.currentTimeoutMs = autoDismissMs;

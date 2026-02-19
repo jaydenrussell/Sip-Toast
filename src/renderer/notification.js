@@ -5,18 +5,6 @@ const noteEl = document.getElementById('note');
 const copiedBadge = document.getElementById('copiedBadge');
 let currentPhoneNumber = '';
 
-// Handle resize from edges - use mousedown to start resize
-document.querySelectorAll('.resize-handle').forEach(handle => {
-  handle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const edge = handle.dataset.edge;
-    if (window.notificationAPI && window.notificationAPI.startResize) {
-      window.notificationAPI.startResize(edge);
-    }
-  });
-});
-
 // Handle window resize to adjust content
 window.addEventListener('resize', () => {
   // Content will automatically adjust with CSS
