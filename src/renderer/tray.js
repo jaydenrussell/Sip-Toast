@@ -1120,14 +1120,69 @@ if (installUpdateBtn) {
     try {
       installUpdateBtn.disabled = true;
       installUpdateBtn.textContent = 'Installing...';
+      
+      // Show the update overlay
+      const updateOverlay = document.getElementById('updateOverlay');
+      const updateOverlayTitle = document.getElementById('updateOverlayTitle');
+      const updateOverlayMessage = document.getElementById('updateOverlayMessage');
+      const updateProgressBar = document.getElementById('updateProgressBar');
+      
+      if (updateOverlay) {
+        updateOverlay.style.display = 'flex';
+        if (updateOverlayTitle) updateOverlayTitle.textContent = 'Installing Update...';
+        if (updateOverlayMessage) updateOverlayMessage.textContent = 'Please wait while the update is being installed.';
+        if (updateProgressBar) updateProgressBar.style.width = '50%';
+      }
+      
       await window.trayAPI.quitAndInstallUpdate();
     } catch (error) {
       console.error('Failed to install update:', error);
       installUpdateBtn.disabled = false;
       installUpdateBtn.textContent = 'Install Update';
+      
+      // Hide overlay on error
+      const updateOverlay = document.getElementById('updateOverlay');
+      if (updateOverlay) updateOverlay.style.display = 'none';
     }
   });
 }
+
+// Also show overlay when clicking the sidebar chip if update is ready
+if (updateStatusChip) {
+  const originalClickHandler = updateStatusChip.onclick;
+  updateStatusChip.addEventListener('click', async (e) => {
+    if (currentUpdateStatus && currentUpdateStatus.updateDownloaded) {
+      // Show overlay before installing
+      const updateOverlay = document.getElementById('updateOverlay');
+      const updateOverlayTitle = document.getElementById('updateOverlayTitle');
+      const updateOverlayMessage = document.getElementById('updateOverlayMessage');
+      const updateProgressBar = document.getElementById('updateProgressBar');
+      
+      if (updateOverlay) {
+        updateOverlay.style.display = 'flex';
+        if (updateOverlayTitle) updateOverlayTitle.textContent = 'Installing Update...';
+        if (updateOverlayMessage) updateOverlayMessage.textContent = 'Please wait while the update is being installed.';
+        if (updateProgressBar) updateProgressBar.style.width = '50%';
+      }
+    }
+  });
+}
+
+// Listen for update status changes and update overlay progress
+window.trayAPI.onUpdateStatus((status) => {
+  updateSidebarChip(status);
+  updateAboutSection(status);
+  
+  // Update overlay if visible
+  const updateOverlay = document.getElementById('updateOverlay');
+  const updateProgressBar = document.getElementById('updateProgressBar');
+  
+  if (updateOverlay && updateOverlay.style.display === 'flex') {
+    if (status.downloading && updateProgressBar) {
+      updateProgressBar.style.width = `${status.downloadProgress}%`;
+    }
+  }
+});
 
 // Listen for update status changes from main process
 window.trayAPI.onUpdateStatus((status) => {

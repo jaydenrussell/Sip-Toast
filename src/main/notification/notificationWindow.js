@@ -24,9 +24,96 @@ class NotificationWindow {
     this._eventHandlers.toastClose = () => {
       this.hide();
     };
+
+    // Handle custom resize from edges using mouse tracking
+    this._eventHandlers.startResize = (_event, edge) => {
+      if (this.window && !this.window.isDestroyed()) {
+        const { screen } = require('electron');
+        const win = this.window;
+        
+        // Get initial state
+        const [startX, startY] = screen.getCursorScreenPoint();
+        const [startWidth, startHeight] = win.getSize();
+        const [startLeft, startTop] = win.getPosition();
+        
+        // Track mouse movement for resize
+        const onMove = () => {
+          const [currentX, currentY] = screen.getCursorScreenPoint();
+          const deltaX = currentX - startX;
+          const deltaY = currentY - startY;
+          
+          let newWidth = startWidth;
+          let newHeight = startHeight;
+          let newLeft = startLeft;
+          let newTop = startTop;
+          
+          // Adjust based on edge
+          if (edge.includes('right')) {
+            newWidth = Math.max(250, startWidth + deltaX);
+          }
+          if (edge.includes('left')) {
+            newWidth = Math.max(250, startWidth - deltaX);
+            newLeft = startLeft + startWidth - newWidth;
+          }
+          if (edge.includes('bottom')) {
+            newHeight = Math.max(120, startHeight + deltaY);
+          }
+          if (edge.includes('top')) {
+            newHeight = Math.max(120, startHeight - deltaY);
+            newTop = startTop + startHeight - newHeight;
+          }
+          
+          win.setBounds({
+            x: newLeft,
+            y: newTop,
+            width: newWidth,
+            height: newHeight
+          });
+        };
+        
+        // Stop tracking on mouse up
+        const onUp = () => {
+          screen.removeAllListeners('display-metrics-changed');
+          win.webContents.executeJavaScript(`
+            document.querySelectorAll('.resize-handle').forEach(h => {
+              h.style.pointerEvents = '';
+            });
+          `);
+        };
+        
+        // Listen for mouse move events via polling (more reliable)
+        let resizeInterval = setInterval(() => {
+          try {
+            onMove();
+          } catch (e) {
+            clearInterval(resizeInterval);
+          }
+        }, 16); // ~60fps
+        
+        // Stop on mouse up (detected via renderer)
+        win.webContents.executeJavaScript(`
+          const stopResize = () => {
+            window.__resizeInterval && clearInterval(window.__resizeInterval);
+            window.__resizeInterval = null;
+            document.removeEventListener('mouseup', stopResize);
+          };
+          document.addEventListener('mouseup', stopResize, { once: true });
+          window.__resizeInterval = ${resizeInterval};
+        `);
+        
+        // Also clear interval after timeout as safety
+        setTimeout(() => {
+          if (resizeInterval) {
+            clearInterval(resizeInterval);
+            resizeInterval = null;
+          }
+        }, 30000); // 30 second max resize time
+      }
+    };
     
     ipcMain.on('toast-clicked', this._eventHandlers.toastClicked);
     ipcMain.on('toast:close', this._eventHandlers.toastClose);
+    ipcMain.on('toast:startResize', this._eventHandlers.startResize);
   }
 
   _calculateSize(payload) {
@@ -67,10 +154,9 @@ class NotificationWindow {
       title: '',
       // Additional options to hide min/max
       minimizable: false,
-      maximizable: true,
-      // thickFrame enables Windows resize handles on frameless windows
-      // This allows resizing from edges while keeping the frameless look
-      thickFrame: true,
+      maximizable: false,
+      // Note: thickFrame doesn't work with transparent: true
+      // Resize is handled via custom implementation in the renderer
       webPreferences: {
         preload: path.join(__dirname, '..', '..', 'preload', 'notificationPreload.js'),
         nodeIntegration: false,

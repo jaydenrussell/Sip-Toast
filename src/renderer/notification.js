@@ -6,8 +6,12 @@ const copiedBadge = document.getElementById('copiedBadge');
 const titleBarClose = document.getElementById('titleBarClose');
 let currentPhoneNumber = '';
 
-// Handle title bar close button
+// Handle title bar close button - use mousedown for better reliability
 if (titleBarClose) {
+  titleBarClose.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
   titleBarClose.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -17,6 +21,18 @@ if (titleBarClose) {
     }
   });
 }
+
+// Handle resize from edges
+document.querySelectorAll('.resize-handle').forEach(handle => {
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const edge = handle.dataset.edge;
+    if (window.notificationAPI && window.notificationAPI.startResize) {
+      window.notificationAPI.startResize(edge);
+    }
+  });
+});
 
 // Handle window resize to adjust content
 window.addEventListener('resize', () => {

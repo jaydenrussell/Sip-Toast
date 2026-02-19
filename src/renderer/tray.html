@@ -505,6 +505,19 @@
       </main>
     </div>
 
+    <!-- Update Progress Overlay -->
+    <div id="updateOverlay" class="update-overlay" style="display: none;">
+      <div class="update-overlay-content">
+        <div class="update-spinner"></div>
+        <h2 id="updateOverlayTitle">Updating...</h2>
+        <p id="updateOverlayMessage">Please wait while the update is being installed.</p>
+        <div class="update-progress-bar">
+          <div id="updateProgressBar" class="update-progress-fill"></div>
+        </div>
+        <p id="updateOverlaySubtext" style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">The application will restart automatically.</p>
+      </div>
+    </div>
+
     <script src="./tray.js" type="module"></script>
   </body>
 </html>
