@@ -28,17 +28,20 @@ class NotificationWindow {
     // Handle custom resize from edges using mouse tracking
     this._eventHandlers.startResize = (_event, edge) => {
       if (this.window && !this.window.isDestroyed()) {
-        const { screen } = require('electron');
         const win = this.window;
         
-        // Get initial state
-        const [startX, startY] = screen.getCursorScreenPoint();
+        // Get initial state - screen.getCursorScreenPoint() returns {x, y} object
+        const startPoint = screen.getCursorScreenPoint();
+        const startX = startPoint.x;
+        const startY = startPoint.y;
         const [startWidth, startHeight] = win.getSize();
         const [startLeft, startTop] = win.getPosition();
         
         // Track mouse movement for resize
         const onMove = () => {
-          const [currentX, currentY] = screen.getCursorScreenPoint();
+          const currentPoint = screen.getCursorScreenPoint();
+          const currentX = currentPoint.x;
+          const currentY = currentPoint.y;
           const deltaX = currentX - startX;
           const deltaY = currentY - startY;
           

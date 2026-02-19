@@ -478,6 +478,20 @@ class UpdateService extends EventEmitter {
     //
     // Note: exeName must be just the filename, not a full path.
     // Squirrel looks for it relative to the install folder.
+    
+    // First, hide all windows to indicate update is in progress
+    const { BrowserWindow } = require('electron');
+    BrowserWindow.getAllWindows().forEach(win => {
+      if (!win.isDestroyed()) {
+        win.hide();
+      }
+    });
+    
+    // Use Squirrel's built-in update mechanism
+    // The --processStart command will:
+    // 1. Apply the update (move new version into place)
+    // 2. Start the new version
+    // 3. We exit the old version
     const proc = spawn(updateExe, ['--processStart', exeName], {
       detached: true,
       stdio: 'ignore',
@@ -485,18 +499,25 @@ class UpdateService extends EventEmitter {
       windowsHide: false
     });
 
+    proc.on('error', (err) => {
+      logger.error(`❌ Failed to start Squirrel update: ${err.message}`);
+    });
+
     proc.unref();
 
-    // Also use app.relaunch() as a backup - Squirrel should have swapped
-    // the new version into place, so relaunch will start the new version
-    logger.info('🔄 Scheduling app relaunch...');
-    app.relaunch();
-
-    // Exit the old version after giving Squirrel time to start
+    // Wait longer for Squirrel to complete the update and start the new version
+    // Squirrel needs time to:
+    // 1. Stop the current app processes
+    // 2. Move files into place
+    // 3. Start the new version
+    logger.info('🔄 Waiting for Squirrel to apply update and start new version...');
+    
+    // Give Squirrel more time before exiting
     setTimeout(() => {
-      logger.info('🚪 Exiting old version to complete update...');
-      app.exit(0);
-    }, 1500);
+      logger.info('🚪 Exiting old version - new version should be starting...');
+      // Force exit - don't use app.quit() as it may trigger before-quit handlers
+      process.exit(0);
+    }, 3000);
   }
 }
 
