@@ -25,94 +25,117 @@ class NotificationWindow {
       this.hide();
     };
 
-    // Handle custom resize from edges using mouse tracking
+    // Handle custom resize from edges using native Windows resize
     this._eventHandlers.startResize = (_event, edge) => {
       if (this.window && !this.window.isDestroyed()) {
-        const win = this.window;
-        
-        // Get initial state - screen.getCursorScreenPoint() returns {x, y} object
-        const startPoint = screen.getCursorScreenPoint();
-        const startX = startPoint.x;
-        const startY = startPoint.y;
-        const [startWidth, startHeight] = win.getSize();
-        const [startLeft, startTop] = win.getPosition();
-        
-        // Track mouse movement for resize
-        const onMove = () => {
-          const currentPoint = screen.getCursorScreenPoint();
-          const currentX = currentPoint.x;
-          const currentY = currentPoint.y;
-          const deltaX = currentX - startX;
-          const deltaY = currentY - startY;
-          
-          let newWidth = startWidth;
-          let newHeight = startHeight;
-          let newLeft = startLeft;
-          let newTop = startTop;
-          
-          // Adjust based on edge
-          if (edge.includes('right')) {
-            newWidth = Math.max(250, startWidth + deltaX);
-          }
-          if (edge.includes('left')) {
-            newWidth = Math.max(250, startWidth - deltaX);
-            newLeft = startLeft + startWidth - newWidth;
-          }
-          if (edge.includes('bottom')) {
-            newHeight = Math.max(120, startHeight + deltaY);
-          }
-          if (edge.includes('top')) {
-            newHeight = Math.max(120, startHeight - deltaY);
-            newTop = startTop + startHeight - newHeight;
-          }
-          
-          win.setBounds({
-            x: newLeft,
-            y: newTop,
-            width: newWidth,
-            height: newHeight
-          });
+        // Map our edge names to Electron's direction constants
+        const directionMap = {
+          'top': 'top',
+          'bottom': 'bottom', 
+          'left': 'left',
+          'right': 'right',
+          'top-left': 'top-left',
+          'top-right': 'top-right',
+          'bottom-left': 'bottom-left',
+          'bottom-right': 'bottom-right'
         };
         
-        // Stop tracking on mouse up
-        const onUp = () => {
-          screen.removeAllListeners('display-metrics-changed');
-          win.webContents.executeJavaScript(`
-            document.querySelectorAll('.resize-handle').forEach(h => {
-              h.style.pointerEvents = '';
-            });
-          `);
-        };
+        const direction = directionMap[edge] || 'bottom-right';
         
-        // Listen for mouse move events via polling (more reliable)
-        let resizeInterval = setInterval(() => {
-          try {
-            onMove();
-          } catch (e) {
-            clearInterval(resizeInterval);
-          }
-        }, 16); // ~60fps
-        
-        // Stop on mouse up (detected via renderer)
-        win.webContents.executeJavaScript(`
-          const stopResize = () => {
-            window.__resizeInterval && clearInterval(window.__resizeInterval);
-            window.__resizeInterval = null;
-            document.removeEventListener('mouseup', stopResize);
-          };
-          document.addEventListener('mouseup', stopResize, { once: true });
-          window.__resizeInterval = ${resizeInterval};
-        `);
-        
-        // Also clear interval after timeout as safety
-        setTimeout(() => {
-          if (resizeInterval) {
-            clearInterval(resizeInterval);
-            resizeInterval = null;
-          }
-        }, 30000); // 30 second max resize time
+        // Use Electron's built-in beginFramelessResizeFromPoint for native feel
+        // This provides smooth, native Windows resize behavior
+        try {
+          const point = screen.getCursorScreenPoint();
+          this.window.beginFramelessResizeFromPoint(direction, point);
+        } catch (e) {
+          // Fallback for older Electron versions - use manual resize
+          this._manualResize(edge);
+        }
       }
     };
+    
+    // Fallback manual resize for older Electron versions
+    _manualResize(edge) {
+      const win = this.window;
+      if (!win || win.isDestroyed()) return;
+      
+      const startPoint = screen.getCursorScreenPoint();
+      const startX = startPoint.x;
+      const startY = startPoint.y;
+      const [startWidth, startHeight] = win.getSize();
+      const [startLeft, startTop] = win.getPosition();
+      
+      let lastTime = Date.now();
+      
+      const onMove = () => {
+        const now = Date.now();
+        const delta = now - lastTime;
+        if (delta < 8) return; // Limit to ~120fps for smoother feel
+        lastTime = now;
+        
+        const currentPoint = screen.getCursorScreenPoint();
+        const deltaX = currentPoint.x - startX;
+        const deltaY = currentPoint.y - startY;
+        
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        let newLeft = startLeft;
+        let newTop = startTop;
+        
+        if (edge.includes('right')) {
+          newWidth = Math.max(250, startWidth + deltaX);
+        }
+        if (edge.includes('left')) {
+          newWidth = Math.max(250, startWidth - deltaX);
+          newLeft = startLeft + startWidth - newWidth;
+        }
+        if (edge.includes('bottom')) {
+          newHeight = Math.max(120, startHeight + deltaY);
+        }
+        if (edge.includes('top')) {
+          newHeight = Math.max(120, startHeight - deltaY);
+          newTop = startTop + startHeight - newHeight;
+        }
+        
+        win.setBounds({
+          x: newLeft,
+          y: newTop,
+          width: newWidth,
+          height: newHeight
+        }, false); // false = don't animate, for snappier feel
+      };
+      
+      let resizeInterval = setInterval(() => {
+        try {
+          if (win.isDestroyed()) {
+            clearInterval(resizeInterval);
+            return;
+          }
+          onMove();
+        } catch (e) {
+          clearInterval(resizeInterval);
+        }
+      }, 8);
+      
+      win.webContents.executeJavaScript(`
+        const stopResize = () => {
+          if (window.__resizeInterval) {
+            clearInterval(window.__resizeInterval);
+            window.__resizeInterval = null;
+          }
+          document.removeEventListener('mouseup', stopResize);
+        };
+        document.addEventListener('mouseup', stopResize, { once: true });
+        window.__resizeInterval = ${resizeInterval};
+      `);
+      
+      setTimeout(() => {
+        if (resizeInterval) {
+          clearInterval(resizeInterval);
+          resizeInterval = null;
+        }
+      }, 30000);
+    }
     
     ipcMain.on('toast-clicked', this._eventHandlers.toastClicked);
     ipcMain.on('toast:close', this._eventHandlers.toastClose);
