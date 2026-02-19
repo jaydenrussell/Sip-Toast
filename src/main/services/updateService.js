@@ -611,20 +611,21 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Start automatic update checking
+   * Start automatic update checking - checks immediately at startup
    */
   startAutoCheck() {
     if (this.hasCheckedOnStartup) return;
 
-    setTimeout(() => {
-      if (!this.hasCheckedOnStartup) {
-        this.hasCheckedOnStartup = true;
-        logger.info('🔄 Checking for updates at startup...');
-        this.checkForUpdates('app_load');
-      }
-    }, 30000); // 30 second delay
+    // Check immediately at startup (no delay)
+    this.hasCheckedOnStartup = true;
+    logger.info('🔄 Checking for updates at startup...');
+    
+    // Use setImmediate to allow app to fully initialize first
+    setImmediate(() => {
+      this.checkForUpdates('app_load');
+    });
 
-    logger.info('📅 Auto-update check scheduled (30s delay at startup)');
+    logger.info('📅 Auto-update check scheduled (immediate at startup)');
   }
 
   /**
@@ -703,12 +704,118 @@ class UpdateService extends EventEmitter {
   }
 
   /**
+   * Show update progress window with app icon
+   */
+  _showUpdateProgressWindow() {
+    const { BrowserWindow, nativeImage } = require('electron');
+    
+    // Find app icon
+    let iconPath = null;
+    const possiblePaths = [
+      path.join(process.resourcesPath, 'Images', 'app.ico'),
+      path.join(process.resourcesPath, 'Images', 'app.png'),
+      path.join(__dirname, '..', '..', '..', 'Images', 'app.ico'),
+      path.join(__dirname, '..', '..', '..', 'Images', 'app.png'),
+    ];
+    
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        iconPath = p;
+        break;
+      }
+    }
+    
+    const updateWindow = new BrowserWindow({
+      width: 400,
+      height: 200,
+      frame: false,
+      alwaysOnTop: true,
+      resizable: false,
+      skipTaskbar: false,
+      transparent: false,
+      backgroundColor: '#1e293b',
+      icon: iconPath ? nativeImage.createFromPath(iconPath) : undefined,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    });
+    
+    // Load update progress HTML
+    updateWindow.loadURL(`data:text/html,${encodeURIComponent(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 20px;
+          }
+          .icon {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+          }
+          .title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+          }
+          .version {
+            font-size: 14px;
+            color: #94a3b8;
+            margin-bottom: 20px;
+          }
+          .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #334155;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="icon">📞</div>
+        <div class="title">Installing Update</div>
+        <div class="version">SIP Toast v${this.availableVersion}</div>
+        <div class="spinner"></div>
+      </body>
+      </html>
+    `)}`);
+    
+    updateWindow.show();
+    updateWindow.focus();
+    
+    return updateWindow;
+  }
+
+  /**
    * Quit and install update using Squirrel's mechanism.
    * 
    * The approach:
-   * 1. Kill all other instances of the app
-   * 2. Hide all windows
-   * 3. Run Update.exe --processStartAndWait to apply update and start new version
+   * 1. Show update progress window with app icon
+   * 2. Kill all other instances of the app
+   * 3. Run Update.exe to apply update and start new version
    * 4. Force exit this process
    */
   async quitAndInstall() {
@@ -739,43 +846,74 @@ class UpdateService extends EventEmitter {
     logger.info(`   Exe name: ${exeName}`);
     logger.info(`   Current PID: ${process.pid}`);
 
-    // Step 1: Kill all other instances first
+    // Step 1: Show update progress window
+    const updateWindow = this._showUpdateProgressWindow();
+
+    // Step 2: Kill all other instances first
     await this._killOtherInstances();
 
-    // Step 2: Hide all windows
+    // Step 3: Destroy all other windows
     const { BrowserWindow } = require('electron');
     BrowserWindow.getAllWindows().forEach(win => {
-      if (!win.isDestroyed()) {
+      if (win !== updateWindow && !win.isDestroyed()) {
         win.hide();
         win.destroy();
       }
     });
 
-    // Step 3: Run Squirrel to apply update and start new version
-    logger.info('🔄 Running Squirrel --processStartAndWait...');
+    // Step 4: Run Squirrel to apply update and start new version
+    // Use --processStart (not --processStartAndWait) and wait for it to complete
+    logger.info('🔄 Running Squirrel --processStart...');
     
-    const proc = spawn(updateExe, ['--processStartAndWait', exeName], {
-      detached: true, // Detach so Squirrel can start new instance
-      stdio: ['ignore', 'ignore', 'ignore'],
+    const proc = spawn(updateExe, ['--processStart', exeName], {
+      detached: false, // Don't detach - we want to wait for it
+      stdio: ['ignore', 'pipe', 'pipe'],
       cwd: installFolder,
       windowsHide: false
     });
 
-    proc.unref();
+    let squirrelStdout = '';
+    let squirrelStderr = '';
+    
+    proc.stdout?.on('data', (data) => {
+      squirrelStdout += data.toString();
+      logger.info(`   Squirrel: ${data.toString().trim()}`);
+    });
+    
+    proc.stderr?.on('data', (data) => {
+      squirrelStderr += data.toString();
+      logger.warn(`   Squirrel stderr: ${data.toString().trim()}`);
+    });
 
     proc.on('error', (err) => {
       logger.error(`❌ Failed to start Squirrel: ${err.message}`);
-    });
-
-    // Step 4: Force exit this process immediately
-    // Squirrel will start the new version
-    logger.info('🚪 Force exiting to allow update...');
-    
-    // Use setImmediate to ensure the spawn has started
-    setImmediate(() => {
-      // Force kill this process - don't give it a chance to interfere
+      // Still try to exit
       process.exit(0);
     });
+
+    // Step 5: Wait for Squirrel to complete, then exit
+    proc.on('close', (code) => {
+      logger.info(`   Squirrel exited with code: ${code}`);
+      if (squirrelStdout) logger.info(`   stdout: ${squirrelStdout.trim()}`);
+      if (squirrelStderr) logger.warn(`   stderr: ${squirrelStderr.trim()}`);
+      
+      // Close update window and exit
+      if (updateWindow && !updateWindow.isDestroyed()) {
+        updateWindow.close();
+      }
+      
+      logger.info('🚪 Exiting to allow new version to start...');
+      process.exit(0);
+    });
+
+    // Safety timeout - exit after 30 seconds even if Squirrel doesn't complete
+    setTimeout(() => {
+      logger.warn('⏰ Squirrel timeout - exiting anyway');
+      if (updateWindow && !updateWindow.isDestroyed()) {
+        updateWindow.close();
+      }
+      process.exit(0);
+    }, 30000);
   }
 }
 
