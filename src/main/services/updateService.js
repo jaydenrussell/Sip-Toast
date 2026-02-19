@@ -4,7 +4,9 @@ const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
 const { spawn, execFile } = require('child_process');
+const { URL } = require('url');
 
 // Lazy load eventLogger to avoid circular dependencies
 let _eventLogger = null;
@@ -175,6 +177,183 @@ class UpdateService extends EventEmitter {
   }
 
   /**
+   * Fast download with progress tracking using native Node.js
+   * Downloads directly to the Squirrel packages folder
+   */
+  _downloadFile(url, destPath, onProgress) {
+    return new Promise((resolve, reject) => {
+      const parsedUrl = new URL(url);
+      const protocol = parsedUrl.protocol === 'https:' ? https : http;
+      
+      // High-performance options
+      const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'GET',
+        headers: {
+          'User-Agent': `SIPToast/${this.currentVersion}`,
+          'Accept-Encoding': 'identity', // Disable compression for faster downloads
+          'Connection': 'keep-alive'
+        },
+        timeout: 30000 // 30 second timeout
+      };
+
+      logger.info(`📥 Downloading: ${url}`);
+      
+      const request = protocol.request(options, (response) => {
+        // Handle redirects (GitHub uses 302)
+        if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 303) {
+          const redirectUrl = response.headers.location;
+          if (redirectUrl) {
+            logger.info(`↪️ Redirect to: ${redirectUrl}`);
+            response.destroy();
+            return this._downloadFile(redirectUrl, destPath, onProgress).then(resolve).catch(reject);
+          }
+        }
+        
+        if (response.statusCode !== 200) {
+          response.destroy();
+          return reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+        }
+        
+        const totalSize = parseInt(response.headers['content-length'], 10) || 0;
+        let downloadedSize = 0;
+        let lastProgressTime = Date.now();
+        
+        logger.info(`   File size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+        
+        // Create write stream
+        const fileStream = fs.createWriteStream(destPath);
+        
+        response.on('data', (chunk) => {
+          downloadedSize += chunk.length;
+          
+          // Report progress at most every 100ms
+          const now = Date.now();
+          if (now - lastProgressTime >= 100 || downloadedSize === totalSize) {
+            lastProgressTime = now;
+            if (onProgress && totalSize > 0) {
+              const progress = Math.round((downloadedSize / totalSize) * 100);
+              onProgress(progress, downloadedSize, totalSize);
+            }
+          }
+        });
+        
+        response.pipe(fileStream);
+        
+        fileStream.on('finish', () => {
+          fileStream.close();
+          logger.info(`✅ Download complete: ${path.basename(destPath)}`);
+          resolve(destPath);
+        });
+        
+        fileStream.on('error', (err) => {
+          fs.unlink(destPath, () => {}); // Delete partial file
+          reject(err);
+        });
+      });
+      
+      request.on('error', (err) => {
+        logger.error(`❌ Download error: ${err.message}`);
+        reject(err);
+      });
+      
+      request.on('timeout', () => {
+        request.destroy();
+        reject(new Error('Download timeout'));
+      });
+      
+      request.end();
+    });
+  }
+
+  /**
+   * Fast update download - downloads nupkg files directly, then applies with Squirrel
+   * This is much faster than Squirrel's built-in downloader
+   */
+  async _fastDownloadUpdate(releaseTag) {
+    const installFolder = this._getInstallFolder();
+    const packagesDir = path.join(installFolder, 'packages');
+    
+    // Ensure packages directory exists
+    if (!fs.existsSync(packagesDir)) {
+      fs.mkdirSync(packagesDir, { recursive: true });
+    }
+    
+    const baseUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${releaseTag}`;
+    
+    // Files to download
+    const files = [
+      { name: 'RELEASES', url: `${baseUrl}/RELEASES` },
+      { name: `SIPToast-${this.availableVersion}-full.nupkg`, url: `${baseUrl}/SIPToast-${this.availableVersion}-full.nupkg` }
+    ];
+    
+    // Also try to download delta if available (smaller)
+    const deltaFile = { name: `SIPToast-${this.availableVersion}-delta.nupkg`, url: `${baseUrl}/SIPToast-${this.availableVersion}-delta.nupkg` };
+    
+    logger.info(`🚀 Fast downloading update files...`);
+    
+    let totalSize = 0;
+    let downloadedSize = 0;
+    let currentFileIndex = 0;
+    
+    // Download RELEASES file first to check for delta
+    try {
+      const releasesPath = path.join(packagesDir, 'RELEASES');
+      await this._downloadFile(files[0].url, releasesPath, (progress, downloaded, total) => {
+        // Small file, just show we're working
+        this.downloadProgress = 1;
+        this.emitStatus();
+      });
+      
+      // Check if delta is available in RELEASES
+      const releasesContent = fs.readFileSync(releasesPath, 'utf8');
+      if (releasesContent.includes(`SIPToast-${this.availableVersion}-delta.nupkg`)) {
+        files.push(deltaFile);
+        logger.info(`   Delta package available, will download smaller delta`);
+      }
+    } catch (e) {
+      logger.warn(`   Could not download RELEASES: ${e.message}`);
+    }
+    
+    // Calculate total files to download (skip RELEASES as it's done)
+    const nupkgFiles = files.slice(1);
+    
+    // Download nupkg files
+    for (let i = 0; i < nupkgFiles.length; i++) {
+      const file = nupkgFiles[i];
+      const destPath = path.join(packagesDir, file.name);
+      
+      // Skip if already downloaded
+      if (fs.existsSync(destPath)) {
+        const stats = fs.statSync(destPath);
+        if (stats.size > 1000000) { // At least 1MB
+          logger.info(`   ⏭️ Already exists: ${file.name}`);
+          continue;
+        }
+      }
+      
+      currentFileIndex = i;
+      
+      await this._downloadFile(file.url, destPath, (progress, fileDownloaded, fileTotal) => {
+        // Calculate overall progress (nupkg files are the bulk of the download)
+        const fileWeight = 1 / nupkgFiles.length;
+        const baseProgress = (currentFileIndex / nupkgFiles.length) * 100;
+        const fileProgress = progress * fileWeight;
+        this.downloadProgress = Math.min(Math.round(baseProgress + fileProgress), 99);
+        this.emitStatus();
+      });
+    }
+    
+    this.downloadProgress = 100;
+    this.emitStatus();
+    
+    logger.info(`✅ All update files downloaded to: ${packagesDir}`);
+    return packagesDir;
+  }
+
+  /**
    * Run Squirrel Update.exe --update to download and stage the update.
    * Squirrel handles the download internally. We wait for it to finish
    * by monitoring the process exit code.
@@ -327,11 +506,41 @@ class UpdateService extends EventEmitter {
 
         this.emitStatus();
 
-        const releasesUrl = this._getReleasesUrl(releaseTag);
-        logger.info(`🔄 Starting Squirrel update from: ${releasesUrl}`);
+        logger.info(`🔄 Starting fast update download for v${remoteVersion}...`);
 
         try {
-          await this._runSquirrelUpdate(releasesUrl);
+          // Use fast custom downloader instead of Squirrel's slow one
+          await this._fastDownloadUpdate(releaseTag);
+          
+          // Now run Squirrel to apply the update (it will use the already-downloaded files)
+          const updateExe = this._getUpdateExePath();
+          const installFolder = this._getInstallFolder();
+          
+          logger.info(`🔄 Applying update with Squirrel...`);
+          
+          // Run Squirrel to apply the downloaded packages
+          await new Promise((resolve, reject) => {
+            const proc = spawn(updateExe, ['--update', this._getReleasesUrl(releaseTag)], {
+              stdio: ['ignore', 'pipe', 'pipe'],
+              cwd: installFolder,
+              windowsHide: true
+            });
+            
+            let stdout = '';
+            let stderr = '';
+            
+            proc.stdout?.on('data', (data) => { stdout += data.toString(); });
+            proc.stderr?.on('data', (data) => { stderr += data.toString(); });
+            
+            proc.on('error', reject);
+            proc.on('close', (code) => {
+              if (code === 0 || fs.existsSync(path.join(installFolder, `app-${remoteVersion}`))) {
+                resolve();
+              } else {
+                reject(new Error(`Squirrel apply failed: ${code}. ${stderr}`));
+              }
+            });
+          });
 
           this.updateDownloaded = true;
           this.isDownloading = false;
