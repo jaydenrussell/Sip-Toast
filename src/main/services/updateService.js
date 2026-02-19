@@ -431,14 +431,12 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Quit and install update using Squirrel's --processStart mechanism.
-   *
-   * The correct Squirrel install flow is:
-   * 1. Update.exe --update <url>  → stages the new version in app-X.Y.Z/
-   * 2. Update.exe --processStart <exe> --process-start-args <args>
-   *    → applies the staged update, then launches the new version
-   *
-   * We must NOT use app.relaunch() as that relaunches the OLD version.
+   * Quit and install update using Squirrel's mechanism.
+   * 
+   * The key is to let Squirrel handle everything:
+   * 1. Run Update.exe --processStartAndWait (applies update AND starts new version)
+   * 2. Wait for it to complete
+   * 3. Exit this process
    */
   quitAndInstall() {
     if (!this.updateDownloaded) {
@@ -452,7 +450,7 @@ class UpdateService extends EventEmitter {
       return;
     }
 
-    logger.info(`🔄 Installing update v${this.availableVersion} via Squirrel --processStart...`);
+    logger.info(`🔄 Installing update v${this.availableVersion}...`);
 
     // Log to event logger before installing
     const evtLogger = getEventLogger();
@@ -460,64 +458,104 @@ class UpdateService extends EventEmitter {
       evtLogger.logUpdateInstalled(this.availableVersion);
     }
 
-    // Get the executable name (e.g. SIPToast.exe)
-    // process.execPath is the full path to the running exe
-    const exeName = path.basename(process.execPath);
     const installFolder = this._getInstallFolder();
+    const exeName = path.basename(process.execPath);
 
     logger.info(`   Update.exe: ${updateExe}`);
     logger.info(`   Install folder: ${installFolder}`);
     logger.info(`   Exe name: ${exeName}`);
 
-    // Squirrel --processStart flow:
-    // Update.exe --processStart <exeName>
-    // Squirrel will:
-    //   1. Move the staged app-X.Y.Z into place
-    //   2. Launch the new version of <exeName> from the install folder
-    // We then exit the old process.
-    //
-    // Note: exeName must be just the filename, not a full path.
-    // Squirrel looks for it relative to the install folder.
-    
-    // First, hide all windows to indicate update is in progress
+    // Find the new version folder (app-X.Y.Z) before we start
+    let newVersionFolder = null;
+    try {
+      const entries = fs.readdirSync(installFolder);
+      newVersionFolder = entries.find(e => {
+        if (!e.startsWith('app-')) return false;
+        const ver = e.replace('app-', '');
+        return this.availableVersion && this._isNewerVersion(ver, this.currentVersion);
+      });
+      
+      if (newVersionFolder) {
+        logger.info(`   New version folder found: ${newVersionFolder}`);
+      }
+    } catch (e) {
+      logger.error(`   Could not scan install folder: ${e.message}`);
+    }
+
+    // Hide all windows to indicate update is in progress
     const { BrowserWindow } = require('electron');
     BrowserWindow.getAllWindows().forEach(win => {
       if (!win.isDestroyed()) {
         win.hide();
       }
     });
+
+    // Use --processStartAndWait which:
+    // 1. Applies the update (moves new version into place)
+    // 2. Starts the new version
+    // 3. Waits for it to start before returning
+    // This is more reliable than --processStart
+    logger.info('🔄 Running Squirrel --processStartAndWait...');
     
-    // Use Squirrel's built-in update mechanism
-    // The --processStart command will:
-    // 1. Apply the update (move new version into place)
-    // 2. Start the new version
-    // 3. We exit the old version
-    const proc = spawn(updateExe, ['--processStart', exeName], {
-      detached: true,
-      stdio: 'ignore',
+    const proc = spawn(updateExe, ['--processStartAndWait', exeName], {
+      detached: false, // Don't detach - we want to wait
+      stdio: ['ignore', 'pipe', 'pipe'],
       cwd: installFolder,
       windowsHide: false
     });
 
-    proc.on('error', (err) => {
-      logger.error(`❌ Failed to start Squirrel update: ${err.message}`);
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout?.on('data', (data) => {
+      stdout += data.toString();
+      logger.info(`   Squirrel: ${data.toString().trim()}`);
     });
 
-    proc.unref();
+    proc.stderr?.on('data', (data) => {
+      stderr += data.toString();
+      logger.warn(`   Squirrel stderr: ${data.toString().trim()}`);
+    });
 
-    // Wait longer for Squirrel to complete the update and start the new version
-    // Squirrel needs time to:
-    // 1. Stop the current app processes
-    // 2. Move files into place
-    // 3. Start the new version
-    logger.info('🔄 Waiting for Squirrel to apply update and start new version...');
-    
-    // Give Squirrel more time before exiting
+    proc.on('error', (err) => {
+      logger.error(`❌ Failed to start Squirrel: ${err.message}`);
+      
+      // Fallback: Try to start the new version directly
+      if (newVersionFolder) {
+        const newExePath = path.join(installFolder, newVersionFolder, exeName);
+        logger.info(`   Fallback: Starting new version directly: ${newExePath}`);
+        try {
+          spawn(newExePath, [], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: false
+          }).unref();
+        } catch (fallbackErr) {
+          logger.error(`   Direct launch failed: ${fallbackErr.message}`);
+        }
+      }
+      
+      // Exit anyway
+      setTimeout(() => process.exit(0), 1000);
+    });
+
+    proc.on('close', (code) => {
+      logger.info(`   Squirrel exited with code: ${code}`);
+      if (stdout) logger.info(`   stdout: ${stdout}`);
+      if (stderr) logger.warn(`   stderr: ${stderr}`);
+      
+      // Give the new version a moment to start
+      setTimeout(() => {
+        logger.info('🚪 Exiting old version...');
+        process.exit(0);
+      }, 500);
+    });
+
+    // Safety timeout - exit after 30 seconds even if Squirrel doesn't complete
     setTimeout(() => {
-      logger.info('🚪 Exiting old version - new version should be starting...');
-      // Force exit - don't use app.quit() as it may trigger before-quit handlers
+      logger.warn('⏰ Squirrel timeout - exiting anyway');
       process.exit(0);
-    }, 3000);
+    }, 30000);
   }
 }
 
