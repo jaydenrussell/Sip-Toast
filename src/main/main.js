@@ -33,13 +33,9 @@ if (!gotLock) {
   process.exit(0);
 }
 
-let tray;
-let notificationWindow;
-let sipManager;
-let flyoutWindow;
-// Removed unused mainWindow variable - flyoutWindow.window is used directly
+let tray, notificationWindow, sipManager, flyoutWindow, updateService = null;
 let latestSipStatus = { state: 'idle', timestamp: new Date().toISOString() };
-let updateService = null;
+let isMainWindowVisible = false, isAppQuitting = false;
 
 // Cache settings to avoid repeated lookups (memory-optimized)
 let cachedSettings = settings.getAll();
@@ -1055,8 +1051,11 @@ app.whenReady().then(async () => {
   
   // Set up update status event listener to update tray icon and send to renderer
   updateService.on('update-status', (status) => {
+    if (isAppQuitting) return;
     updateTrayIcon(status);
-    flyoutWindow?.send('update:status', status);
+    if (flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
+      try { flyoutWindow.send('update:status', status); } catch {}
+    }
   });
   
   // Set isAppQuitting when update install starts to prevent "Object destroyed" errors
@@ -1170,10 +1169,6 @@ app.on('before-quit', () => {
     global.sipHealthCheckIntervals = [];
   }
 });
-
-// Track window visibility state for memory optimization
-let isMainWindowVisible = false, isAppQuitting = false;
-const { adjustLogBufferSize } = require('./services/logger');
 
 // Set up visibility tracking after flyoutWindow is created
 setTimeout(() => {
