@@ -1200,7 +1200,6 @@ const { adjustLogBufferSize } = require('./services/logger');
 // Update visibility state when window is shown/hidden
 const updateWindowVisibility = (visible) => {
   isMainWindowVisible = visible;
-  // Adjust log buffer size based on visibility (reduce when minimized)
   adjustLogBufferSize(!visible);
 };
 
@@ -1213,13 +1212,12 @@ setTimeout(() => {
   }
 }, 100);
 
-// Log handler with cleanup - check isAppQuitting to prevent errors during shutdown
-const logEntryHandler = (entry) => {
+// Log handler - early exit during shutdown to prevent "Object destroyed" errors
+logEmitter.on('entry', (entry) => {
   if (isAppQuitting) return;
   if (isMainWindowVisible && flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
     try { flyoutWindow.send('logs:entry', entry); } catch {}
   }
-};
-logEmitter.on('entry', logEntryHandler);
-app.on('before-quit', () => { isAppQuitting = true; logEmitter.removeListener('entry', logEntryHandler); });
+});
+app.on('before-quit', () => { isAppQuitting = true; });
 
