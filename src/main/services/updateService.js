@@ -366,13 +366,48 @@ class UpdateService extends EventEmitter {
 
     // Run Squirrel to apply update
     const exeName = path.basename(process.execPath);
-    spawn(this._updateExe, ['--processStart', exeName], {
+    const packagesDir = path.join(this._installDir, 'packages');
+    
+    logger.info(`Install directory: ${this._installDir}`);
+    logger.info(`Packages directory: ${packagesDir}`);
+    logger.info(`Update.exe: ${this._updateExe}`);
+    
+    // List files in packages directory for debugging
+    try {
+      if (fs.existsSync(packagesDir)) {
+        const files = fs.readdirSync(packagesDir);
+        logger.info(`Packages folder contents: ${files.join(', ')}`);
+      } else {
+        logger.warn('Packages directory does not exist!');
+      }
+    } catch (e) {
+      logger.error(`Error reading packages directory: ${e.message}`);
+    }
+    
+    // Squirrel.Windows uses --update <url> to download and apply updates
+    // But since we've already downloaded, we need to use a different approach
+    // The correct way is to use --processStartAndWait which applies pending updates
+    logger.info(`Running Update.exe to apply update and restart ${exeName}`);
+    
+    // Use --processStartAndWait which will:
+    // 1. Check for and apply any pending updates from packages folder
+    // 2. Start the specified executable
+    // 3. Wait for it to exit (so it can clean up)
+    const updateProcess = spawn(this._updateExe, [
+      '--processStartAndWait', exeName
+    ], {
       cwd: this._installDir,
       detached: true,
       stdio: 'ignore'
-    }).unref();
+    });
+    
+    updateProcess.on('error', (err) => {
+      logger.error(`Update.exe spawn error: ${err.message}`);
+    });
+    
+    updateProcess.unref();
 
-    // Exit after delay
+    // Exit after delay to let Update.exe start
     setTimeout(() => {
       logger.info('Exiting for update...');
       if (!win.isDestroyed()) win.close();
