@@ -304,6 +304,7 @@ const createDownloadIcon = () => {
 
 // Store the original icon for switching back
 let originalTrayIcon = null;
+let cachedDownloadIcon = null; // Cache download icon to avoid recreating
 
 // Update tray icon based on update status (Discord-style)
 const updateTrayIcon = (status) => {
@@ -321,9 +322,11 @@ const updateTrayIcon = (status) => {
     
     // Only show download icon when update is DOWNLOADED and ready (Discord-style)
     if (status.updateDownloaded) {
-      // Update ready - show download icon
-      const downloadIcon = createDownloadIcon();
-      tray.setImage(downloadIcon);
+      // Update ready - show download icon (cached)
+      if (!cachedDownloadIcon) {
+        cachedDownloadIcon = createDownloadIcon();
+      }
+      tray.setImage(cachedDownloadIcon);
       tray.setToolTip('SIP Toast - Update ready to install');
     } else if (status.downloading) {
       // Downloading - show progress in tooltip
@@ -919,15 +922,16 @@ const boot = async () => {
   // Log that we've registered the handler
   logger.info(`✅ Registered incomingCall handler (listeners: ${sipManager.listenerCount('incomingCall')})`);
   
-  // Set up a periodic check to ensure the handler is still registered
+  // Set up a periodic check to ensure the handler is still registered (every 30s for memory efficiency)
   const handlerCheckInterval = setInterval(() => {
+    if (!sipManager) return;
     const count = sipManager.listenerCount('incomingCall');
     if (count === 0 && sipManager.getState() === 'registered') {
       logger.error(`❌ CRITICAL: incomingCall handler was lost! Re-registering...`);
       sipManager.on('incomingCall', incomingCallHandler);
       logger.info(`✅ Re-registered incomingCall handler`);
     }
-  }, 5000); // Check every 5 seconds
+  }, 30000);
   
   // Store interval reference for cleanup
   if (!global.sipHandlerCheckIntervals) {
