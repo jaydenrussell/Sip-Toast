@@ -1217,24 +1217,12 @@ setTimeout(() => {
   }
 }, 100);
 
-// Store the log handler reference for cleanup
+// Log handler with cleanup
 const logEntryHandler = (entry) => {
-  // Memory optimization: Only send logs to renderer when window is visible
-  // This reduces IPC overhead and renderer memory usage when minimized
-  if (isMainWindowVisible && flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
-    try {
-      flyoutWindow.send('logs:entry', entry);
-    } catch (error) {
-      // Window might be closed, ignore to prevent memory leaks
-    }
+  if (isMainWindowVisible && flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
+    try { flyoutWindow.send('logs:entry', entry); } catch {}
   }
-  // Logs are still written to file, just not sent to renderer when hidden
 };
-
 logEmitter.on('entry', logEntryHandler);
-
-// Cleanup log emitter listener on exit
-app.on('before-quit', () => {
-  logEmitter.removeListener('entry', logEntryHandler);
-});
+app.on('before-quit', () => logEmitter.removeListener('entry', logEntryHandler));
 
