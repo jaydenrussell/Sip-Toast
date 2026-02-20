@@ -185,7 +185,6 @@ class UpdateService extends EventEmitter {
       const parsedUrl = new URL(url);
       const protocol = parsedUrl.protocol === 'https:' ? https : http;
       
-      // High-performance options
       const options = {
         hostname: parsedUrl.hostname,
         port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
@@ -193,50 +192,41 @@ class UpdateService extends EventEmitter {
         method: 'GET',
         headers: {
           'User-Agent': `SIPToast/${this.currentVersion}`,
-          'Accept-Encoding': 'identity', // Disable compression for faster downloads
+          'Accept-Encoding': 'identity',
           'Connection': 'keep-alive'
         },
-        timeout: 30000 // 30 second timeout
+        timeout: 30000
       };
 
       logger.info(`📥 Downloading: ${url}`);
       
       const request = protocol.request(options, (response) => {
-        // Handle redirects (GitHub uses 302)
-        if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 303) {
-          const redirectUrl = response.headers.location;
-          if (redirectUrl) {
-            logger.info(`↪️ Redirect to: ${redirectUrl}`);
-            response.destroy();
-            return this._downloadFile(redirectUrl, destPath, onProgress).then(resolve).catch(reject);
-          }
+        // Handle redirects
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          logger.info(`↪️ Redirect to: ${response.headers.location}`);
+          response.destroy();
+          return this._downloadFile(response.headers.location, destPath, onProgress).then(resolve).catch(reject);
         }
         
         if (response.statusCode !== 200) {
           response.destroy();
-          return reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+          return reject(new Error(`HTTP ${response.statusCode}`));
         }
         
         const totalSize = parseInt(response.headers['content-length'], 10) || 0;
         let downloadedSize = 0;
-        let lastProgressTime = Date.now();
+        let lastProgressTime = 0;
         
         logger.info(`   File size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
         
-        // Create write stream
         const fileStream = fs.createWriteStream(destPath);
         
         response.on('data', (chunk) => {
           downloadedSize += chunk.length;
-          
-          // Report progress at most every 100ms
           const now = Date.now();
-          if (now - lastProgressTime >= 100 || downloadedSize === totalSize) {
+          if (now - lastProgressTime >= 200 && onProgress && totalSize > 0) {
             lastProgressTime = now;
-            if (onProgress && totalSize > 0) {
-              const progress = Math.round((downloadedSize / totalSize) * 100);
-              onProgress(progress, downloadedSize, totalSize);
-            }
+            onProgress(Math.round((downloadedSize / totalSize) * 100), downloadedSize, totalSize);
           }
         });
         
@@ -249,16 +239,12 @@ class UpdateService extends EventEmitter {
         });
         
         fileStream.on('error', (err) => {
-          fs.unlink(destPath, () => {}); // Delete partial file
+          fs.unlink(destPath, () => {});
           reject(err);
         });
       });
       
-      request.on('error', (err) => {
-        logger.error(`❌ Download error: ${err.message}`);
-        reject(err);
-      });
-      
+      request.on('error', reject);
       request.on('timeout', () => {
         request.destroy();
         reject(new Error('Download timeout'));
@@ -269,78 +255,64 @@ class UpdateService extends EventEmitter {
   }
 
   /**
-   * Fast update download - downloads nupkg files directly, then applies with Squirrel
-   * This is much faster than Squirrel's built-in downloader
+   * Fast update download - downloads nupkg files directly
    */
   async _fastDownloadUpdate(releaseTag) {
-    const installFolder = this._getInstallFolder();
-    const packagesDir = path.join(installFolder, 'packages');
+    const packagesDir = path.join(this._getInstallFolder(), 'packages');
     
-    // Ensure packages directory exists
     if (!fs.existsSync(packagesDir)) {
       fs.mkdirSync(packagesDir, { recursive: true });
     }
     
     const baseUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${releaseTag}`;
-    
-    // Files to download
     const files = [
-      { name: 'RELEASES', url: `${baseUrl}/RELEASES` },
-      { name: `SIPToast-${this.availableVersion}-full.nupkg`, url: `${baseUrl}/SIPToast-${this.availableVersion}-full.nupkg` }
+      { name: 'RELEASES', url: `${baseUrl}/RELEASES`, progress: 1 },
+      { name: `SIPToast-${this.availableVersion}-full.nupkg`, url: `${baseUrl}/SIPToast-${this.availableVersion}-full.nupkg`, progress: 50 }
     ];
     
-    // Also try to download delta if available (smaller)
-    const deltaFile = { name: `SIPToast-${this.availableVersion}-delta.nupkg`, url: `${baseUrl}/SIPToast-${this.availableVersion}-delta.nupkg` };
+    logger.info(`🚀 Downloading update files...`);
     
-    logger.info(`🚀 Fast downloading update files...`);
-    
-    let totalSize = 0;
-    let downloadedSize = 0;
-    let currentFileIndex = 0;
-    
-    // Download RELEASES file first to check for delta
+    // Download RELEASES first to check for delta
     try {
       const releasesPath = path.join(packagesDir, 'RELEASES');
-      await this._downloadFile(files[0].url, releasesPath, (progress, downloaded, total) => {
-        // Small file, just show we're working
+      await this._downloadFile(files[0].url, releasesPath, () => {
         this.downloadProgress = 1;
         this.emitStatus();
       });
       
-      // Check if delta is available in RELEASES
+      // Check for delta (smaller download)
       const releasesContent = fs.readFileSync(releasesPath, 'utf8');
       if (releasesContent.includes(`SIPToast-${this.availableVersion}-delta.nupkg`)) {
-        files.push(deltaFile);
-        logger.info(`   Delta package available, will download smaller delta`);
+        files.push({ 
+          name: `SIPToast-${this.availableVersion}-delta.nupkg`, 
+          url: `${baseUrl}/SIPToast-${this.availableVersion}-delta.nupkg`,
+          progress: 75
+        });
+        logger.info(`   Delta package available`);
       }
     } catch (e) {
       logger.warn(`   Could not download RELEASES: ${e.message}`);
     }
     
-    // Calculate total files to download (skip RELEASES as it's done)
+    // Download nupkg files (skip RELEASES at index 0)
     const nupkgFiles = files.slice(1);
+    const totalFiles = nupkgFiles.length;
     
-    // Download nupkg files
-    for (let i = 0; i < nupkgFiles.length; i++) {
+    for (let i = 0; i < totalFiles; i++) {
       const file = nupkgFiles[i];
       const destPath = path.join(packagesDir, file.name);
       
-      // Skip if already downloaded
-      if (fs.existsSync(destPath)) {
-        const stats = fs.statSync(destPath);
-        if (stats.size > 1000000) { // At least 1MB
-          logger.info(`   ⏭️ Already exists: ${file.name}`);
-          continue;
-        }
+      // Skip if already downloaded (at least 1MB)
+      if (fs.existsSync(destPath) && fs.statSync(destPath).size > 1000000) {
+        logger.info(`   ⏭️ Already exists: ${file.name}`);
+        this.downloadProgress = Math.round(((i + 1) / totalFiles) * 100);
+        this.emitStatus();
+        continue;
       }
       
-      currentFileIndex = i;
-      
-      await this._downloadFile(file.url, destPath, (progress, fileDownloaded, fileTotal) => {
-        // Calculate overall progress (nupkg files are the bulk of the download)
-        const fileWeight = 1 / nupkgFiles.length;
-        const baseProgress = (currentFileIndex / nupkgFiles.length) * 100;
-        const fileProgress = progress * fileWeight;
+      await this._downloadFile(file.url, destPath, (progress) => {
+        const baseProgress = ((i / totalFiles) * 100);
+        const fileProgress = (progress / totalFiles);
         this.downloadProgress = Math.min(Math.round(baseProgress + fileProgress), 99);
         this.emitStatus();
       });
@@ -349,7 +321,7 @@ class UpdateService extends EventEmitter {
     this.downloadProgress = 100;
     this.emitStatus();
     
-    logger.info(`✅ All update files downloaded to: ${packagesDir}`);
+    logger.info(`✅ Update files downloaded`);
     return packagesDir;
   }
 
