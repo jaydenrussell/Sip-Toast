@@ -1193,23 +1193,17 @@ app.on('before-quit', () => {
 });
 
 // Track window visibility state for memory optimization
-let isMainWindowVisible = false;
-let isAppQuitting = false;
+let isMainWindowVisible = false, isAppQuitting = false;
 const { adjustLogBufferSize } = require('./services/logger');
-
-// Update visibility state when window is shown/hidden
-const updateWindowVisibility = (visible) => {
-  isMainWindowVisible = visible;
-  adjustLogBufferSize(!visible);
-};
 
 // Set up visibility tracking after flyoutWindow is created
 setTimeout(() => {
-  if (flyoutWindow?.window) {
-    flyoutWindow.window.on('show', () => updateWindowVisibility(true));
-    flyoutWindow.window.on('hide', () => updateWindowVisibility(false));
-    updateWindowVisibility(flyoutWindow.window.isVisible());
-  }
+  const win = flyoutWindow?.window;
+  if (!win) return;
+  const update = (v) => { isMainWindowVisible = v; adjustLogBufferSize(!v); };
+  win.on('show', () => update(true));
+  win.on('hide', () => update(false));
+  update(win.isVisible());
 }, 100);
 
 // Log handler - early exit during shutdown to prevent "Object destroyed" errors
