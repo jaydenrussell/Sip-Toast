@@ -314,32 +314,36 @@ let originalTrayIcon = null;
 
 // Update tray icon based on update status (Discord-style)
 const updateTrayIcon = (status) => {
-  if (!tray || !tray.getImage) return;
-  
-  // On first call, store the original icon
-  if (!originalTrayIcon) {
-    try {
-      originalTrayIcon = tray.getImage();
-    } catch (e) {
-      return;
+  try {
+    if (!tray || !tray.getImage) return;
+    
+    // On first call, store the original icon
+    if (!originalTrayIcon) {
+      try {
+        originalTrayIcon = tray.getImage();
+      } catch (e) {
+        return;
+      }
     }
-  }
-  
-  // Only show download icon when update is DOWNLOADED and ready (Discord-style)
-  if (status.updateDownloaded) {
-    // Update ready - show download icon
-    const downloadIcon = createDownloadIcon();
-    tray.setImage(downloadIcon);
-    tray.setToolTip('SIP Toast - Update ready to install');
-  } else if (status.downloading) {
-    // Downloading - show progress in tooltip
-    tray.setToolTip(`SIP Toast - Updating ${status.downloadProgress}%`);
-  } else if (!status.checking) {
-    // No update - restore original icon
-    if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
-      tray.setImage(originalTrayIcon);
+    
+    // Only show download icon when update is DOWNLOADED and ready (Discord-style)
+    if (status.updateDownloaded) {
+      // Update ready - show download icon
+      const downloadIcon = createDownloadIcon();
+      tray.setImage(downloadIcon);
+      tray.setToolTip('SIP Toast - Update ready to install');
+    } else if (status.downloading) {
+      // Downloading - show progress in tooltip
+      tray.setToolTip(`SIP Toast - Updating ${status.downloadProgress}%`);
+    } else if (!status.checking) {
+      // No update - restore original icon
+      if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
+        tray.setImage(originalTrayIcon);
+      }
+      tray.setToolTip('SIP Toast - Caller ID');
     }
-    tray.setToolTip('SIP Toast - Caller ID');
+  } catch (error) {
+    // Tray might have been destroyed during shutdown, ignore silently
   }
 };
 
@@ -1213,7 +1217,8 @@ setTimeout(() => {
   }
 }, 100);
 
-logEmitter.on('entry', (entry) => {
+// Store the log handler reference for cleanup
+const logEntryHandler = (entry) => {
   // Memory optimization: Only send logs to renderer when window is visible
   // This reduces IPC overhead and renderer memory usage when minimized
   if (isMainWindowVisible && flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
@@ -1224,5 +1229,12 @@ logEmitter.on('entry', (entry) => {
     }
   }
   // Logs are still written to file, just not sent to renderer when hidden
+};
+
+logEmitter.on('entry', logEntryHandler);
+
+// Cleanup log emitter listener on exit
+app.on('before-quit', () => {
+  logEmitter.removeListener('entry', logEntryHandler);
 });
 
