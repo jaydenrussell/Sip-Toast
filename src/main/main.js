@@ -1194,6 +1194,7 @@ app.on('before-quit', () => {
 
 // Track window visibility state for memory optimization
 let isMainWindowVisible = false;
+let isAppQuitting = false;
 const { adjustLogBufferSize } = require('./services/logger');
 
 // Update visibility state when window is shown/hidden
@@ -1206,23 +1207,19 @@ const updateWindowVisibility = (visible) => {
 // Set up visibility tracking after flyoutWindow is created
 setTimeout(() => {
   if (flyoutWindow?.window) {
-    flyoutWindow.window.on('show', () => {
-      updateWindowVisibility(true);
-    });
-    flyoutWindow.window.on('hide', () => {
-      updateWindowVisibility(false);
-    });
-    // Set initial state
+    flyoutWindow.window.on('show', () => updateWindowVisibility(true));
+    flyoutWindow.window.on('hide', () => updateWindowVisibility(false));
     updateWindowVisibility(flyoutWindow.window.isVisible());
   }
 }, 100);
 
-// Log handler with cleanup
+// Log handler with cleanup - check isAppQuitting to prevent errors during shutdown
 const logEntryHandler = (entry) => {
+  if (isAppQuitting) return;
   if (isMainWindowVisible && flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
     try { flyoutWindow.send('logs:entry', entry); } catch {}
   }
 };
 logEmitter.on('entry', logEntryHandler);
-app.on('before-quit', () => logEmitter.removeListener('entry', logEntryHandler));
+app.on('before-quit', () => { isAppQuitting = true; logEmitter.removeListener('entry', logEntryHandler); });
 
