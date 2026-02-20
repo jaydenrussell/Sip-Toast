@@ -37,6 +37,9 @@ let tray, notificationWindow, sipManager, flyoutWindow, updateService = null;
 let latestSipStatus = { state: 'idle', timestamp: new Date().toISOString() };
 let isMainWindowVisible = false, isAppQuitting = false;
 
+// Performance: Cache resolved icon path
+let cachedIconPath = null;
+
 // Cache settings to avoid repeated lookups (memory-optimized)
 let cachedSettings = settings.getAll();
 // Use individual listeners for each section (electron-store doesn't have onDidChangeAny)
@@ -133,6 +136,9 @@ const simulateIncomingCall = async () => {
 };
 
 const resolveIconPath = () => {
+  // Return cached path if available
+  if (cachedIconPath) return cachedIconPath;
+  
   if (app.isPackaged) {
     // In packaged app, try multiple possible locations
     // extraResources copies Images to resources/Images
@@ -146,16 +152,18 @@ const resolveIconPath = () => {
     
     for (const iconPath of possiblePaths) {
       if (fs.existsSync(iconPath)) {
-        logger.info(`✅ Found icon at: ${iconPath}`);
+        cachedIconPath = iconPath;
         return iconPath;
       }
     }
     
     // If not found, return the most likely path (extraResources location)
-    return path.join(process.resourcesPath, 'Images', 'app.ico');
+    cachedIconPath = path.join(process.resourcesPath, 'Images', 'app.ico');
+    return cachedIconPath;
   } else {
     // In development, use the project Images folder
-    return path.join(__dirname, '..', '..', 'Images', 'app.ico');
+    cachedIconPath = path.join(__dirname, '..', '..', 'Images', 'app.ico');
+    return cachedIconPath;
   }
 };
 
@@ -305,6 +313,15 @@ const createDownloadIcon = () => {
 // Store the original icon for switching back
 let originalTrayIcon = null;
 let cachedDownloadIcon = null; // Cache download icon to avoid recreating
+let cachedTrayIcon = null; // Cache main tray icon
+
+// Cached tray icon - create once and reuse
+const getTrayIcon = () => {
+  if (!cachedTrayIcon) {
+    cachedTrayIcon = createTrayIcon();
+  }
+  return cachedTrayIcon;
+};
 
 // Update tray icon based on update status (Discord-style)
 const updateTrayIcon = (status) => {
