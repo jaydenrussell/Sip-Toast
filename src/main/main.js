@@ -694,14 +694,13 @@ const wireIpc = () => {
     return true;
   });
 
-  // Event log handlers - use lazy-loaded module
-  const eventLogger = getEventLogger();
-  ipcMain.handle('events:getRecent', (_event, count, filterType) => eventLogger.getRecentEvents(count, filterType));
-  ipcMain.handle('events:getByType', (_event, type) => eventLogger.getEventsByType(type));
-  ipcMain.handle('events:getAll', (_event, filterType) => eventLogger.getAllEvents(filterType));
-  ipcMain.handle('events:getInRange', (_event, startDate, endDate) => eventLogger.getEventsInRange(startDate, endDate));
-  ipcMain.handle('events:getLogFilePath', () => eventLogger.getEventLogFilePath());
-  ipcMain.handle('events:deleteAll', () => eventLogger.deleteAllEvents());
+  // Event log handlers - lazy-loaded module
+  ipcMain.handle('events:getRecent', (_e, count, filterType) => getEventLogger().getRecentEvents(count, filterType));
+  ipcMain.handle('events:getByType', (_e, type) => getEventLogger().getEventsByType(type));
+  ipcMain.handle('events:getAll', (_e, filterType) => getEventLogger().getAllEvents(filterType));
+  ipcMain.handle('events:getInRange', (_e, start, end) => getEventLogger().getEventsInRange(start, end));
+  ipcMain.handle('events:getLogFilePath', () => getEventLogger().getEventLogFilePath());
+  ipcMain.handle('events:deleteAll', () => getEventLogger().deleteAllEvents());
 
   // Firewall check handlers
   ipcMain.handle('firewall:check', async () => {
@@ -864,7 +863,7 @@ const boot = async () => {
   
   // Create a persistent handler function
   const incomingCallHandler = async (call) => {
-    const { logIncomingCall, logToastDeployed, logToastTimeout } = require('./services/eventLogger');
+    const { logIncomingCall, logToastDeployed } = getEventLogger();
     
     // Log incoming SIP call
     logIncomingCall({
@@ -1066,8 +1065,7 @@ app.whenReady().then(async () => {
   logger.info('✅ Update service initialized');
   
   // Reload events from file after app is ready (ensures log directory is properly resolved)
-  const eventLogger = require('./services/eventLogger');
-  eventLogger.reloadEvents();
+  getEventLogger().reloadEvents();
   logger.info('✅ Event logs loaded from persistent storage');
   
   await boot();
