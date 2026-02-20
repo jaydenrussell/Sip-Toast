@@ -297,6 +297,9 @@ class UpdateService extends EventEmitter {
     }
 
     logger.info(`Installing update v${this.state.version}...`);
+    
+    // Emit installing event so main.js can set isAppQuitting flag
+    this.emit('installing');
 
     // Show install window
     const win = new BrowserWindow({
