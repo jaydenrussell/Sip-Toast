@@ -1054,12 +1054,28 @@ const updateAboutSection = (status) => {
     updateAvailableRow.style.display = 'none';
   }
   
-  // Show/hide download progress
+  // Show/hide download progress with speed
   if (status.downloadProgress > 0 && !status.updateDownloaded) {
     updateProgressRow.style.display = 'flex';
-    updateDownloadProgress.textContent = `${status.downloadProgress}%`;
+    let progressText = `${status.downloadProgress}%`;
+    if (status.downloadSpeed) {
+      progressText += ` (${status.downloadSpeed})`;
+    }
+    updateDownloadProgress.textContent = progressText;
   } else {
     updateProgressRow.style.display = 'none';
+  }
+  
+  // Handle error state
+  if (status.error) {
+    updateMessage.style.display = 'block';
+    updateMessage.style.background = 'rgba(239, 68, 68, 0.1)';
+    updateMessage.style.color = '#ef4444';
+    updateMessage.innerHTML = `❌ ${status.error}`;
+    installUpdateBtn.style.display = 'none';
+    checkUpdatesBtn.textContent = 'Retry Update';
+    checkUpdatesBtn.disabled = false;
+    return;
   }
   
   // Update message and buttons
@@ -1071,13 +1087,25 @@ const updateAboutSection = (status) => {
     installUpdateBtn.style.display = 'inline-block';
     checkUpdatesBtn.textContent = 'Check for Updates';
     checkUpdatesBtn.disabled = false;
+  } else if (status.downloading) {
+    updateMessage.style.display = 'block';
+    updateMessage.style.background = 'rgba(59, 130, 246, 0.1)';
+    updateMessage.style.color = '#3b82f6';
+    let downloadMsg = `📥 Downloading v${status.availableVersion}... ${status.downloadProgress}%`;
+    if (status.downloadSpeed) {
+      downloadMsg += ` (${status.downloadSpeed})`;
+    }
+    updateMessage.innerHTML = downloadMsg;
+    installUpdateBtn.style.display = 'none';
+    checkUpdatesBtn.textContent = 'Downloading...';
+    checkUpdatesBtn.disabled = true;
   } else if (status.updateAvailable) {
     updateMessage.style.display = 'block';
     updateMessage.style.background = 'rgba(16, 185, 129, 0.1)';
     updateMessage.style.color = '#10b981';
-    updateMessage.innerHTML = `📥 Update v${status.availableVersion} is available. Downloading...`;
+    updateMessage.innerHTML = `📥 Update v${status.availableVersion} is available. Starting download...`;
     installUpdateBtn.style.display = 'none';
-    checkUpdatesBtn.textContent = 'Downloading...';
+    checkUpdatesBtn.textContent = 'Starting...';
     checkUpdatesBtn.disabled = true;
   } else if (status.checking) {
     updateMessage.style.display = 'block';
