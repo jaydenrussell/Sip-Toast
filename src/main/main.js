@@ -1,34 +1,31 @@
 const { app, Tray, Menu, nativeImage, ipcMain, clipboard, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const dns = require('dns').promises;
 
 // Set consistent App User Model ID so Windows recognizes the app across versions
-// This prevents the tray icon from being treated as a "new" app after updates
 app.setAppUserModelId('com.siptoast.app');
 
 // Handle Squirrel.Windows install/update/uninstall events
-// This must be at the very top before any other app code runs
 if (require('electron-squirrel-startup')) {
   app.quit();
   process.exit(0);
 }
 
+// Lazy-loaded modules (memory optimization) - loaded on first use
+let _acuityClient, _eventLogger;
+const getAcuityClient = () => _acuityClient || (_acuityClient = require('./services/acuityClient'));
+const getEventLogger = () => _eventLogger || (_eventLogger = require('./services/eventLogger'));
+
+// Core modules - loaded immediately as they're needed at startup
 const SipManager = require('./sip/sipManager');
 const NotificationWindow = require('./notification/notificationWindow');
 const TrayWindow = require('./tray/trayWindow');
-// Lazy load Acuity client only when enabled (memory optimization)
-let acuityClient = null;
-const getAcuityClient = () => {
-  if (!acuityClient) {
-    acuityClient = require('./services/acuityClient');
-  }
-  return acuityClient;
-};
+const UpdateService = require('./services/updateService');
 
-const { logger, logEmitter, getRecentLogs } = require('./services/logger');
+const { logger, logEmitter, getRecentLogs, adjustLogBufferSize } = require('./services/logger');
 const { checkFirewallStatus, getFirewallInstructions } = require('./services/firewallChecker');
 const settings = require('./settings');
-const UpdateService = require('./services/updateService');
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -701,31 +698,14 @@ const wireIpc = () => {
     return true;
   });
 
-  // Event log handlers
-  const eventLogger = require('./services/eventLogger');
-  ipcMain.handle('events:getRecent', (_event, count, filterType) => {
-    return eventLogger.getRecentEvents(count, filterType);
-  });
-  
-  ipcMain.handle('events:getByType', (_event, type) => {
-    return eventLogger.getEventsByType(type);
-  });
-  
-  ipcMain.handle('events:getAll', (_event, filterType) => {
-    return eventLogger.getAllEvents(filterType);
-  });
-  
-  ipcMain.handle('events:getInRange', (_event, startDate, endDate) => {
-    return eventLogger.getEventsInRange(startDate, endDate);
-  });
-  
-  ipcMain.handle('events:getLogFilePath', () => {
-    return eventLogger.getEventLogFilePath();
-  });
-
-  ipcMain.handle('events:deleteAll', () => {
-    return eventLogger.deleteAllEvents();
-  });
+  // Event log handlers - use lazy-loaded module
+  const eventLogger = getEventLogger();
+  ipcMain.handle('events:getRecent', (_event, count, filterType) => eventLogger.getRecentEvents(count, filterType));
+  ipcMain.handle('events:getByType', (_event, type) => eventLogger.getEventsByType(type));
+  ipcMain.handle('events:getAll', (_event, filterType) => eventLogger.getAllEvents(filterType));
+  ipcMain.handle('events:getInRange', (_event, startDate, endDate) => eventLogger.getEventsInRange(startDate, endDate));
+  ipcMain.handle('events:getLogFilePath', () => eventLogger.getEventLogFilePath());
+  ipcMain.handle('events:deleteAll', () => eventLogger.deleteAllEvents());
 
   // Firewall check handlers
   ipcMain.handle('firewall:check', async () => {
@@ -797,7 +777,6 @@ const wireIpc = () => {
 
 // Helper function to wait for network connectivity
 const waitForNetwork = async (maxWaitMs = 30000) => {
-  const dns = require('dns').promises;
   const startTime = Date.now();
   
   logger.info('🌐 Checking network connectivity...');
