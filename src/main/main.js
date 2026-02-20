@@ -1076,12 +1076,12 @@ app.whenReady().then(async () => {
   
   // Set up update status event listener to update tray icon and send to renderer
   updateService.on('update-status', (status) => {
-    // Update tray icon based on update status
     updateTrayIcon(status);
-    
-    // Send update status to renderer
     flyoutWindow?.send('update:status', status);
   });
+  
+  // Set isAppQuitting when update install starts to prevent "Object destroyed" errors
+  updateService.on('installing', () => { isAppQuitting = true; });
   
   // Start auto-check (this will also check on app load)
   updateService.startAutoCheck();
