@@ -1049,15 +1049,30 @@ app.whenReady().then(async () => {
   updateService = new UpdateService();
   
   // Set up update status event listener to update tray icon and send to renderer
+  // Wrap entire handler in try-catch to prevent uncaught exceptions during update
   updateService.on('update-status', (status) => {
+    // Early exit if app is shutting down
     if (isAppQuitting) return;
-    updateTrayIcon(status);
-    if (flyoutWindow?.window && !flyoutWindow.window.isDestroyed()) {
-      try { flyoutWindow.send('update:status', status); } catch {}
+    
+    try {
+      updateTrayIcon(status);
+    } catch (e) { /* Ignore tray errors during shutdown */ }
+    
+    // Only send to renderer if update is NOT downloaded yet (prevents error during install)
+    if (status.updateDownloaded) {
+      isAppQuitting = true;
+      return;
     }
+    
+    try {
+      // Check if window exists and is not destroyed before sending
+      if (flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
+        flyoutWindow.send('update:status', status);
+      }
+    } catch (e) { /* Ignore window errors during shutdown */ }
   });
   
-  // Set isAppQuitting when update install starts to prevent "Object destroyed" errors
+  // Set isAppQuitting when install starts
   updateService.on('installing', () => { isAppQuitting = true; });
   
   // Start auto-check (this will also check on app load)
