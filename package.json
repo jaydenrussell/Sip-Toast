@@ -1,7 +1,7 @@
 {
   "name": "sip-caller-id",
-  "version": "0.72.78",
-  "buildDate": "2026-02-21T18:00:43.455Z",
+  "version": "0.72.79",
+  "buildDate": "2026-02-21T18:27:22.484Z",
   "description": "Windows 11-ready SIP caller ID toast that looks up clients via Acuity Scheduling.",
   "main": "src/main/main.js",
   "author": "Jayden Russell",
