@@ -7,7 +7,7 @@ const { logger } = require('./logger');
 const execAsync = promisify(exec);
 
 /**
- * Check Windows Firewall configuration for SIP Toast
+ * Check Windows Firewall configuration for SIP Caller ID
  * Returns firewall status and recommendations
  */
 async function checkFirewallStatus() {
@@ -58,7 +58,7 @@ async function checkFirewallStatus() {
       results.status = 'configured';
       results.recommendations.push({
         type: 'success',
-        message: 'Firewall rules found for SIP Toast. Outbound connections should work.',
+        message: 'Firewall rules found for SIP Caller ID. Outbound connections should work.',
         action: null
       });
     } else if (outboundStatus.allowed) {
@@ -72,8 +72,8 @@ async function checkFirewallStatus() {
       results.status = 'restrictive';
       results.recommendations.push({
         type: 'error',
-        message: 'Outbound connections may be blocked. SIP Toast requires outbound connections to work.',
-        action: 'Add firewall rules to allow SIP Toast outbound connections.'
+        message: 'Outbound connections may be blocked. SIP Caller ID requires outbound connections to work.',
+        action: 'Add firewall rules to allow SIP Caller ID outbound connections.'
       });
     }
 
@@ -81,7 +81,7 @@ async function checkFirewallStatus() {
     if (appRules.length === 0) {
       results.recommendations.push({
         type: 'info',
-        message: 'No specific firewall rules found for SIP Toast.',
+        message: 'No specific firewall rules found for SIP Caller ID.',
         action: 'Windows Firewall will prompt you when the app first connects, or you can add rules manually.'
       });
     }
@@ -217,14 +217,15 @@ async function checkOutboundStatus() {
 }
 
 /**
- * Check firewall rules for common SIP ports
+ * Check firewall rules for SIP-specific ports only
  */
 async function checkPortRules() {
-  const commonPorts = [5060, 5061, 443]; // SIP UDP/TCP, SIP TLS, HTTPS
+  // Only check ports that SIP Caller ID actually uses
+  const sipPorts = [5060, 5061]; // SIP UDP/TCP (5060), SIP TLS (5061)
   
   const portRules = [];
   
-  for (const port of commonPorts) {
+  for (const port of sipPorts) {
     try {
       // Check for outbound rules on this port
       const { stdout } = await execAsync(`netsh advfirewall firewall show rule name=all | findstr /i "port=${port}"`);
@@ -233,13 +234,15 @@ async function checkPortRules() {
         portRules.push({
           port,
           hasRule: true,
-          direction: 'outbound'
+          direction: 'outbound',
+          purpose: port === 5060 ? 'SIP signaling (UDP/TCP)' : 'SIP TLS signaling'
         });
       } else {
         portRules.push({
           port,
           hasRule: false,
-          direction: 'outbound'
+          direction: 'outbound',
+          purpose: port === 5060 ? 'SIP signaling (UDP/TCP)' : 'SIP TLS signaling'
         });
       }
     } catch (error) {
@@ -247,7 +250,8 @@ async function checkPortRules() {
       portRules.push({
         port,
         hasRule: false,
-        error: error.message
+        error: error.message,
+        purpose: port === 5060 ? 'SIP signaling (UDP/TCP)' : 'SIP TLS signaling'
       });
     }
   }

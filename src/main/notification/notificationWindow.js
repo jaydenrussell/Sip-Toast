@@ -11,15 +11,17 @@ class NotificationWindow {
     this.currentTimeoutMs = null;
     this.currentPhoneNumber = null;
     this._eventHandlers = {}; // Store bound handlers for cleanup
+    this._lastRenderTime = 0;
+    this._renderThrottle = 16; // 60fps throttle
     this._createWindow();
     
     // Store bound handlers for proper cleanup
-    this._eventHandlers.toastClicked = (event, phoneNumber, success) => {
+    this._eventHandlers.toastClicked = this._debounce((event, phoneNumber, success) => {
       // Log toast click/copy event
       const { logToastClick } = require('../services/eventLogger');
       logToastClick(phoneNumber, success);
       // Don't hide on click - let timeout handle it
-    };
+    }, 100);
 
     this._eventHandlers.toastClose = () => {
       this.hide();
@@ -58,7 +60,7 @@ class NotificationWindow {
     const onMove = () => {
       const now = Date.now();
       const delta = now - lastTime;
-      if (delta < 8) return; // Limit to ~120fps for smoother feel
+      if (delta < 16) return; // Limit to ~60fps for better performance
       lastTime = now;
       
       const currentPoint = screen.getCursorScreenPoint();
@@ -103,7 +105,7 @@ class NotificationWindow {
       } catch (e) {
         clearInterval(resizeInterval);
       }
-    }, 8);
+    }, 16); // 60fps instead of 120fps
     
     win.webContents.executeJavaScript(`
       const stopResize = () => {
@@ -235,6 +237,46 @@ class NotificationWindow {
     this.window.on('blur', () => {
       // Do nothing - toast should stay visible until timeout or clicked
     });
+  }
+
+  // Performance: Debounce function for expensive operations
+  _debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
+  // Performance: Throttle function for frequent operations
+  _throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+      if (!inThrottle) {
+        func.apply(this, args);
+        inThrottle = true;
+        setTimeout(() => inThrottle = false, limit);
+      }
+    };
+  }
+
+  // Performance: Memory cleanup method
+  _cleanup() {
+    // Clear any pending operations
+    if (this.hideTimeout) {
+      clearTimeout(this.hideTimeout);
+      this.hideTimeout = null;
+    }
+    
+    // Clear pending payload
+    this.pendingPayload = null;
+    
+    // Clear render cache
+    this._lastRenderTime = 0;
   }
 
   _sendNotificationData(payload) {

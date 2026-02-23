@@ -3,28 +3,77 @@ const path = require('path');
 const fs = require('fs');
 const dns = require('dns').promises;
 
-// Set consistent App User Model ID so Windows recognizes the app across versions
 app.setAppUserModelId('com.siptoast.app');
+if (require('electron-squirrel-startup')) { app.quit(); process.exit(0); }
 
-// Handle Squirrel.Windows install/update/uninstall events
-if (require('electron-squirrel-startup')) {
-  app.quit();
-  process.exit(0);
-}
-
-// Lazy-loaded modules (memory optimization) - loaded on first use
+// Lazy-loaded modules with memory optimization and caching
 let _acuityClient, _eventLogger;
-const getAcuityClient = () => _acuityClient || (_acuityClient = require('./services/acuityClient'));
-const getEventLogger = () => _eventLogger || (_eventLogger = require('./services/eventLogger'));
+const getAcuityClient = () => {
+  if (!_acuityClient) {
+    // Only load when needed to save memory
+    _acuityClient = require('./services/acuityClient');
+  }
+  return _acuityClient;
+};
+const getEventLogger = () => {
+  if (!_eventLogger) {
+    // Only load when needed to save memory
+    _eventLogger = require('./services/eventLogger');
+  }
+  return _eventLogger;
+};
 
-// Core modules - loaded immediately as they're needed at startup
+// Performance: Cache frequently accessed data
+let _cachedAcuityConfig = null;
+let _cachedSipConfig = null;
+
+const getCachedAcuityConfig = () => {
+  if (!_cachedAcuityConfig) {
+    _cachedAcuityConfig = cachedSettings.acuity || {};
+  }
+  return _cachedAcuityConfig;
+};
+
+const getCachedSipConfig = () => {
+  if (!_cachedSipConfig) {
+    _cachedSipConfig = cachedSettings.sip || {};
+  }
+  return _cachedSipConfig;
+};
+
+// Performance: Debounce function for expensive operations
+const debounce = (func, wait) => {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
+
+// Performance: Throttle function for frequent operations
+const throttle = (func, limit) => {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+};
+
+// Core modules
 const SipManager = require('./sip/sipManager');
 const NotificationWindow = require('./notification/notificationWindow');
 const TrayWindow = require('./tray/trayWindow');
 const UpdateService = require('./services/updateService');
-
 const { logger, logEmitter, getRecentLogs, adjustLogBufferSize } = require('./services/logger');
 const { checkFirewallStatus, getFirewallInstructions } = require('./services/firewallChecker');
+const performanceMonitor = require('./services/performanceMonitor');
 const settings = require('./settings');
 
 const gotLock = app.requestSingleInstanceLock();
@@ -344,16 +393,16 @@ const updateTrayIcon = (status) => {
         cachedDownloadIcon = createDownloadIcon();
       }
       tray.setImage(cachedDownloadIcon);
-      tray.setToolTip('SIP Toast - Update ready to install');
+      tray.setToolTip('SIP Caller ID - Update ready to install');
     } else if (status.downloading) {
       // Downloading - show progress in tooltip
-      tray.setToolTip(`SIP Toast - Updating ${status.downloadProgress}%`);
+      tray.setToolTip(`SIP Caller ID - Updating ${status.downloadProgress}%`);
     } else if (!status.checking) {
       // No update - restore original icon
       if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
         tray.setImage(originalTrayIcon);
       }
-      tray.setToolTip('SIP Toast - Caller ID');
+      tray.setToolTip('SIP Caller ID');
     }
   } catch (error) {
     // Tray might have been destroyed during shutdown, ignore silently
@@ -432,7 +481,7 @@ const createTray = () => {
   // Update context menu whenever it would be shown
   const contextMenu = buildContextMenu();
 
-  tray.setToolTip('SIP Toast - Caller ID');
+  tray.setToolTip('SIP Caller ID');
   // Update context menu dynamically when shown
   tray.setContextMenu(buildContextMenu());
   tray.on('context-menu', () => {
@@ -455,7 +504,7 @@ const createTray = () => {
 
 const wireIpc = () => {
   ipcMain.handle('app:info', () => {
-    const appName = app.getName() || 'SIP Toast';
+    const appName = app.getName() || 'SIP Caller ID';
     // Use app.getVersion() which works in both dev and production
     const version = app.getVersion() || 'Unknown';
     
@@ -509,42 +558,18 @@ const wireIpc = () => {
   ipcMain.handle('settings:getAll', () => cachedSettings); // Return cached settings
   ipcMain.handle('settings:save', (_event, payload) => {
     const saved = settings.save(payload || {});
-    // Update cached settings after save
     cachedSettings = settings.getAll();
+    
     if (payload.sip) {
-      logger.info('💾 SIP settings saved');
-      logger.info(`   Server: ${saved.sip?.server || 'N/A'}, Port: ${saved.sip?.port || 5060}, Transport: ${(saved.sip?.transport || 'udp').toUpperCase()}, Domain: ${saved.sip?.domain || 'N/A'}, Username: ${saved.sip?.username || 'N/A'}`);
-      // Update config asynchronously
-      (async () => {
-        await sipManager?.updateConfig(saved.sip);
-        logger.info('🔄 SIP connection updated with new configuration');
-      })();
+      logger.info(`💾 SIP: ${saved.sip?.server}:${saved.sip?.port || 5060} (${(saved.sip?.transport || 'udp').toUpperCase()})`);
+      sipManager?.updateConfig(saved.sip).catch(e => logger.error(`SIP update failed: ${e.message}`));
     }
-    if (payload.acuity) {
-      logger.info('💾 Acuity settings saved');
-      logger.info(`   User ID: ${saved.acuity?.userId || 'N/A'}`);
-    }
-    if (payload.callerId) {
-      logger.info('💾 Caller ID settings saved');
-      logger.info(`   Enabled: ${saved.callerId?.enabled ? 'Yes' : 'No'}, Provider: ${saved.callerId?.provider || 'N/A'}`);
-    }
-    if (payload.app) {
-      applyAutoLaunch();
-      logger.info('💾 App settings saved');
-      logger.info(`   Launch at startup: ${saved.app?.launchAtLogin ? 'Yes' : 'No'}`);
-    }
-    if (payload.toast) {
-      logger.info('💾 Toast settings saved');
-      logger.info(`   Auto-dismiss timeout: ${saved.toast?.autoDismissMs || 20000}ms (${(saved.toast?.autoDismissMs || 20000) / 1000}s)`);
-    }
-    if (payload.updates) {
-      logger.info('💾 Update settings saved');
-      logger.info(`   Auto-update enabled: ${saved.updates?.enabled ? 'Yes' : 'No'}, Frequency: ${saved.updates?.checkFrequency || 'daily'}`);
-      // Restart auto-check when update settings change
-      if (updateService) {
-        updateService.restartAutoCheck();
-      }
-    }
+    if (payload.acuity) logger.info(`💾 Acuity: ${saved.acuity?.userId || 'N/A'}`);
+    if (payload.callerId) logger.info(`💾 CallerID: ${saved.callerId?.enabled ? 'on' : 'off'}`);
+    if (payload.app) { applyAutoLaunch(); logger.info(`💾 Auto-launch: ${saved.app?.launchAtLogin ? 'on' : 'off'}`); }
+    if (payload.toast) logger.info(`💾 Toast timeout: ${(saved.toast?.autoDismissMs || 20000) / 1000}s`);
+    if (payload.updates) { logger.info(`💾 Updates: ${saved.updates?.enabled ? 'on' : 'off'}`); updateService?.restartAutoCheck(); }
+    
     return saved;
   });
 
@@ -552,12 +577,12 @@ const wireIpc = () => {
 
   ipcMain.handle('sip:restart', async () => {
     logger.info('🔄 SIP restart requested by user');
-    sipManager?.stop();
-    setTimeout(async () => {
-      await sipManager?.start();
-      logger.info('✅ SIP connection restart initiated');
-    }, 500);
-    return true;
+    if (sipManager) {
+      const success = await sipManager.restart();
+      logger.info(`✅ SIP restart ${success ? 'successful' : 'failed'}`);
+      return success;
+    }
+    return false;
   });
 
   ipcMain.handle('acuity:test', async () => {
@@ -787,6 +812,25 @@ const wireIpc = () => {
     }
     updateService.quitAndInstall();
     return { success: true };
+  });
+
+  // Performance monitoring handlers
+  ipcMain.handle('performance:getMetrics', () => {
+    return performanceMonitor.getMetrics();
+  });
+
+  ipcMain.handle('performance:getSummary', () => {
+    return performanceMonitor.getSummary();
+  });
+
+  ipcMain.handle('performance:trackEvent', (_event, eventType, data) => {
+    performanceMonitor.trackEvent(eventType, data);
+    return true;
+  });
+
+  ipcMain.handle('performance:cleanupLogs', () => {
+    performanceMonitor.cleanupOldLogs();
+    return true;
   });
 };
 
@@ -1053,7 +1097,7 @@ if (powerMonitor) {
 }
 
 app.whenReady().then(async () => {
-  logger.info('🚀 SIP Toast application starting');
+  logger.info('🚀 SIP Caller ID application starting');
   logger.info('📦 Initializing components...');
   
   // Initialize flyoutWindow BEFORE creating tray
@@ -1079,12 +1123,7 @@ app.whenReady().then(async () => {
       updateTrayIcon(status);
     } catch (e) { /* Ignore tray errors during shutdown */ }
     
-    // Only send to renderer if update is NOT downloaded yet (prevents error during install)
-    if (status.updateDownloaded) {
-      isAppQuitting = true;
-      return;
-    }
-    
+    // Send status to renderer (including when update is downloaded)
     try {
       // Check if window exists and is not destroyed before sending
       if (flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
@@ -1104,11 +1143,15 @@ app.whenReady().then(async () => {
   getEventLogger().reloadEvents();
   logger.info('✅ Event logs loaded from persistent storage');
   
+  // Start performance monitoring
+  performanceMonitor.startMonitoring();
+  logger.info('✅ Performance monitoring started');
+  
   await boot();
   logger.info('✅ SIP manager and notification window initialized');
   applyAutoLaunch();
   logger.info('✅ Auto-launch settings applied');
-  logger.info('✨ SIP Toast ready');
+  logger.info('✨ SIP Caller ID ready');
 
   app.on('activate', () => {
     // No foreground UI – keep minimized to tray.
