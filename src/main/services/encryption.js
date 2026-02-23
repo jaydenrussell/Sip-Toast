@@ -1,42 +1,51 @@
 /**
- * Secure encryption utility using Electron's safeStorage
+ * Secure encryption utility using AES-256-GCM
  * 
- * Uses the OS credential manager for secure storage:
- * - Windows: DPAPI (Data Protection API)
- * - macOS: Keychain
- * - Linux: Secret Service API (libsecret)
+ * Uses a machine-specific key derived from system properties.
+ * This is reliable and works regardless of app ready state.
  * 
- * This provides enterprise-grade encryption for sensitive credentials.
+ * Security: The encryption key is derived from machine hostname, platform, and arch.
+ * This means encrypted data can only be decrypted on the same machine.
  */
 
-const { safeStorage } = require('electron');
 const crypto = require('crypto');
+const os = require('os');
 
-// Check if safeStorage is available (app must be ready)
-const isSafeStorageAvailable = () => {
-  try {
-    return safeStorage && safeStorage.isEncryptionAvailable();
-  } catch {
-    return false;
-  }
-};
-
-// Fallback encryption for when safeStorage isn't available yet
-// Uses AES-256-GCM with a machine-specific key
+// AES-256-GCM encryption constants
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
+const SALT_LENGTH = 32;
 
-const getFallbackKey = () => {
-  const os = require('os');
-  const machineId = os.hostname() + os.platform() + os.arch();
+// Generate a machine-specific encryption key
+// This key is unique to each machine and consistent across app restarts
+const getMachineKey = () => {
+  // Combine multiple machine identifiers for the key
+  const machineId = [
+    os.hostname(),
+    os.platform(),
+    os.arch(),
+    os.cpus()[0]?.model || 'unknown',
+    // Add a constant salt to make it harder to guess
+    'sip-caller-id-encryption-key-v1'
+  ].join(':');
+  
   return crypto.createHash('sha256').update(machineId).digest();
 };
 
+// Cache the key for performance
+let cachedKey = null;
+const getEncryptionKey = () => {
+  if (!cachedKey) {
+    cachedKey = getMachineKey();
+  }
+  return cachedKey;
+};
+
 /**
- * Encrypt sensitive data using safeStorage (preferred) or fallback
+ * Encrypt sensitive data using AES-256-GCM
  * @param {string} text - Plain text to encrypt
- * @returns {string} Encrypted text (base64 encoded)
+ * @returns {string} Encrypted text (base64 encoded with prefix)
  */
 function encrypt(text) {
   if (!text || text === null || text === '') {
@@ -44,40 +53,39 @@ function encrypt(text) {
   }
 
   try {
-    // Use safeStorage if available (preferred - uses OS credential manager)
-    if (isSafeStorageAvailable()) {
-      const encrypted = safeStorage.encryptString(text);
-      // Prefix with 'ss:' to indicate safeStorage was used
-      return 'ss:' + encrypted.toString('base64');
-    }
-    
-    // Fallback to AES-256-GCM with machine-specific key
-    const key = getFallbackKey();
+    const key = getEncryptionKey();
     const iv = crypto.randomBytes(IV_LENGTH);
-    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+    const salt = crypto.randomBytes(SALT_LENGTH);
+    
+    // Derive a unique key for this encryption using the salt
+    const derivedKey = crypto.createHmac('sha256', key).update(salt).digest();
+    
+    const cipher = crypto.createCipheriv(ALGORITHM, derivedKey, iv);
     
     let encrypted = cipher.update(text, 'utf8', 'base64');
     encrypted += cipher.final('base64');
     const tag = cipher.getAuthTag();
     
+    // Combine salt + iv + tag + encrypted data
     const combined = Buffer.concat([
+      salt,
       iv,
       tag,
       Buffer.from(encrypted, 'base64')
     ]);
     
-    // Prefix with 'fb:' to indicate fallback encryption
-    return 'fb:' + combined.toString('base64');
+    // Prefix with 'enc:' to indicate our encryption format
+    return 'enc:' + combined.toString('base64');
   } catch (error) {
-    // If encryption fails, return original (for compatibility)
-    console.error('Encryption error:', error.message);
+    console.error('[Encryption] Encryption error:', error.message);
+    // Return original text if encryption fails (should not happen)
     return text;
   }
 }
 
 /**
  * Decrypt sensitive data
- * @param {string} encryptedText - Encrypted text (base64 encoded)
+ * @param {string} encryptedText - Encrypted text (base64 encoded with prefix)
  * @returns {string} Decrypted plain text
  */
 function decrypt(encryptedText) {
@@ -85,23 +93,57 @@ function decrypt(encryptedText) {
     return encryptedText;
   }
 
-  try {
-    // Check for safeStorage prefix
-    if (encryptedText.startsWith('ss:')) {
-      // Decrypt using safeStorage
-      if (!isSafeStorageAvailable()) {
-        console.warn('safeStorage not available for decryption');
-        return encryptedText; // Return as-is if safeStorage not available
-      }
+  // Check for our new encryption format
+  if (encryptedText.startsWith('enc:')) {
+    try {
+      const combined = Buffer.from(encryptedText.slice(4), 'base64');
       
-      const encrypted = Buffer.from(encryptedText.slice(3), 'base64');
-      return safeStorage.decryptString(encrypted);
+      // Extract salt + iv + tag + encrypted data
+      let offset = 0;
+      const salt = combined.slice(offset, offset + SALT_LENGTH);
+      offset += SALT_LENGTH;
+      const iv = combined.slice(offset, offset + IV_LENGTH);
+      offset += IV_LENGTH;
+      const tag = combined.slice(offset, offset + TAG_LENGTH);
+      offset += TAG_LENGTH;
+      const encrypted = combined.slice(offset);
+      
+      // Derive the same key used for encryption
+      const key = getEncryptionKey();
+      const derivedKey = crypto.createHmac('sha256', key).update(salt).digest();
+      
+      const decipher = crypto.createDecipheriv(ALGORITHM, derivedKey, iv);
+      decipher.setAuthTag(tag);
+      
+      let decrypted = decipher.update(encrypted, null, 'utf8');
+      decrypted += decipher.final('utf8');
+      
+      console.log('[Encryption] Successfully decrypted value');
+      return decrypted;
+    } catch (error) {
+      console.error('[Encryption] Decryption error for enc: format:', error.message);
+      return encryptedText;
     }
-    
-    // Check for fallback prefix
+  }
+
+  // Check if this looks like plain text (not encrypted)
+  // Plain text passwords are usually shorter and don't have our prefix
+  if (!encryptedText.startsWith('ss:') && !encryptedText.startsWith('fb:')) {
+    // Check if it looks like base64
+    const isBase64 = /^[A-Za-z0-9+/=]+$/.test(encryptedText);
+    if (!isBase64 || encryptedText.length < 50) {
+      // Likely plain text, return as-is
+      console.log('[Encryption] Value appears to be plain text, not decrypting');
+      return encryptedText;
+    }
+  }
+
+  // Handle legacy formats (ss: and fb: prefixes from old versions)
+  try {
+    // Legacy fallback format (fb:)
     if (encryptedText.startsWith('fb:')) {
       const combined = Buffer.from(encryptedText.slice(3), 'base64');
-      const key = getFallbackKey();
+      const key = getEncryptionKey(); // Use same machine key
       const iv = combined.slice(0, IV_LENGTH);
       const tag = combined.slice(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
       const encrypted = combined.slice(IV_LENGTH + TAG_LENGTH);
@@ -112,11 +154,17 @@ function decrypt(encryptedText) {
       let decrypted = decipher.update(encrypted, null, 'utf8');
       decrypted += decipher.final('utf8');
       
+      console.log('[Encryption] Successfully decrypted legacy fallback value');
       return decrypted;
     }
     
-    // Legacy format (no prefix) - try fallback decryption
-    // This handles data encrypted before the prefix system was added
+    // Legacy safeStorage format (ss:) - won't work without safeStorage
+    if (encryptedText.startsWith('ss:')) {
+      console.warn('[Encryption] Cannot decrypt safeStorage format - returning as-is');
+      return encryptedText;
+    }
+    
+    // No prefix - try to decrypt as legacy format
     try {
       const combined = Buffer.from(encryptedText, 'base64');
       if (combined.length < IV_LENGTH + TAG_LENGTH) {
@@ -124,7 +172,7 @@ function decrypt(encryptedText) {
         return encryptedText;
       }
       
-      const key = getFallbackKey();
+      const key = getEncryptionKey();
       const iv = combined.slice(0, IV_LENGTH);
       const tag = combined.slice(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
       const encrypted = combined.slice(IV_LENGTH + TAG_LENGTH);
@@ -135,57 +183,29 @@ function decrypt(encryptedText) {
       let decrypted = decipher.update(encrypted, null, 'utf8');
       decrypted += decipher.final('utf8');
       
+      console.log('[Encryption] Successfully decrypted legacy value');
       return decrypted;
-    } catch {
-      // If decryption fails, assume it's plain text (backward compatibility)
+    } catch (legacyError) {
+      // If decryption fails, assume it's plain text
+      console.warn('[Encryption] Legacy decryption failed, returning as plain text');
       return encryptedText;
     }
   } catch (error) {
-    // If decryption fails, return as-is (backward compatibility)
-    console.error('Decryption error:', error.message);
+    console.error('[Encryption] Decryption error:', error.message);
     return encryptedText;
   }
 }
 
 /**
  * Check if encryption is available
- * @returns {boolean}
+ * @returns {boolean} Always true for our AES-256-GCM implementation
  */
 function isEncryptionAvailable() {
-  return isSafeStorageAvailable();
-}
-
-/**
- * Migrate credentials to safeStorage if available
- * Call this after app is ready to upgrade encryption
- * @param {object} settings - Settings object with encrypted fields
- * @param {string[]} fields - Array of field paths to migrate (e.g., ['sip.password', 'acuity.apiKey'])
- * @returns {object} Updated settings with migrated encryption
- */
-function migrateToSafeStorage(settings, fields) {
-  if (!isSafeStorageAvailable()) {
-    return settings; // Can't migrate if safeStorage not available
-  }
-  
-  const updated = { ...settings };
-  
-  for (const field of fields) {
-    const [section, key] = field.split('.');
-    if (updated[section] && updated[section][key]) {
-      const value = decrypt(updated[section][key]);
-      if (value && value !== updated[section][key]) {
-        // Successfully decrypted, re-encrypt with safeStorage
-        updated[section][key] = encrypt(value);
-      }
-    }
-  }
-  
-  return updated;
+  return true;
 }
 
 module.exports = {
   encrypt,
   decrypt,
-  isEncryptionAvailable,
-  migrateToSafeStorage
+  isEncryptionAvailable
 };

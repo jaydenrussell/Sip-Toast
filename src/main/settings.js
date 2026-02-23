@@ -152,7 +152,17 @@ const decryptSensitiveFields = (section, data) => {
   for (const field of ENCRYPTED_FIELDS) {
     const [fieldSection, fieldKey] = field.split('.');
     if (fieldSection === section && decrypted[fieldKey] && decrypted[fieldKey] !== null) {
-      decrypted[fieldKey] = decrypt(decrypted[fieldKey]);
+      const originalValue = decrypted[fieldKey];
+      try {
+        decrypted[fieldKey] = decrypt(originalValue);
+        // Log if decryption changed the value
+        if (decrypted[fieldKey] !== originalValue) {
+          console.log(`[Settings] Decrypted ${fieldKey} (length: ${originalValue.length} -> ${decrypted[fieldKey].length})`);
+        }
+      } catch (error) {
+        console.error(`[Settings] Failed to decrypt ${fieldKey}:`, error.message);
+        // Keep original value if decryption fails
+      }
     }
   }
   return decrypted;
@@ -161,6 +171,14 @@ const decryptSensitiveFields = (section, data) => {
 const mergeSection = (section, patch = {}) => {
   const existing = store.get(section);
   const decrypted = decryptSensitiveFields(section, existing);
+  
+  // Debug logging for password handling
+  if (section === 'sip') {
+    const hasExistingPassword = !!(decrypted && decrypted.password);
+    const hasNewPassword = !!(patch && patch.password);
+    console.log(`[Settings] mergeSection sip - existing password: ${hasExistingPassword}, new password: ${hasNewPassword}`);
+  }
+  
   return {
     ...decrypted,
     ...patch
@@ -213,28 +231,42 @@ module.exports = {
   store,
   get(key, fallback) {
     const value = store.get(key, fallback);
-    // Decrypt if this is a sensitive field
+    
+    // Handle null/undefined
+    if (value === null || value === undefined) {
+      return fallback;
+    }
+    
+    // Decrypt if this is a sensitive field (e.g., 'sip.password')
     if (typeof key === 'string' && key.includes('.')) {
       const [section, ...fieldParts] = key.split('.');
       const fieldKey = fieldParts.join('.');
       const fieldPath = `${section}.${fieldKey}`;
       
-      // Handle nested objects (e.g., 'sip.password')
-      if (ENCRYPTED_FIELDS.includes(fieldPath)) {
-        if (value && value !== null && typeof value === 'string') {
+      if (ENCRYPTED_FIELDS.includes(fieldPath) && typeof value === 'string') {
+        try {
           return decrypt(value);
+        } catch (e) {
+          // If decryption fails, value might not be encrypted (legacy)
+          return value;
         }
-      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        // If getting a section, decrypt all sensitive fields in that section
-        return decryptSensitiveFields(section, value);
       }
-    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-      // If getting root level, decrypt all sections
+      return value;
+    }
+    
+    // If getting a section (e.g., 'sip'), decrypt sensitive fields
+    if (typeof key === 'string' && !key.includes('.') && typeof value === 'object') {
+      return decryptSensitiveFields(key, value);
+    }
+    
+    // If getting all settings (no key or root), decrypt all sections
+    if (typeof key !== 'string' && value && typeof value === 'object') {
       const decrypted = { ...value };
       if (decrypted.sip) decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
       if (decrypted.acuity) decrypted.acuity = decryptSensitiveFields('acuity', decrypted.acuity);
       return decrypted;
     }
+    
     return value;
   },
   getAll() {

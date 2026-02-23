@@ -5,6 +5,9 @@ const noteEl = document.getElementById('note');
 const copiedBadge = document.getElementById('copiedBadge');
 let currentPhoneNumber = '';
 
+// Pre-compiled regex for phone number formatting
+const phoneRegex = /\D/g;
+
 // Handle window resize to adjust content
 window.addEventListener('resize', () => {
   // Content will automatically adjust with CSS

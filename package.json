@@ -11,14 +11,15 @@
     "url": "https://github.com/jaydenrussell/Sip-Toast.git"
   },
   "type": "commonjs",
-  "scripts": {
-    "start": "electron .",
-    "dev": "electronmon .",
-    "lint": "eslint \"src/**/*.js\"",
-    "package:squirrel": "electron-builder --win --config.win.target=squirrel",
-    "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
-    "release": "node scripts/create-release.js"
-  },
+    "scripts": {
+      "start": "electron .",
+      "dev": "electronmon .",
+      "lint": "eslint \"src/**/*.js\"",
+      "package:squirrel": "electron-builder --win --config.win.target=squirrel",
+      "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
+      "release": "node scripts/create-release.js",
+      "fix-firewall": "node scripts/fix-firewall-prompt.js"
+    },
   "dependencies": {
     "axios": "^1.13.5",
     "electron-squirrel-startup": "^1.0.1",
@@ -59,13 +60,7 @@
     },
     "squirrelWindows": {
       "name": "SIPCallerID",
-      "iconUrl": "https://raw.githubusercontent.com/jaydenrussell/Sip-Toast/main/Images/app.ico",
-      "msi": true,
-      "remoteReleases": "https://github.com/jaydenrussell/Sip-Toast/releases",
-      "remoteToken": null,
-      "msiName": "SIPCallerID",
-      "msiPerMachine": true,
-      "msiCompressed": true
+      "iconUrl": "https://raw.githubusercontent.com/jaydenrussell/Sip-Toast/main/Images/app.ico"
     },
     "afterPack": "scripts/optimize-build.js",
     "asar": true,

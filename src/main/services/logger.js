@@ -20,11 +20,14 @@ let bufferCount = 0; // Current number of entries
 const adjustLogBufferSize = (isMinimized) => {
   const targetSize = isMinimized ? LOG_BUFFER_SIZE_MINIMIZED : LOG_BUFFER_SIZE;
   
+  // Only adjust if target size is different
+  if (targetSize === LOG_BUFFER_SIZE) return;
+  
   // Trim buffer if it's larger than target
   while (bufferCount > targetSize) {
     // Remove oldest entry by advancing head pointer (O(1) operation)
     memoryBuffer[bufferHead] = null; // Allow GC to reclaim memory
-    bufferHead = (bufferHead + 1) % LOG_BUFFER_SIZE;
+    bufferHead = (bufferHead + 1) % memoryBuffer.length;
     bufferCount--;
   }
   

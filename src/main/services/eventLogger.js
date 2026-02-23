@@ -23,7 +23,7 @@ const eventJsonFilePath = path.join(logDir, 'sip-toast-events.json');
 
 // Event log buffer with memory limit to prevent unbounded growth
 // Events are persisted to file, so this is just a hot cache for recent events
-const MAX_IN_MEMORY_EVENTS = 1000; // Keep last 1000 events in memory (~500KB max)
+const MAX_IN_MEMORY_EVENTS = 500; // Reduced from 1000 to 250KB max
 const eventLogBuffer = [];
 
 const eventLogger = createLogger({

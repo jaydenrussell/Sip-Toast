@@ -1,110 +1,69 @@
+/**
+ * Update Service for Squirrel.Windows auto-updates
+ */
+
 const { logger } = require('./logger');
 const { EventEmitter } = require('events');
 const { app, BrowserWindow } = require('electron');
+
+// Lazy-load eventLogger to avoid circular dependencies
+let _eventLogger = null;
+const getEventLogger = () => {
+  if (!_eventLogger) {
+    _eventLogger = require('./eventLogger');
+  }
+  return _eventLogger;
+};
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
 const { spawn } = require('child_process');
 
 const GITHUB = { owner: 'jaydenrussell', repo: 'Sip-Toast' };
-
-// Expected minimum file sizes for validation (in bytes)
-const MIN_FILE_SIZES = {
-  RELEASES: 100,
-  full: 50000000,    // 50MB minimum for full package
-  delta: 1000000     // 1MB minimum for delta package
-};
 
 class UpdateService extends EventEmitter {
   constructor() {
     super();
     this.state = {
-      checking: false,
-      downloading: false,
-      available: false,
-      downloaded: false,
-      progress: 0,
-      version: null,
-      current: app.getVersion() || '0.0.0',
-      lastCheck: null,
-      error: null,
-      downloadSpeed: null
+      checking: false, downloading: false, available: false, downloaded: false,
+      progress: 0, version: null, current: app?.getVersion() || '0.0.0',
+      lastCheck: null, error: null, downloadSpeed: null
     };
     this._checked = false;
-    this._installDir = null;
-    this._updateExe = null;
-    this._abortController = null;
-    
-    // Pre-compute paths
-    if (app.isPackaged) {
+    if (app?.isPackaged) {
       this._installDir = path.dirname(path.dirname(path.dirname(app.getAppPath())));
       this._updateExe = path.join(this._installDir, 'Update.exe');
+      this._packagesDir = path.join(this._installDir, 'packages');
     }
   }
 
   getStatus() {
     return {
+      // Core status
       checking: this.state.checking,
       downloading: this.state.downloading,
       updateAvailable: this.state.available,
       updateDownloaded: this.state.downloaded,
       downloadProgress: this.state.progress,
-      availableVersion: this.state.version,
+      downloadSpeed: this.state.downloadSpeed,
+      
+      // Version info
       currentVersion: this.state.current,
-      lastCheckTime: this.state.lastCheck,
-      error: this.state.error,
-      downloadSpeed: this.state.downloadSpeed
+      availableVersion: this.state.version,
+      
+      // Additional info
+      lastCheck: this.state.lastCheck,
+      error: this.state.error
     };
   }
 
-  emitStatus() {
-    this.emit('update-status', this.getStatus());
-  }
+  emitStatus() { this.emit('update-status', this.getStatus()); }
 
   setError(message) {
     this.state.error = message;
     logger.error(`Update error: ${message}`);
     this.emitStatus();
-  }
-
-  clearError() {
-    this.state.error = null;
-  }
-
-  async _fetch(url, retries = 3) {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        return await new Promise((resolve, reject) => {
-          const req = https.request(url, {
-            headers: { 'User-Agent': 'SIPToast', 'Accept': 'application/vnd.github.v3+json' },
-            timeout: 15000
-          }, (res) => {
-            let data = '';
-            res.on('data', c => data += c);
-            res.on('end', () => {
-              try {
-                if (res.statusCode === 200) {
-                  resolve(JSON.parse(data));
-                } else if (res.statusCode === 403 && res.headers['x-ratelimit-remaining'] === '0') {
-                  reject(new Error('GitHub API rate limit exceeded. Please try again later.'));
-                } else {
-                  reject(new Error(`HTTP ${res.statusCode}`));
-                }
-              } catch (e) {
-                reject(e);
-              }
-            });
-          });
-          req.on('error', reject);
-          req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
-          req.end();
-        });
-      } catch (error) {
-        if (attempt === retries) throw error;
-        logger.warn(`Fetch attempt ${attempt}/${retries} failed: ${error.message}. Retrying...`);
-        await new Promise(r => setTimeout(r, 1000 * attempt)); // Exponential backoff
-      }
-    }
   }
 
   _newer(remote, local) {
@@ -117,191 +76,140 @@ class UpdateService extends EventEmitter {
     return false;
   }
 
+  async _fetch(url, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await new Promise((resolve, reject) => {
+          const req = https.request(url, {
+            headers: { 'User-Agent': 'SIPCallerID', 'Accept': 'application/vnd.github.v3+json' },
+            timeout: 15000
+          }, (res) => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+              if (res.statusCode === 200) try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+              else reject(new Error(res.statusCode === 403 ? 'Rate limited' : `HTTP ${res.statusCode}`));
+            });
+          });
+          req.on('error', reject);
+          req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+          req.end();
+        });
+      } catch (error) {
+        if (attempt === retries) throw error;
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
+
   async _download(url, dest, onProgress, retries = 3) {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         return await new Promise((resolve, reject) => {
-          const req = https.request(url, { headers: { 'User-Agent': 'SIPToast' } }, (res) => {
-            // Handle redirects (GitHub releases redirect to S3)
+          const urlObj = new URL(url);
+          const httpModule = urlObj.protocol === 'http:' ? http : https;
+          
+          const req = httpModule.request({
+            hostname: urlObj.hostname,
+            port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+            path: urlObj.pathname + urlObj.search,
+            headers: { 'User-Agent': 'SIPCallerID', 'Accept': '*/*' }
+          }, (res) => {
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
               return this._download(res.headers.location, dest, onProgress, retries).then(resolve).catch(reject);
             }
-            if (res.statusCode !== 200) {
-              return reject(new Error(`HTTP ${res.statusCode}`));
-            }
+            if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
             
             const total = parseInt(res.headers['content-length'], 10) || 0;
-            let done = 0;
-            let lastEmit = 0;
-            let startTime = Date.now();
-            let lastBytes = 0;
-            
-            // Ensure directory exists
+            let done = 0, lastEmit = 0, startTime = Date.now();
             const dir = path.dirname(dest);
-            if (!fs.existsSync(dir)) {
-              fs.mkdirSync(dir, { recursive: true });
-            }
-            
-            // Write to temp file first, then rename
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             const tempPath = dest + '.tmp';
             const file = fs.createWriteStream(tempPath);
             
             res.on('data', chunk => {
               done += chunk.length;
-              const now = Date.now();
-              
-              // Calculate download speed every second
-              if (now - lastEmit > 500 && total > 0) {
-                lastEmit = now;
-                const elapsed = (now - startTime) / 1000;
-                const speed = done / elapsed;
-                this.state.downloadSpeed = this._formatSpeed(speed);
-                onProgress?.(Math.round(done / total * 100));
+              // Emit progress every 200ms or on first chunk for immediate feedback
+              if (Date.now() - lastEmit > 200 || done === chunk.length) {
+                lastEmit = Date.now();
+                if (total > 0) {
+                  this.state.downloadSpeed = this._formatSpeed(done / ((Date.now() - startTime) / 1000));
+                  onProgress?.(Math.round(done / total * 100));
+                }
               }
             });
             
             res.pipe(file);
-            
             file.on('finish', () => {
               file.close();
-              
-              // Validate file size
               const stats = fs.statSync(tempPath);
               if (total > 0 && stats.size !== total) {
                 fs.unlinkSync(tempPath);
-                return reject(new Error(`Incomplete download: ${stats.size} of ${total} bytes`));
+                return reject(new Error(`Incomplete: ${stats.size}/${total}`));
               }
-              
-              // Rename temp file to final destination
-              try {
-                if (fs.existsSync(dest)) {
-                  fs.unlinkSync(dest);
-                }
-                fs.renameSync(tempPath, dest);
-              } catch (e) {
-                // If rename fails, try copy
-                fs.copyFileSync(tempPath, dest);
-                fs.unlinkSync(tempPath);
-              }
-              
+              try { if (fs.existsSync(dest)) fs.unlinkSync(dest); fs.renameSync(tempPath, dest); }
+              catch { fs.copyFileSync(tempPath, dest); fs.unlinkSync(tempPath); }
               this.state.downloadSpeed = null;
               onProgress?.(100);
-              resolve({ size: stats.size, total });
+              resolve({ size: stats.size });
             });
-            
-            file.on('error', err => {
-              fs.unlink(tempPath, () => {});
-              reject(err);
-            });
+            file.on('error', err => { fs.unlink(tempPath, () => {}); reject(err); });
           });
           
           req.on('error', reject);
-          req.on('timeout', () => { req.destroy(); reject(new Error('Download timeout')); });
-          req.setTimeout(60000); // 60 second timeout per file
+          req.setTimeout(120000, () => { req.destroy(); reject(new Error('Timeout')); });
           req.end();
         });
       } catch (error) {
         if (attempt === retries) throw error;
-        logger.warn(`Download attempt ${attempt}/${retries} failed: ${error.message}. Retrying...`);
         await new Promise(r => setTimeout(r, 2000 * attempt));
       }
     }
   }
 
-  _formatSpeed(bytesPerSecond) {
-    if (bytesPerSecond < 1024) return `${bytesPerSecond.toFixed(0)} B/s`;
-    if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`;
-    return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`;
+  _formatSpeed(bps) {
+    return bps < 1024 ? `${bps.toFixed(0)} B/s` :
+           bps < 1048576 ? `${(bps/1024).toFixed(1)} KB/s` :
+           `${(bps/1048576).toFixed(1)} MB/s`;
   }
 
-  _validateFile(filePath, type) {
-    if (!fs.existsSync(filePath)) {
-      return { valid: false, error: 'File does not exist' };
-    }
-    
-    const stats = fs.statSync(filePath);
-    const minSize = MIN_FILE_SIZES[type] || 0;
-    
-    if (stats.size < minSize) {
-      return { valid: false, error: `File too small: ${stats.size} bytes (expected at least ${minSize})` };
-    }
-    
-    return { valid: true, size: stats.size };
+  _validFile(filePath) {
+    try { return fs.existsSync(filePath) && fs.statSync(filePath).size >= 100; }
+    catch { return false; }
   }
 
-  _cleanupOldPackages(packagesDir, currentVersion) {
-    try {
-      if (!fs.existsSync(packagesDir)) return;
-      
-      const files = fs.readdirSync(packagesDir);
-      let cleaned = 0;
-      
-      for (const file of files) {
-        // Keep RELEASES and current version files
-        if (file === 'RELEASES') continue;
-        if (file.includes(currentVersion)) continue;
-        
-        // Remove old nupkg files
-        if (file.endsWith('.nupkg') || file.endsWith('.nupkg.tmp')) {
-          const filePath = path.join(packagesDir, file);
-          try {
-            fs.unlinkSync(filePath);
-            cleaned++;
-            logger.info(`Cleaned up old file: ${file}`);
-          } catch (e) {
-            logger.warn(`Failed to clean up ${file}: ${e.message}`);
-          }
-        }
+  _cleanupOldPackages() {
+    if (!fs.existsSync(this._packagesDir)) return;
+    for (const file of fs.readdirSync(this._packagesDir)) {
+      if (file !== 'RELEASES' && !file.includes(this.state.current) && file.endsWith('.nupkg')) {
+        try { fs.unlinkSync(path.join(this._packagesDir, file)); logger.info(`Cleaned: ${file}`); } catch {}
       }
-      
-      if (cleaned > 0) {
-        logger.info(`Cleaned up ${cleaned} old update file(s)`);
-      }
-    } catch (e) {
-      logger.warn(`Cleanup failed: ${e.message}`);
     }
   }
 
-  async checkForUpdates(trigger = 'manual') {
-    // Prevent duplicate checks
-    if (this.state.checking || this.state.downloading) {
-      logger.info('Update check already in progress');
-      return this.getStatus();
-    }
-    
-    // Skip in dev mode
-    if (!app.isPackaged) {
-      logger.info('Skipping update check (dev mode)');
-      return this.getStatus();
-    }
-    
-    // Check if Update.exe exists
-    if (!fs.existsSync(this._updateExe)) {
-      logger.warn('Update.exe not found - updates not available');
-      this.setError('Update system not available (portable install?)');
+  async checkForUpdates() {
+    if (this.state.checking || this.state.downloading) return this.getStatus();
+    if (!app.isPackaged || !fs.existsSync(this._updateExe)) {
+      if (!app.isPackaged) logger.info('Skipping update check (dev)');
+      else this.setError('Update system unavailable');
       return this.getStatus();
     }
 
-    this.clearError();
-    logger.info(`Checking for updates... (current: v${this.state.current})`);
+    this.state.error = null;
     this.state.checking = true;
     this.emitStatus();
+    
+    // Log update check
+    getEventLogger().logUpdateCheck(this._checked ? 'auto' : 'manual');
 
     try {
       const release = await this._fetch(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/releases/latest`);
-      
       this.state.checking = false;
       this.state.lastCheck = new Date();
       
-      if (!release || !release.tag_name) {
-        logger.warn('No release found');
-        this.emitStatus();
-        return this.getStatus();
-      }
+      if (!release?.tag_name) { this.emitStatus(); return this.getStatus(); }
 
       const version = release.tag_name.replace(/^v/, '');
-      logger.info(`Latest version: v${version}`);
-      
       if (!this._newer(version, this.state.current)) {
         logger.info('Already up to date');
         this.emitStatus();
@@ -309,348 +217,203 @@ class UpdateService extends EventEmitter {
       }
 
       logger.info(`Update available: v${version}`);
+      
+      // Log update available
+      getEventLogger().logUpdateAvailable(version, release.html_url);
+      
       this.state.available = true;
       this.state.version = version;
       this.state.downloading = true;
       this.state.progress = 0;
-      this.state.downloaded = false;
       this.emitStatus();
 
-      // Download in background
       const success = await this._downloadUpdate(release.tag_name);
+      this.state.downloading = false;
+      this.state.downloaded = success;
+      this.state.progress = success ? 100 : 0;
       
       if (success) {
-        this.state.downloading = false;
-        this.state.downloaded = true;
-        this.state.progress = 100;
-        logger.info(`Update v${version} downloaded and ready to install`);
-        this.emitStatus();
-      } else {
-        this.state.downloading = false;
-        this.state.downloaded = false;
-        this.emitStatus();
+        logger.info(`Update v${version} ready`);
+        // Log update downloaded
+        getEventLogger().logUpdateDownloaded(version, this._packagesDir);
       }
-
+      this.emitStatus();
     } catch (error) {
       logger.error(`Update check failed: ${error.message}`);
       this.state.checking = false;
       this.state.downloading = false;
       this.setError(error.message);
+      // Log update error
+      getEventLogger().logUpdateError(error.message, 'check');
     }
-
     return this.getStatus();
   }
 
   async _downloadUpdate(tag) {
-    const packagesDir = path.join(this._installDir, 'packages');
     const version = this.state.version;
-    
-    // Create packages directory
-    if (!fs.existsSync(packagesDir)) {
-      fs.mkdirSync(packagesDir, { recursive: true });
-    }
-
-    // Clean up old packages first
-    this._cleanupOldPackages(packagesDir, this.state.current);
+    if (!fs.existsSync(this._packagesDir)) fs.mkdirSync(this._packagesDir, { recursive: true });
+    this._cleanupOldPackages();
 
     const baseUrl = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases/download/${tag}`;
-    
-    // Download RELEASES file first
-    const releasesPath = path.join(packagesDir, 'RELEASES');
-    let hasDelta = false;
+    const releasesPath = path.join(this._packagesDir, 'RELEASES');
     
     try {
-      logger.info('Downloading RELEASES manifest...');
       await this._download(`${baseUrl}/RELEASES`, releasesPath, p => {
-        this.state.progress = Math.round(p * 0.02); // 0-2%
+        this.state.progress = Math.round(p * 0.02);
         this.emitStatus();
       });
-      
-      // Validate RELEASES file
-      const validation = this._validateFile(releasesPath, 'RELEASES');
-      if (!validation.valid) {
-        throw new Error(`RELEASES file invalid: ${validation.error}`);
-      }
-      
-      // Check for delta package
-      const releasesContent = fs.readFileSync(releasesPath, 'utf8');
-      hasDelta = releasesContent.includes(`SIPToast-${version}-delta.nupkg`);
-      if (hasDelta) {
-        logger.info('Delta update available (smaller download)');
-      } else {
-        logger.info('Full update required');
-      }
     } catch (e) {
       this.setError(`Failed to download RELEASES: ${e.message}`);
       return false;
     }
 
-    // Determine which files to download
-    const files = [];
-    
-    // Always download full package (fallback if delta fails)
-    files.push({ 
-      name: `SIPToast-${version}-full.nupkg`, 
-      type: 'full',
-      required: true
-    });
-    
-    // Download delta if available (smaller)
-    if (hasDelta) {
-      files.push({ 
-        name: `SIPToast-${version}-delta.nupkg`, 
-        type: 'delta',
-        required: false
-      });
-    }
+    const hasDelta = fs.readFileSync(releasesPath, 'utf8').includes(`SIPCallerID-${version}-delta.nupkg`);
+    const files = [
+      { name: `SIPCallerID-${version}-full.nupkg`, required: true },
+      hasDelta && { name: `SIPCallerID-${version}-delta.nupkg`, required: false }
+    ].filter(Boolean);
 
-    // Download files
-    let downloadedFiles = [];
-    const totalWeight = 98; // 2% used for RELEASES
-    const weightPerFile = totalWeight / files.length;
+    const weightPerFile = 98 / files.length;
     let currentProgress = 2;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const destPath = path.join(packagesDir, file.name);
+    for (const file of files) {
+      const destPath = path.join(this._packagesDir, file.name);
       
-      // Check if file already exists and is valid
-      const existingValidation = this._validateFile(destPath, file.type);
-      if (existingValidation.valid) {
-        logger.info(`${file.name} already downloaded (${this._formatSize(existingValidation.size)})`);
+      if (this._validFile(destPath)) {
+        logger.info(`Have: ${file.name}`);
         currentProgress += weightPerFile;
         this.state.progress = Math.round(currentProgress);
         this.emitStatus();
-        downloadedFiles.push({ name: file.name, path: destPath, size: existingValidation.size });
         continue;
       }
 
-      logger.info(`Downloading ${file.name}...`);
-      const startProgress = currentProgress;
-      
       try {
-        const result = await this._download(`${baseUrl}/${file.name}`, destPath, p => {
-          this.state.progress = Math.round(startProgress + (p * weightPerFile / 100));
+        await this._download(`${baseUrl}/${file.name}`, destPath, p => {
+          this.state.progress = Math.round(currentProgress + (p * weightPerFile / 100));
           this.emitStatus();
         });
-        
-        // Validate downloaded file
-        const validation = this._validateFile(destPath, file.type);
-        if (!validation.valid) {
-          throw new Error(`Downloaded file invalid: ${validation.error}`);
-        }
-        
-        logger.info(`${file.name} downloaded successfully (${this._formatSize(result.size)})`);
-        downloadedFiles.push({ name: file.name, path: destPath, size: result.size });
-        
+        if (this._validFile(destPath)) logger.info(`Got: ${file.name}`);
+        else if (file.required) throw new Error('Invalid download');
       } catch (e) {
-        logger.error(`Failed to download ${file.name}: ${e.message}`);
-        
-        // If required file fails, try to continue with other files
-        if (file.required) {
-          // Check if we have a valid existing file
-          if (!existingValidation.valid) {
-            this.setError(`Failed to download ${file.name}: ${e.message}`);
-            return false;
-          }
+        logger.error(`Failed ${file.name}: ${e.message}`);
+        if (file.required && (!fs.existsSync(destPath) || fs.statSync(destPath).size === 0)) {
+          this.setError(`Failed: ${file.name}`);
+          return false;
         }
       }
-      
       currentProgress += weightPerFile;
       this.state.progress = Math.round(currentProgress);
       this.emitStatus();
     }
 
-    // Verify we have at least the full package
-    const fullPackage = downloadedFiles.find(f => f.type === 'full');
-    if (!fullPackage) {
-      this.setError('Full update package not available');
+    const fullPackage = path.join(this._packagesDir, `SIPCallerID-${version}-full.nupkg`);
+    if (!fs.existsSync(fullPackage) || fs.statSync(fullPackage).size === 0) {
+      this.setError('Full package unavailable');
       return false;
     }
-
-    logger.info(`Update packages ready: ${downloadedFiles.map(f => f.name).join(', ')}`);
     return true;
-  }
-
-  _formatSize(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   }
 
   startAutoCheck() {
     if (this._checked) return;
     this._checked = true;
-    
-    logger.info('Scheduling automatic update check...');
-    
-    // Check after 5 seconds (let app fully initialize)
-    setTimeout(() => {
-      logger.info('Running automatic update check...');
-      this.checkForUpdates('auto');
-    }, 5000);
+    setTimeout(() => this.checkForUpdates(), 5000);
   }
 
-  restartAutoCheck() {
-    this._checked = false;
-    this.startAutoCheck();
-  }
+  restartAutoCheck() { this._checked = false; this.startAutoCheck(); }
 
   async quitAndInstall() {
-    if (!this.state.downloaded) {
-      logger.warn('No update ready to install');
-      this.setError('No update ready to install');
-      return;
-    }
-    
-    if (!fs.existsSync(this._updateExe)) {
-      logger.error('Update.exe not found');
-      this.setError('Update system not available');
+    if (!this.state.downloaded || !fs.existsSync(this._updateExe)) {
+      this.setError('No update ready');
       return;
     }
 
-    // Verify packages exist
-    const packagesDir = path.join(this._installDir, 'packages');
-    const version = this.state.version;
-    const fullPackage = path.join(packagesDir, `SIPToast-${version}-full.nupkg`);
-    
+    const fullPackage = path.join(this._packagesDir, `SIPCallerID-${this.state.version}-full.nupkg`);
     if (!fs.existsSync(fullPackage)) {
-      logger.error('Update package not found');
-      this.setError('Update package not found. Please try downloading again.');
+      this.setError('Package not found');
       this.state.downloaded = false;
       this.emitStatus();
       return;
     }
 
-    logger.info(`Installing update v${version}...`);
-    
-    // Emit installing event so main.js can set isAppQuitting flag
+    logger.info(`Installing v${this.state.version}...`);
     this.emit('installing');
+    getEventLogger().logUpdateInstalled(this.state.version);
 
-    // Show install window with progress
-    const win = new BrowserWindow({
-      width: 360,
-      height: 160,
-      frame: false,
-      alwaysOnTop: true,
-      resizable: false,
-      skipTaskbar: false,
-      backgroundColor: '#1e293b',
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true
-      }
+    // Close all windows gracefully
+    BrowserWindow.getAllWindows().forEach(w => { 
+      try { 
+        if (!w.isDestroyed()) {
+          w.close();
+        }
+      } catch {}
     });
 
-    win.loadURL(`data:text/html,${encodeURIComponent(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            font-family: 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            color: white;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            padding: 20px;
-          }
-          .spinner {
-            width: 32px;
-            height: 32px;
-            border: 3px solid #334155;
-            border-top-color: #3b82f6;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 16px;
-          }
-          @keyframes spin { to { transform: rotate(360deg); } }
-          .text { 
-            font-size: 15px; 
-            font-weight: 600;
-            text-align: center;
-          }
-          .subtext {
-            font-size: 12px;
-            color: #94a3b8;
-            margin-top: 8px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="spinner"></div>
-        <div class="text">Installing v${version}...</div>
-        <div class="subtext">The app will restart automatically</div>
-      </body>
-      </html>
-    `)}`);
-    win.show();
-    win.focus();
+    // Wait a moment for windows to close
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Wait for window to show
-    await new Promise(r => setTimeout(r, 500));
+    // Squirrel.Windows update process:
+    // The correct approach is to use --update to apply the update, then exit
+    // Update.exe will handle the actual update and restart
     
-    // Close all other windows
-    BrowserWindow.getAllWindows().forEach(w => {
-      if (w !== win && !w.isDestroyed()) {
-        w.destroy();
-      }
-    });
-
-    // Log installation details
-    const exeName = path.basename(process.execPath);
-    logger.info(`Install directory: ${this._installDir}`);
-    logger.info(`Packages directory: ${packagesDir}`);
-    logger.info(`Update.exe: ${this._updateExe}`);
-    logger.info(`Executable: ${exeName}`);
-    
-    // List files in packages directory
     try {
-      if (fs.existsSync(packagesDir)) {
-        const files = fs.readdirSync(packagesDir);
-        logger.info(`Packages folder: ${files.join(', ')}`);
-      } else {
-        logger.error('Packages directory does not exist!');
-      }
-    } catch (e) {
-      logger.error(`Error reading packages directory: ${e.message}`);
-    }
-    
-    logger.info(`Launching Update.exe to apply update...`);
-    
-    // Use --processStartAndWait which will:
-    // 1. Check for and apply any pending updates from packages folder
-    // 2. Start the specified executable
-    // 3. Wait for it to exit (so it can clean up)
-    try {
-      const updateProcess = spawn(this._updateExe, [
-        '--processStartAndWait', exeName
-      ], {
+      // Method 1: Use --update to apply the update
+      const args = ['--update', this._packagesDir];
+      
+      logger.info(`Launching: Update.exe ${args.join(' ')}`);
+      
+      const updateProcess = spawn(this._updateExe, args, {
         cwd: this._installDir,
         detached: true,
-        stdio: 'ignore'
+        stdio: 'pipe',
+        windowsHide: true
+      });
+      
+      // Capture output for debugging
+      updateProcess.stdout.on('data', (data) => {
+        logger.info(`Update.exe stdout: ${data.toString()}`);
+      });
+      
+      updateProcess.stderr.on('data', (data) => {
+        logger.error(`Update.exe stderr: ${data.toString()}`);
       });
       
       updateProcess.on('error', (err) => {
-        logger.error(`Update.exe spawn error: ${err.message}`);
+        logger.error(`Update.exe error: ${err.message}`);
+      });
+      
+      updateProcess.on('close', (code) => {
+        logger.info(`Update.exe exited with code: ${code}`);
+        if (code === 0) {
+          logger.info('Update completed successfully');
+        } else {
+          logger.error(`Update failed with exit code: ${code}`);
+        }
       });
       
       updateProcess.unref();
+      
+      // Wait a moment for Update.exe to start processing
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      logger.info('Exiting for update installation...');
+      // Exit immediately - Update.exe will restart the app
+      app.exit(0);
+      
     } catch (err) {
       logger.error(`Failed to launch Update.exe: ${err.message}`);
+      
+      // Fallback: Try relaunch method
+      try {
+        logger.info('Using fallback relaunch method...');
+        app.relaunch();
+        app.exit(0);
+      } catch (relaunchError) {
+        logger.error(`Relaunch failed: ${relaunchError.message}`);
+        // Last resort: just exit
+        app.exit(0);
+      }
     }
-
-    // Exit after delay to let Update.exe start
-    setTimeout(() => {
-      logger.info('Exiting for update installation...');
-      if (!win.isDestroyed()) win.close();
-      app.exit(0);
-    }, 1500);
   }
 }
 

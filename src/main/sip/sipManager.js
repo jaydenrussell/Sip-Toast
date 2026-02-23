@@ -34,6 +34,15 @@ class SipManager extends EventEmitter {
     this.localPort = 5060;
     this._incomingRequestHandler = null;
     this._isDestroyed = false;
+    
+    // Performance: Connection pool and caching
+    this._dnsCache = new Map();
+    this._connectionAttempts = 0;
+    this._lastConnectionTime = 0;
+    this._healthCheckInterval = null;
+    
+    // Performance: Debounced health checks
+    this._debouncedHealthCheck = this._debounce(() => this._performHealthCheck(), 5000);
   }
 
   async updateConfig(nextConfig) {
@@ -233,7 +242,7 @@ class SipManager extends EventEmitter {
         'call-id': this._generateCallId(),
         cseq: { method: 'REGISTER', seq: 1 },
         contact: [{ uri: contactUri }],
-        'user-agent': 'SIP Toast/0.1.0',
+        'user-agent': 'SIP Caller ID/0.1.0',
         expires: 3600,
         via: []
       }
@@ -500,7 +509,7 @@ class SipManager extends EventEmitter {
   stop() {
     logger.info(`🛑 Stopping SIP manager (state: ${this.state}, stack: ${!!this.sipStack})`);
     
-    // Clear all timers
+    // Clear all timers first
     if (this.registrationTimer) {
       clearTimeout(this.registrationTimer);
       this.registrationTimer = null;
@@ -516,6 +525,9 @@ class SipManager extends EventEmitter {
       this.connectionTimeout = null;
     }
 
+    // Clear registration session
+    this.registrationSession = null;
+
     if (this.sipStack) {
       logger.info('🛑 Stopping SIP stack');
       try {
@@ -524,9 +536,38 @@ class SipManager extends EventEmitter {
         logger.error(`❌ Error stopping SIP stack: ${error.message}`);
       }
       this.sipStack = null;
-      // Keep the handler reference but it won't be used until start() is called again
+      this._incomingRequestHandler = null;
       this._setState('idle', { reason: 'stopped' });
+      logger.info('✅ SIP stack stopped and cleaned up');
     }
+  }
+  
+  // Restart the SIP connection - more robust than stop+start
+  async restart() {
+    logger.info('🔄 Restarting SIP connection...');
+    
+    // Get current config before stopping
+    const currentConfig = this.config;
+    
+    // Stop completely
+    this.stop();
+    
+    // Wait for full cleanup
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Verify config is still valid
+    if (!currentConfig || !currentConfig.server || !currentConfig.username || !currentConfig.password) {
+      logger.error('❌ Cannot restart: configuration is incomplete');
+      this._setState('error', { cause: 'Configuration incomplete after restart' });
+      return false;
+    }
+    
+    // Start fresh
+    this.config = currentConfig;
+    await this.start();
+    
+    logger.info(`✅ SIP restart complete (new state: ${this.state})`);
+    return this.state === 'registered' || this.state === 'registering';
   }
   
   // Complete cleanup for app shutdown - removes all listeners and clears all resources
@@ -655,6 +696,82 @@ class SipManager extends EventEmitter {
     }
     
     return { ...health, healthy: this.state === 'registered' && !!this.sipStack && !!this._incomingRequestHandler };
+  }
+
+  // Performance: Debounce function for expensive operations
+  _debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
+  // Performance: DNS caching to avoid repeated lookups
+  async _getCachedDNS(hostname) {
+    const cached = this._dnsCache.get(hostname);
+    if (cached && Date.now() - cached.timestamp < 300000) { // 5 minutes cache
+      return cached.addresses;
+    }
+
+    try {
+      const addresses = await dns.lookup(hostname, { all: true });
+      this._dnsCache.set(hostname, {
+        addresses,
+        timestamp: Date.now()
+      });
+      return addresses;
+    } catch (error) {
+      this._dnsCache.set(hostname, {
+        addresses: null,
+        timestamp: Date.now()
+      });
+      throw error;
+    }
+  }
+
+  // Performance: Enhanced health check with memory monitoring
+  _performHealthCheck() {
+    if (this._isDestroyed || this.state === 'idle') {
+      return;
+    }
+
+    const health = this.checkHealth();
+    
+    if (!health.healthy) {
+      logger.error(`❌ SIP health check failed: ${health.issue}`);
+      logger.error(`   State: ${health.state}, Stack: ${health.sipStackActive}, Handler: ${health.callbackHandlerExists}`);
+      
+      // Only restart if we were previously healthy
+      if (this._lastConnectionTime > 0) {
+        logger.info('🔄 Attempting to restart SIP connection...');
+        this.restart();
+      }
+    } else {
+      logger.debug(`✅ SIP health check passed (state: ${health.state})`);
+    }
+  }
+
+  // Performance: Memory cleanup method
+  _cleanup() {
+    // Clear DNS cache periodically to prevent memory leaks
+    if (this._dnsCache.size > 10) {
+      const now = Date.now();
+      for (const [hostname, data] of this._dnsCache.entries()) {
+        if (now - data.timestamp > 600000) { // 10 minutes
+          this._dnsCache.delete(hostname);
+        }
+      }
+    }
+
+    // Reset connection attempts counter
+    if (this._connectionAttempts > 0 && this.state === 'registered') {
+      this._connectionAttempts = 0;
+    }
   }
 }
 

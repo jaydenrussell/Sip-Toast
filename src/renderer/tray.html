@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SIP Toast Control Center</title>
+    <title>SIP Caller ID Control Center</title>
     <link rel="stylesheet" href="../styles/tray.css" />
   </head>
   <body>
     <div class="title-bar">
       <div class="title-bar-content">
-        <span class="title-text">SIP Toast - Caller ID</span>
+        <span class="title-text">SIP Caller ID</span>
         <div class="title-bar-controls">
           <button class="title-bar-button minimize" id="minimizeBtn" title="Minimize">─</button>
           <button class="title-bar-button close" id="closeBtn" title="Close">✕</button>
@@ -43,6 +43,10 @@
           <button class="nav-item" data-section="updates">
             <span class="nav-icon">🔄</span>
             <span class="nav-label">Updates</span>
+          </button>
+          <button class="nav-item" data-section="performance">
+            <span class="nav-icon">📊</span>
+            <span class="nav-label">Performance</span>
           </button>
           <button class="nav-item" data-section="about">
             <span class="nav-icon">ℹ️</span>
@@ -111,7 +115,10 @@
                 </div>
                 <div class="field-group">
                   <label>Password</label>
-                  <input type="password" name="sip.password" placeholder="••••••••" autocomplete="new-password" />
+                  <div class="password-input-wrapper">
+                    <input type="password" name="sip.password" id="sipPasswordInput" placeholder="••••••••" autocomplete="new-password" />
+                    <button type="button" class="password-toggle" id="sipPasswordToggle" title="Show password">👁️</button>
+                  </div>
                   <small class="field-hint">SIP authentication password</small>
                 </div>
               </div>
@@ -346,7 +353,7 @@
               <div class="section-heading">
                 <div>
                   <h2>Firewall Status</h2>
-                  <p class="note">Check Windows Firewall configuration for SIP Toast</p>
+                  <p class="note">Check Windows Firewall configuration for SIP Caller ID</p>
                 </div>
               </div>
               
@@ -469,6 +476,62 @@
                 <div class="actions" style="margin-top: 16px;">
                   <button type="button" class="primary" id="checkUpdatesBtn">Check for Updates</button>
                   <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install Update</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Performance Section -->
+          <section class="content-section" id="section-performance">
+            <div class="card">
+              <div class="section-heading">
+                <div>
+                  <h2>Performance Monitoring</h2>
+                  <p class="note">Real-time performance metrics and system health</p>
+                </div>
+              </div>
+              
+              <div id="performanceMetricsContainer" style="display: none;">
+                <div class="performance-summary" id="performanceSummary">
+                  <div class="performance-summary-grid">
+                    <div class="metric-card">
+                      <div class="metric-label">Current Memory</div>
+                      <div class="metric-value">-</div>
+                      <div class="metric-sub">-</div>
+                    </div>
+                    <div class="metric-card">
+                      <div class="metric-label">Average Memory</div>
+                      <div class="metric-value">-</div>
+                      <div class="metric-sub">-</div>
+                    </div>
+                    <div class="metric-card">
+                      <div class="metric-label">Memory Trend</div>
+                      <div class="metric-value">-</div>
+                      <div class="metric-sub">-</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="charts-grid">
+                  <div class="chart-container" id="performanceMemoryChart">
+                    <div class="chart-header">Memory Usage (RSS)</div>
+                    <div class="chart-bars">
+                      <!-- Chart bars will be populated by JavaScript -->
+                    </div>
+                  </div>
+                  
+                  <div class="chart-container" id="performanceCpuChart">
+                    <div class="chart-header">CPU Usage</div>
+                    <div class="chart-bars">
+                      <!-- Chart bars will be populated by JavaScript -->
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="performance-events" id="performanceEventsList">
+                  <div class="events-container">
+                    <div class="no-events">No performance events recorded</div>
+                  </div>
                 </div>
               </div>
             </div>
