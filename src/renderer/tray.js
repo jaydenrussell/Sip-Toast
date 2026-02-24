@@ -8,278 +8,9 @@ const autoLaunchInput = form.querySelector('[name="app.launchAtLogin"]');
 const sectionTitle = document.getElementById('sectionTitle');
 const sectionSubtitle = document.getElementById('sectionSubtitle');
 
-// Performance monitoring elements
-const performanceMetricsContainer = document.getElementById('performanceMetricsContainer');
-const performanceMemoryChart = document.getElementById('performanceMemoryChart');
-const performanceCpuChart = document.getElementById('performanceCpuChart');
-const performanceSummary = document.getElementById('performanceSummary');
-const performanceEventsList = document.getElementById('performanceEventsList');
-
-// Performance monitoring state
-let performanceMetrics = null;
-let performanceInterval = null;
-let performanceChartUpdateInterval = null;
-
-// Performance monitoring functions
-const formatBytes = (bytes) => {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
-
-const formatCpuUsage = (cpu) => {
-  if (!cpu) return '0%';
-  const total = cpu.user + cpu.system;
-  return `${(total / 1000000).toFixed(2)}%`;
-};
-
-const updatePerformanceSummary = (summary) => {
-  if (!performanceSummary) return;
-  
-  const current = summary.current;
-  const averages = summary.averages;
-  const trends = summary.trends;
-  
-  let html = '<div class="performance-summary-grid">';
-  
-  // Current memory usage
-  if (current && current.memory) {
-    html += `<div class="metric-card">
-      <div class="metric-label">Current Memory</div>
-      <div class="metric-value">${formatBytes(current.memory.rss)}</div>
-      <div class="metric-sub">${formatBytes(current.memory.heapUsed)} heap used</div>
-    </div>`;
-  }
-  
-  // Average memory usage
-  if (averages && averages.memory) {
-    html += `<div class="metric-card">
-      <div class="metric-label">Average Memory</div>
-      <div class="metric-value">${formatBytes(averages.memory.avgRss)}</div>
-      <div class="metric-sub">${formatBytes(averages.memory.avgHeapUsed)} avg heap</div>
-    </div>`;
-  }
-  
-  // Memory growth trend
-  if (trends && trends.memory) {
-    const growth = trends.memory.heapGrowth;
-    const growthRate = trends.memory.heapGrowthRate;
-    const trendIcon = growth > 0 ? '📈' : (growth < 0 ? '📉' : '➡️');
-    const trendColor = growth > 0 ? '#ef4444' : (growth < 0 ? '#10b981' : '#6b7280');
-    
-    html += `<div class="metric-card">
-      <div class="metric-label">Memory Trend</div>
-      <div class="metric-value" style="color: ${trendColor}">${trendIcon} ${formatBytes(Math.abs(growth))}</div>
-      <div class="metric-sub">${growthRate ? `${(growthRate * 1000).toFixed(2)} B/s` : 'Stable'}</div>
-    </div>`;
-  }
-  
-  html += '</div>';
-  performanceSummary.innerHTML = html;
-};
-
-const updatePerformanceCharts = (metrics) => {
-  if (!performanceMemoryChart || !performanceCpuChart) return;
-  
-  const memoryData = metrics.memory || [];
-  const cpuData = metrics.cpu || [];
-  
-  // Update memory chart
-  let memoryHtml = '<div class="chart-container">';
-  memoryHtml += '<div class="chart-header">Memory Usage (RSS)</div>';
-  memoryHtml += '<div class="chart-bars">';
-  
-  if (memoryData.length > 0) {
-    const maxMemory = Math.max(...memoryData.map(m => m.rss));
-    const recentData = memoryData.slice(-20); // Last 20 data points
-    
-    recentData.forEach((data, index) => {
-      const percentage = maxMemory > 0 ? (data.rss / maxMemory) * 100 : 0;
-      const timestamp = new Date(data.timestamp).toLocaleTimeString();
-      
-      memoryHtml += `<div class="chart-bar" style="height: ${percentage}%" title="${timestamp}: ${formatBytes(data.rss)}">
-        <div class="bar-tooltip">${formatBytes(data.rss)}</div>
-      </div>`;
-    });
-  }
-  
-  memoryHtml += '</div></div>';
-  performanceMemoryChart.innerHTML = memoryHtml;
-  
-  // Update CPU chart
-  let cpuHtml = '<div class="chart-container">';
-  cpuHtml += '<div class="chart-header">CPU Usage</div>';
-  cpuHtml += '<div class="chart-bars">';
-  
-  if (cpuData.length > 0) {
-    const maxCpu = Math.max(...cpuData.map(c => (c.process?.user || 0) + (c.process?.system || 0)));
-    const recentData = cpuData.slice(-20); // Last 20 data points
-    
-    recentData.forEach((data, index) => {
-      const totalCpu = (data.process?.user || 0) + (data.process?.system || 0);
-      const percentage = maxCpu > 0 ? (totalCpu / maxCpu) * 100 : 0;
-      const timestamp = new Date(data.timestamp).toLocaleTimeString();
-      
-      cpuHtml += `<div class="chart-bar" style="height: ${percentage}%" title="${timestamp}: ${formatCpuUsage(data.process)}">
-        <div class="bar-tooltip">${formatCpuUsage(data.process)}</div>
-      </div>`;
-    });
-  }
-  
-  cpuHtml += '</div></div>';
-  performanceCpuChart.innerHTML = cpuHtml;
-};
-
-const updatePerformanceEvents = (metrics) => {
-  if (!performanceEventsList) return;
-  
-  const events = metrics.events || [];
-  
-  if (events.length === 0) {
-    performanceEventsList.innerHTML = '<div class="no-events">No performance events recorded</div>';
-    return;
-  }
-  
-  let html = '<div class="events-container">';
-  
-  // Group events by type
-  const eventsByType = {};
-  events.forEach(event => {
-    if (!eventsByType[event.type]) {
-      eventsByType[event.type] = [];
-    }
-    eventsByType[event.type].push(event);
-  });
-  
-  // Display recent events (last 10)
-  const recentEvents = events.slice(-10).reverse();
-  
-  recentEvents.forEach(event => {
-    const timestamp = new Date(event.timestamp).toLocaleString();
-    html += `<div class="event-item">
-      <div class="event-time">${timestamp}</div>
-      <div class="event-type">${event.type}</div>
-      <div class="event-data">${JSON.stringify(event.data)}</div>
-    </div>`;
-  });
-  
-  html += '</div>';
-  performanceEventsList.innerHTML = html;
-};
-
-const loadPerformanceMetrics = async () => {
-  try {
-    if (!performanceMetricsContainer) return;
-    
-    performanceMetricsContainer.style.display = 'block';
-    
-    // Get current metrics
-    const metrics = await window.trayAPI.getPerformanceMetrics();
-    performanceMetrics = metrics;
-    
-    // Update UI
-    updatePerformanceSummary(metrics.summary);
-    updatePerformanceCharts(metrics);
-    updatePerformanceEvents(metrics);
-    
-    // Track UI update event
-    await window.trayAPI.trackPerformanceEvent('ui_update', { 
-      section: 'performance', 
-      action: 'load_metrics' 
-    });
-    
-  } catch (error) {
-    console.error('Failed to load performance metrics:', error);
-    if (performanceMetricsContainer) {
-      performanceMetricsContainer.innerHTML = `<div class="error-message">Error loading performance metrics: ${error.message}</div>`;
-    }
-  }
-};
-
-const startPerformanceMonitoring = () => {
-  if (performanceInterval) return;
-  
-  // Update metrics every 10 seconds
-  performanceInterval = setInterval(async () => {
-    try {
-      const metrics = await window.trayAPI.getPerformanceMetrics();
-      performanceMetrics = metrics;
-      updatePerformanceSummary(metrics.summary);
-      updatePerformanceCharts(metrics);
-      updatePerformanceEvents(metrics);
-    } catch (error) {
-      console.error('Failed to update performance metrics:', error);
-    }
-  }, 10000);
-  
-  // Update charts more frequently (every 2 seconds)
-  performanceChartUpdateInterval = setInterval(() => {
-    if (performanceMetrics) {
-      updatePerformanceCharts(performanceMetrics);
-    }
-  }, 2000);
-};
-
-const stopPerformanceMonitoring = () => {
-  if (performanceInterval) {
-    clearInterval(performanceInterval);
-    performanceInterval = null;
-  }
-  if (performanceChartUpdateInterval) {
-    clearInterval(performanceChartUpdateInterval);
-    performanceChartUpdateInterval = null;
-  }
-};
-
-// Performance monitoring cleanup
-window.addEventListener('beforeunload', () => {
-  stopPerformanceMonitoring();
-});
-
-// Add performance section to sections object
-sections.performance = { title: 'Performance', subtitle: 'Real-time performance metrics and system health' };
-
-// Add performance monitoring to navigation handler
-const originalNavHandler = navItems[0].onclick; // Get the original handler
-
-// Performance monitoring section handler
-const performanceSectionHandler = () => {
-  // Update active nav item
-  navItems.forEach((nav) => nav.classList.remove('active'));
-  const performanceNavItem = document.querySelector('.nav-item[data-section="performance"]');
-  if (performanceNavItem) {
-    performanceNavItem.classList.add('active');
-  }
-  
-  // Show/hide sections
-  document.querySelectorAll('.content-section').forEach((sec) => {
-    sec.classList.remove('active');
-  });
-  const targetSection = document.getElementById('section-performance');
-  if (targetSection) {
-    targetSection.classList.add('active');
-  }
-  
-  // Update header
-  sectionTitle.textContent = 'Performance';
-  sectionSubtitle.textContent = 'Real-time performance metrics and system health';
-  
-  // Load performance metrics when section is shown
-  loadPerformanceMetrics();
-  startPerformanceMonitoring();
-};
-
-// Add click handler for performance section
-const performanceNavItem = document.querySelector('.nav-item[data-section="performance"]');
-if (performanceNavItem) {
-  performanceNavItem.addEventListener('click', performanceSectionHandler);
-}
-
 let currentSettings = null;
 
-// Performance: Cache DOM elements and pre-compile patterns
+// Sidebar navigation
 const navItems = document.querySelectorAll('.nav-item');
 const sections = {
   sip: { title: 'SIP Provider', subtitle: 'Configure your SIP connection settings' },
@@ -289,97 +20,6 @@ const sections = {
   logs: { title: 'Event Logs', subtitle: 'View SIP calls, toast notifications, and user interactions' },
   updates: { title: 'Updates', subtitle: 'Check for and install software updates' },
   about: { title: 'About', subtitle: 'Application information' }
-};
-
-// Performance: Debounce and throttle functions
-const debounce = (func, wait) => {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
-const throttle = (func, limit) => {
-  let inThrottle;
-  return function(...args) {
-    if (!inThrottle) {
-      func.apply(this, args);
-      inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
-    }
-  };
-};
-
-// Performance: DOM element cache
-const domCache = {
-  saveStatus: document.getElementById('saveStatus'),
-  restartButton: document.getElementById('restartSip'),
-  simulateButton: document.getElementById('simulateCall'),
-  sipStatus: document.getElementById('sipStatus'),
-  autoLaunchToggle: document.getElementById('autoLaunchToggle'),
-  autoLaunchInput: document.querySelector('[name="app.launchAtLogin"]'),
-  sectionTitle: document.getElementById('sectionTitle'),
-  sectionSubtitle: document.getElementById('sectionSubtitle'),
-  form: document.getElementById('settingsForm'),
-  eventLogStream: document.getElementById('eventLogStream'),
-  logFilterType: document.getElementById('logFilterType'),
-  refreshLogsBtn: document.getElementById('refreshLogsBtn'),
-  clearLogsBtn: document.getElementById('clearLogsBtn'),
-  logFilePath: document.getElementById('logFilePath'),
-  updateStatusChip: document.getElementById('updateStatus'),
-  checkUpdatesBtn: document.getElementById('checkUpdatesBtn'),
-  installUpdateBtn: document.getElementById('installUpdateBtn'),
-  updateCurrentVersion: document.getElementById('updateCurrentVersion'),
-  updateAvailableRow: document.getElementById('updateAvailableRow'),
-  updateAvailableVersion: document.getElementById('updateAvailableVersion'),
-  updateProgressRow: document.getElementById('updateProgressRow'),
-  updateDownloadProgress: document.getElementById('updateDownloadProgress'),
-  updateMessage: document.getElementById('updateMessage')
-};
-
-// Performance: Field name cache
-const fieldNames = [
-  'sip.server',
-  'sip.port',
-  'sip.transport',
-  'sip.domain',
-  'sip.username',
-  'sip.password',
-  'acuity.enabled',
-  'acuity.userId',
-  'acuity.apiKey',
-  'toast.autoDismissMs',
-  'toast.numberFont',
-  'toast.numberFontSize',
-  'toast.numberColor',
-  'toast.callerIdFont',
-  'toast.callerIdFontSize',
-  'toast.callerIdColor'
-];
-
-// Performance: Regex patterns cache
-const regexPatterns = {
-  number: /^\d+$/,
-  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  url: /^https?:\/\/.+/
-};
-
-// Performance: Field name split cache
-const fieldNameCache = new Map();
-const getFieldParts = (name) => {
-  let parts = fieldNameCache.get(name);
-  if (!parts) {
-    parts = name.split('.');
-    if (fieldNameCache.size < 50) {
-      fieldNameCache.set(name, parts);
-    }
-  }
-  return parts;
 };
 
 navItems.forEach((item) => {
@@ -413,6 +53,34 @@ navItems.forEach((item) => {
   });
 });
 
+// Cache field names split to avoid repeated string operations
+const fieldNames = [
+  'sip.server',
+  'sip.port',
+  'sip.transport',
+  'sip.domain',
+  'sip.username',
+  'sip.password',
+  'acuity.enabled',
+  'acuity.userId',
+  'acuity.apiKey',
+  'toast.autoDismissMs',
+  'toast.numberFont',
+  'toast.numberFontSize',
+  'toast.numberColor',
+  'toast.callerIdFont',
+  'toast.callerIdFontSize',
+  'toast.callerIdColor'
+];
+
+// Pre-compile regex patterns for better performance
+const regexPatterns = {
+  number: /^\d+$/,
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  url: /^https?:\/\/.+/,
+  phone: /^[\d\s\-\(\)\+]+$/
+};
+
 // Color picker event handlers - update display when color changes
 const callerIdColorInput = document.getElementById('callerIdColorInput');
 const callerIdColorValue = document.getElementById('callerIdColorValue');
@@ -443,6 +111,19 @@ if (sipPasswordInput && sipPasswordToggle) {
     sipPasswordToggle.title = isPassword ? 'Hide password' : 'Show password';
   });
 }
+
+// Cache split results for field names (memory optimization)
+const fieldNameCache = new Map();
+const getFieldParts = (name) => {
+  let parts = fieldNameCache.get(name);
+  if (!parts) {
+    parts = name.split('.');
+    if (fieldNameCache.size < 50) { // Limit cache size
+      fieldNameCache.set(name, parts);
+    }
+  }
+  return parts;
+};
 
 const getInput = (name) => form.querySelector(`[name="${name}"]`);
 

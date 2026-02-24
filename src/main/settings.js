@@ -1,4 +1,7 @@
 const { encrypt, decrypt } = require('./services/encryption');
+const path = require('path');
+const fs = require('fs');
+const { app } = require('electron');
 
 // electron-store v11 uses ES modules, need to handle the import differently
 let Store;
@@ -9,6 +12,9 @@ try {
   // Fallback to commonjs export (v8-10)
   Store = require('electron-store');
 }
+
+// Previous application names that we should migrate from
+const PREVIOUS_APP_NAMES = ['SIPToast', 'sip-toast', 'SIP-Toast', 'SIP Caller ID'];
 
 // Fields that should be encrypted at rest
 const ENCRYPTED_FIELDS = [
@@ -227,8 +233,220 @@ const setWindowBounds = (name, bounds) => {
   }
 };
 
+/**
+ * Find the config file from a previous installation
+ * @returns {string|null} Path to the old config file, or null if not found
+ */
+const findPreviousConfig = () => {
+  try {
+    const userDataPath = app.getPath('userData');
+    const parentDir = path.dirname(userDataPath);
+    
+    // Check each possible previous app name
+    for (const oldAppName of PREVIOUS_APP_NAMES) {
+      // Check for config files in various possible locations
+      const possiblePaths = [
+        // Standard electron-store location
+        path.join(parentDir, oldAppName, `${oldAppName}.json`),
+        // Alternative naming
+        path.join(parentDir, oldAppName, 'config.json'),
+        // Lowercase version
+        path.join(parentDir, oldAppName.toLowerCase(), `${oldAppName.toLowerCase()}.json`),
+        // With hyphens
+        path.join(parentDir, oldAppName.replace(/\s+/g, '-'), `${oldAppName.replace(/\s+/g, '-')}.json`),
+      ];
+      
+      for (const configPath of possiblePaths) {
+        if (fs.existsSync(configPath)) {
+          console.log(`[Settings] Found previous config at: ${configPath}`);
+          return configPath;
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[Settings] Error finding previous config:', error.message);
+    return null;
+  }
+};
+
+/**
+ * Check if current settings have any SIP configuration
+ * @returns {boolean} True if SIP is configured
+ */
+const hasSipConfig = () => {
+  const sip = store.get('sip');
+  return !!(sip && sip.server && sip.username && sip.password);
+};
+
+/**
+ * Migrate settings from a previous installation
+ * @returns {boolean} True if migration was successful
+ */
+const migrateFromPreviousVersion = () => {
+  try {
+    // Check if we already have SIP configuration
+    if (hasSipConfig()) {
+      console.log('[Settings] Already have SIP configuration, skipping migration');
+      return false;
+    }
+    
+    // Find previous config file
+    const oldConfigPath = findPreviousConfig();
+    if (!oldConfigPath) {
+      console.log('[Settings] No previous configuration found');
+      return false;
+    }
+    
+    // Read and parse the old config
+    const oldConfigData = fs.readFileSync(oldConfigPath, 'utf8');
+    const oldConfig = JSON.parse(oldConfigData);
+    
+    if (!oldConfig) {
+      console.log('[Settings] Previous config is empty or invalid');
+      return false;
+    }
+    
+    console.log('[Settings] Migrating from previous installation...');
+    
+    // Migrate SIP settings
+    if (oldConfig.sip) {
+      const sipConfig = oldConfig.sip;
+      
+      // Check if the old config has meaningful SIP data
+      if (sipConfig.server && sipConfig.username && sipConfig.password) {
+        console.log('[Settings] Migrating SIP configuration...');
+        console.log(`[Settings]   Server: ${sipConfig.server}`);
+        console.log(`[Settings]   Username: ${sipConfig.username}`);
+        
+        // Handle password - it might be encrypted with a different key
+        let password = sipConfig.password;
+        
+        // Try to decrypt if it looks encrypted (base64 string with specific format)
+        if (typeof password === 'string' && password.includes(':')) {
+          try {
+            // Try decryption with current encryption
+            password = decrypt(password);
+          } catch (e) {
+            // If decryption fails, the password might be stored in a different format
+            // or not encrypted at all - use it as-is
+            console.log('[Settings] Could not decrypt password from old config, using as-is');
+          }
+        }
+        
+        // Save the migrated SIP config
+        const migratedSip = {
+          server: sipConfig.server || null,
+          port: sipConfig.port || 5060,
+          transport: sipConfig.transport || 'udp',
+          domain: sipConfig.domain || null,
+          username: sipConfig.username || null,
+          password: password,
+          uri: sipConfig.uri || null,
+          displayName: sipConfig.displayName || null
+        };
+        
+        store.set('sip', encryptSensitiveFields('sip', migratedSip));
+        console.log('[Settings] ✅ SIP configuration migrated successfully');
+      }
+    }
+    
+    // Migrate Acuity settings
+    if (oldConfig.acuity) {
+      const acuityConfig = oldConfig.acuity;
+      
+      if (acuityConfig.userId || acuityConfig.apiKey) {
+        console.log('[Settings] Migrating Acuity configuration...');
+        
+        // Handle encrypted fields
+        let userId = acuityConfig.userId;
+        let apiKey = acuityConfig.apiKey;
+        
+        if (typeof userId === 'string' && userId.includes(':')) {
+          try {
+            userId = decrypt(userId);
+          } catch (e) {
+            console.log('[Settings] Could not decrypt userId from old config');
+          }
+        }
+        
+        if (typeof apiKey === 'string' && apiKey.includes(':')) {
+          try {
+            apiKey = decrypt(apiKey);
+          } catch (e) {
+            console.log('[Settings] Could not decrypt apiKey from old config');
+          }
+        }
+        
+        const migratedAcuity = {
+          enabled: acuityConfig.enabled || false,
+          userId: userId || null,
+          apiKey: apiKey || null
+        };
+        
+        store.set('acuity', encryptSensitiveFields('acuity', migratedAcuity));
+        console.log('[Settings] ✅ Acuity configuration migrated successfully');
+      }
+    }
+    
+    // Migrate toast settings
+    if (oldConfig.toast) {
+      console.log('[Settings] Migrating toast display settings...');
+      store.set('toast', oldConfig.toast);
+    }
+    
+    // Migrate app settings
+    if (oldConfig.app) {
+      console.log('[Settings] Migrating app settings...');
+      store.set('app', oldConfig.app);
+    }
+    
+    // Migrate window positions
+    if (oldConfig.windows) {
+      console.log('[Settings] Migrating window positions...');
+      store.set('windows', oldConfig.windows);
+    }
+    
+    console.log('[Settings] ✅ Migration completed successfully');
+    return true;
+    
+  } catch (error) {
+    console.error('[Settings] Migration failed:', error.message);
+    return false;
+  }
+};
+
+/**
+ * Check for and perform migration if needed
+ * Should be called early in app initialization
+ */
+const checkAndMigrate = () => {
+  try {
+    // Check if we've already attempted migration
+    const migrationAttempted = store.get('migration.attempted', false);
+    
+    if (migrationAttempted) {
+      console.log('[Settings] Migration already attempted, skipping');
+      return false;
+    }
+    
+    // Mark migration as attempted
+    store.set('migration.attempted', true);
+    
+    // Attempt migration
+    return migrateFromPreviousVersion();
+  } catch (error) {
+    console.error('[Settings] Error during migration check:', error.message);
+    return false;
+  }
+};
+
 module.exports = {
   store,
+  checkAndMigrate,
+  hasSipConfig,
+  findPreviousConfig,
   get(key, fallback) {
     const value = store.get(key, fallback);
     

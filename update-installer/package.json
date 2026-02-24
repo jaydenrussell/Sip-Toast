@@ -1,0 +1,38 @@
+{
+  "name": "sip-toast-update-installer",
+  "version": "1.0.0",
+  "description": "Update installer for SIP Caller ID application",
+  "main": "index.html",
+  "author": "SIP Caller ID Team",
+  "scripts": {
+    "start": "echo 'Update installer is ready. Open index.html in a browser.'"
+  },
+  "build": {
+    "appId": "com.siptoast.update-installer",
+    "productName": "SIP Caller ID Update Installer",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/*/{CHANGELOG.md,LICENSE,README.md,README*}",
+      "!node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!node_modules/*.d.ts",
+      "!node_modules/.bin",
+      "!node_modules/*/{*.md,*.markdown,*.txt}",
+      "!node_modules/*/{Makefile,bower.json,.bower.json,.gitignore}",
+      "!node_modules/*/{.eslintrc*,.*rc*,.*ignore*,.*lint}",
+      "!node_modules/*/{.travis.yml,.zuul.yml,.jshintrc,.eslintrc,.eslintignore}",
+      "!node_modules/*/{appveyor.yml,.npmignore,.editorconfig}"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+  }
+}
