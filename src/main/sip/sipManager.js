@@ -34,15 +34,6 @@ class SipManager extends EventEmitter {
     this.localPort = 5060;
     this._incomingRequestHandler = null;
     this._isDestroyed = false;
-    
-    // Performance: Connection pool and caching
-    this._dnsCache = new Map();
-    this._connectionAttempts = 0;
-    this._lastConnectionTime = 0;
-    this._healthCheckInterval = null;
-    
-    // Performance: Debounced health checks
-    this._debouncedHealthCheck = this._debounce(() => this._performHealthCheck(), 5000);
   }
 
   async updateConfig(nextConfig) {
@@ -153,24 +144,68 @@ class SipManager extends EventEmitter {
       
       // Start SIP stack with transport configuration
       // Important: sip.start() must be called with the callback - it registers the handler
-      logger.info('📝 Registering SIP callback handler...');
-      sip.start({
-        ...transportOptions,
-        logger: {
-          send: (message, address) => {
-            logger.debug(`📤 SIP SEND to ${address}: ${message.method || 'RESPONSE'}`);
-          },
-          recv: (message, address) => {
-            logger.debug(`📥 SIP RECV from ${address}: ${message.method || 'RESPONSE'}`);
-            // Log that we received something - this confirms the callback is working
-            if (message.method) {
-              logger.debug(`   → Routing to handler: ${message.method}`);
+      // Use a random high port for local binding to avoid firewall prompts on well-known ports
+      // SIP servers will send responses back to this port, and incoming INVITEs will come here
+      
+      // Try to start SIP stack with retry logic for port binding
+      let lastError = null;
+      const maxPortRetries = 5;
+      
+      for (let attempt = 1; attempt <= maxPortRetries; attempt++) {
+        const localPort = this._getRandomPort();
+        logger.info(`📝 Registering SIP callback handler on local port ${localPort}... (attempt ${attempt}/${maxPortRetries})`);
+        
+        try {
+          sip.start({
+            ...transportOptions,
+            port: localPort,  // Use random high port for local binding
+            logger: {
+              send: (message, address) => {
+                logger.debug(`📤 SIP SEND to ${address}: ${message.method || 'RESPONSE'}`);
+              },
+              recv: (message, address) => {
+                logger.debug(`📥 SIP RECV from ${address}: ${message.method || 'RESPONSE'}`);
+                // Log that we received something - this confirms the callback is working
+                if (message.method) {
+                  logger.debug(`   → Routing to handler: ${message.method}`);
+                }
+              }
             }
+          }, this._incomingRequestHandler);
+          
+          // If we get here, the port binding succeeded
+          logger.info(`✅ SIP callback handler registered on port ${localPort}`);
+          this.localPort = localPort;
+          lastError = null;
+          break; // Exit the retry loop on success
+          
+        } catch (bindError) {
+          lastError = bindError;
+          
+          // Check if this is a port binding error
+          if (bindError.code === 'EACCES' || bindError.code === 'EADDRINUSE' || 
+              bindError.message.includes('EACCES') || bindError.message.includes('EADDRINUSE')) {
+            logger.warn(`⚠️ Port ${localPort} unavailable (${bindError.message}), trying another port...`);
+            
+            // Stop any partially initialized SIP stack
+            try { sip.stop(); } catch {}
+            
+            if (attempt < maxPortRetries) {
+              // Wait a moment before trying another port
+              await new Promise(resolve => setTimeout(resolve, 100));
+              continue;
+            }
+          } else {
+            // Not a port binding error, re-throw
+            throw bindError;
           }
         }
-      }, this._incomingRequestHandler);
+      }
       
-      logger.info('✅ SIP callback handler registered');
+      // If all port attempts failed
+      if (lastError) {
+        throw new Error(`Failed to bind to any port after ${maxPortRetries} attempts: ${lastError.message}`);
+      }
 
       this.sipStack = true;
       this.connectionTimeout = connectionTimeout;
@@ -190,6 +225,7 @@ class SipManager extends EventEmitter {
       logger.error('   1. Invalid server address format');
       logger.error('   2. Network connectivity issues');
       logger.error('   3. Port already in use');
+      logger.error('   4. Firewall blocking the connection');
       this._setState('error', { cause: error.message });
     }
   }
@@ -640,6 +676,14 @@ class SipManager extends EventEmitter {
     return Math.random().toString(36).substring(2, 15) + '@' + os.hostname();
   }
 
+  _getRandomPort() {
+    // Use a random port in the dynamic/private port range (49152-65535)
+    // This avoids conflicts with well-known ports and reduces firewall concerns
+    const min = 49152;
+    const max = 65535;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
   _scheduleReconnect() {
     if (this.reconnectTimeout) {
       logger.debug('⏸️ Reconnect already scheduled, skipping');
@@ -696,82 +740,6 @@ class SipManager extends EventEmitter {
     }
     
     return { ...health, healthy: this.state === 'registered' && !!this.sipStack && !!this._incomingRequestHandler };
-  }
-
-  // Performance: Debounce function for expensive operations
-  _debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  }
-
-  // Performance: DNS caching to avoid repeated lookups
-  async _getCachedDNS(hostname) {
-    const cached = this._dnsCache.get(hostname);
-    if (cached && Date.now() - cached.timestamp < 300000) { // 5 minutes cache
-      return cached.addresses;
-    }
-
-    try {
-      const addresses = await dns.lookup(hostname, { all: true });
-      this._dnsCache.set(hostname, {
-        addresses,
-        timestamp: Date.now()
-      });
-      return addresses;
-    } catch (error) {
-      this._dnsCache.set(hostname, {
-        addresses: null,
-        timestamp: Date.now()
-      });
-      throw error;
-    }
-  }
-
-  // Performance: Enhanced health check with memory monitoring
-  _performHealthCheck() {
-    if (this._isDestroyed || this.state === 'idle') {
-      return;
-    }
-
-    const health = this.checkHealth();
-    
-    if (!health.healthy) {
-      logger.error(`❌ SIP health check failed: ${health.issue}`);
-      logger.error(`   State: ${health.state}, Stack: ${health.sipStackActive}, Handler: ${health.callbackHandlerExists}`);
-      
-      // Only restart if we were previously healthy
-      if (this._lastConnectionTime > 0) {
-        logger.info('🔄 Attempting to restart SIP connection...');
-        this.restart();
-      }
-    } else {
-      logger.debug(`✅ SIP health check passed (state: ${health.state})`);
-    }
-  }
-
-  // Performance: Memory cleanup method
-  _cleanup() {
-    // Clear DNS cache periodically to prevent memory leaks
-    if (this._dnsCache.size > 10) {
-      const now = Date.now();
-      for (const [hostname, data] of this._dnsCache.entries()) {
-        if (now - data.timestamp > 600000) { // 10 minutes
-          this._dnsCache.delete(hostname);
-        }
-      }
-    }
-
-    // Reset connection attempts counter
-    if (this._connectionAttempts > 0 && this.state === 'registered') {
-      this._connectionAttempts = 0;
-    }
   }
 }
 
