@@ -340,78 +340,80 @@ class UpdateService extends EventEmitter {
     this.emit('installing');
     getEventLogger().logUpdateInstalled(this.state.version);
 
-    // Close all windows gracefully
-    BrowserWindow.getAllWindows().forEach(w => { 
-      try { 
-        if (!w.isDestroyed()) {
-          w.close();
-        }
-      } catch {}
-    });
-
-    // Wait a moment for windows to close
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     // Squirrel.Windows update process:
-    // The correct approach is to use --update to apply the update, then exit
-    // Update.exe will handle the actual update and restart
+    // 1. Close all windows
+    // 2. Run Update.exe with --update flag pointing to packages directory
+    // 3. Exit the application
+    // 4. Update.exe applies the update and restarts the app
     
     try {
-      // Method 1: Use --update to apply the update
+      // Step 1: Close all windows gracefully
+      logger.info('Closing all windows...');
+      const windows = BrowserWindow.getAllWindows();
+      for (const w of windows) {
+        try {
+          if (!w.isDestroyed()) {
+            w.destroy(); // Force close to ensure clean exit
+          }
+        } catch (e) {
+          logger.error(`Error closing window: ${e.message}`);
+        }
+      }
+      
+      // Step 2: Give windows time to close
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Step 3: Launch Update.exe to apply the update
+      // The --update flag tells Squirrel to apply updates from the packages directory
+      // Update.exe will:
+      //   - Apply the .nupkg files
+      //   - Update the app files
+      //   - Restart the application
       const args = ['--update', this._packagesDir];
       
-      logger.info(`Launching: Update.exe ${args.join(' ')}`);
+      logger.info(`Launching Update.exe: ${this._updateExe} ${args.join(' ')}`);
+      logger.info(`Working directory: ${this._installDir}`);
+      logger.info(`Packages directory: ${this._packagesDir}`);
       
+      // Use spawn with detached:true and stdio:'ignore' for proper Squirrel behavior
+      // This allows Update.exe to continue after our process exits
       const updateProcess = spawn(this._updateExe, args, {
         cwd: this._installDir,
         detached: true,
-        stdio: 'pipe',
+        stdio: 'ignore',  // Ignore stdio to properly detach
         windowsHide: true
       });
       
-      // Capture output for debugging
-      updateProcess.stdout.on('data', (data) => {
-        logger.info(`Update.exe stdout: ${data.toString()}`);
-      });
-      
-      updateProcess.stderr.on('data', (data) => {
-        logger.error(`Update.exe stderr: ${data.toString()}`);
-      });
-      
-      updateProcess.on('error', (err) => {
-        logger.error(`Update.exe error: ${err.message}`);
-      });
-      
-      updateProcess.on('close', (code) => {
-        logger.info(`Update.exe exited with code: ${code}`);
-        if (code === 0) {
-          logger.info('Update completed successfully');
-        } else {
-          logger.error(`Update failed with exit code: ${code}`);
-        }
-      });
-      
+      // Detach the child process so it continues after we exit
       updateProcess.unref();
       
-      // Wait a moment for Update.exe to start processing
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      logger.info('Update.exe launched successfully');
+      logger.info('Exiting application to allow update installation...');
       
-      logger.info('Exiting for update installation...');
-      // Exit immediately - Update.exe will restart the app
-      app.exit(0);
+      // Step 4: Exit the application
+      // Update.exe will restart the app after applying the update
+      // Use app.quit() for graceful shutdown, then force exit after timeout
+      const exitTimeout = setTimeout(() => {
+        logger.info('Force exiting after timeout');
+        process.exit(0);
+      }, 3000);
+      
+      // Try graceful quit first
+      app.quit();
       
     } catch (err) {
       logger.error(`Failed to launch Update.exe: ${err.message}`);
+      logger.error(err.stack);
       
-      // Fallback: Try relaunch method
+      // Fallback: Try using app.relaunch() and exit
       try {
-        logger.info('Using fallback relaunch method...');
+        logger.info('Attempting fallback: relaunch and exit');
         app.relaunch();
         app.exit(0);
-      } catch (relaunchError) {
-        logger.error(`Relaunch failed: ${relaunchError.message}`);
-        // Last resort: just exit
-        app.exit(0);
+      } catch (fallbackErr) {
+        logger.error(`Fallback failed: ${fallbackErr.message}`);
+        // Last resort: force exit
+        process.exit(0);
       }
     }
   }

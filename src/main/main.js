@@ -4,9 +4,19 @@ const fs = require('fs');
 const dns = require('dns').promises;
 
 app.setAppUserModelId('com.siptoast.app');
-if (require('electron-squirrel-startup')) { app.quit(); process.exit(0); }
 
-// Lazy-loaded modules with memory optimization and caching
+// Handle Squirrel.Windows events (install, update, uninstall)
+// This must be done before any other initialization
+const { handleSquirrelEvent, checkForSquirrelEvent } = require('./squirrelEvents');
+const squirrelCmd = checkForSquirrelEvent();
+if (squirrelCmd && handleSquirrelEvent(squirrelCmd)) {
+  // Squirrel event was handled, app will exit
+} else if (require('electron-squirrel-startup')) {
+  app.quit();
+  process.exit(0);
+}
+
+// Lazy-loaded modules with memory optimization
 let _acuityClient, _eventLogger;
 const getAcuityClient = () => {
   if (!_acuityClient) {
@@ -23,49 +33,6 @@ const getEventLogger = () => {
   return _eventLogger;
 };
 
-// Performance: Cache frequently accessed data
-let _cachedAcuityConfig = null;
-let _cachedSipConfig = null;
-
-const getCachedAcuityConfig = () => {
-  if (!_cachedAcuityConfig) {
-    _cachedAcuityConfig = cachedSettings.acuity || {};
-  }
-  return _cachedAcuityConfig;
-};
-
-const getCachedSipConfig = () => {
-  if (!_cachedSipConfig) {
-    _cachedSipConfig = cachedSettings.sip || {};
-  }
-  return _cachedSipConfig;
-};
-
-// Performance: Debounce function for expensive operations
-const debounce = (func, wait) => {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
-// Performance: Throttle function for frequent operations
-const throttle = (func, limit) => {
-  let inThrottle;
-  return function(...args) {
-    if (!inThrottle) {
-      func.apply(this, args);
-      inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
-    }
-  };
-};
-
 // Core modules
 const SipManager = require('./sip/sipManager');
 const NotificationWindow = require('./notification/notificationWindow');
@@ -73,7 +40,6 @@ const TrayWindow = require('./tray/trayWindow');
 const UpdateService = require('./services/updateService');
 const { logger, logEmitter, getRecentLogs, adjustLogBufferSize } = require('./services/logger');
 const { checkFirewallStatus, getFirewallInstructions } = require('./services/firewallChecker');
-const performanceMonitor = require('./services/performanceMonitor');
 const settings = require('./settings');
 
 const gotLock = app.requestSingleInstanceLock();
@@ -786,7 +752,7 @@ const wireIpc = () => {
     }
   });
 
-  // Update handlers - Squirrel.Windows auto-update
+// Update handlers - Squirrel.Windows auto-update
   ipcMain.handle('updates:check', async () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
@@ -806,31 +772,45 @@ const wireIpc = () => {
     return updateService.getStatus();
   });
 
-  ipcMain.handle('updates:quitAndInstall', () => {
+  ipcMain.handle('updates:quitAndInstall', async () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
     }
-    updateService.quitAndInstall();
-    return { success: true };
-  });
+    const status = updateService.getStatus();
+    if (!status.updateDownloaded) {
+      return { error: 'No update ready to install' };
+    }
 
-  // Performance monitoring handlers
-  ipcMain.handle('performance:getMetrics', () => {
-    return performanceMonitor.getMetrics();
-  });
+    // Get the packages directory
+    const packagesDir = process.argv.find(arg => arg.startsWith('--packages='))?.split('=')[1];
+    if (!packagesDir) {
+      return { error: 'Packages directory not found' };
+    }
 
-  ipcMain.handle('performance:getSummary', () => {
-    return performanceMonitor.getSummary();
-  });
+    try {
+      // Launch update installer
+      const installerPath = path.join(packagesDir, '..', 'sip-toast-update-installer.exe');
+      if (!fs.existsSync(installerPath)) {
+        return { error: 'Update installer not found' };
+      }
 
-  ipcMain.handle('performance:trackEvent', (_event, eventType, data) => {
-    performanceMonitor.trackEvent(eventType, data);
-    return true;
-  });
+      console.log(`Launching update installer: ${installerPath}`);
+      const updateProcess = spawn(installerPath, [`--packages=${packagesDir}`], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      });
 
-  ipcMain.handle('performance:cleanupLogs', () => {
-    performanceMonitor.cleanupOldLogs();
-    return true;
+      // Detach the child process so it continues after we exit
+      updateProcess.unref();
+
+      // Close the application
+      app.quit();
+      return { success: true, message: 'Update installer launched, application closing...' };
+    } catch (error) {
+      logger.error(`Failed to launch update installer: ${error.message}`);
+      return { error: error.message };
+    }
   });
 };
 
@@ -1100,6 +1080,17 @@ app.whenReady().then(async () => {
   logger.info('🚀 SIP Caller ID application starting');
   logger.info('📦 Initializing components...');
   
+  // Check for and migrate settings from previous installations
+  logger.info('🔄 Checking for previous installation settings...');
+  const migrated = settings.checkAndMigrate();
+  if (migrated) {
+    logger.info('✅ Settings migrated from previous installation');
+    // Refresh cached settings after migration
+    cachedSettings = settings.getAll();
+  } else {
+    logger.info('ℹ️  No previous installation settings found or migration not needed');
+  }
+  
   // Initialize flyoutWindow BEFORE creating tray
   // This ensures flyoutWindow exists when tray click handler runs
   flyoutWindow = new TrayWindow();
@@ -1142,10 +1133,6 @@ app.whenReady().then(async () => {
   // Reload events from file after app is ready (ensures log directory is properly resolved)
   getEventLogger().reloadEvents();
   logger.info('✅ Event logs loaded from persistent storage');
-  
-  // Start performance monitoring
-  performanceMonitor.startMonitoring();
-  logger.info('✅ Performance monitoring started');
   
   await boot();
   logger.info('✅ SIP manager and notification window initialized');

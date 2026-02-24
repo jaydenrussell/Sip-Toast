@@ -44,10 +44,6 @@
             <span class="nav-icon">🔄</span>
             <span class="nav-label">Updates</span>
           </button>
-          <button class="nav-item" data-section="performance">
-            <span class="nav-icon">📊</span>
-            <span class="nav-label">Performance</span>
-          </button>
           <button class="nav-item" data-section="about">
             <span class="nav-icon">ℹ️</span>
             <span class="nav-label">About</span>
@@ -476,62 +472,6 @@
                 <div class="actions" style="margin-top: 16px;">
                   <button type="button" class="primary" id="checkUpdatesBtn">Check for Updates</button>
                   <button type="button" class="secondary" id="installUpdateBtn" style="display: none;">Install Update</button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- Performance Section -->
-          <section class="content-section" id="section-performance">
-            <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>Performance Monitoring</h2>
-                  <p class="note">Real-time performance metrics and system health</p>
-                </div>
-              </div>
-              
-              <div id="performanceMetricsContainer" style="display: none;">
-                <div class="performance-summary" id="performanceSummary">
-                  <div class="performance-summary-grid">
-                    <div class="metric-card">
-                      <div class="metric-label">Current Memory</div>
-                      <div class="metric-value">-</div>
-                      <div class="metric-sub">-</div>
-                    </div>
-                    <div class="metric-card">
-                      <div class="metric-label">Average Memory</div>
-                      <div class="metric-value">-</div>
-                      <div class="metric-sub">-</div>
-                    </div>
-                    <div class="metric-card">
-                      <div class="metric-label">Memory Trend</div>
-                      <div class="metric-value">-</div>
-                      <div class="metric-sub">-</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div class="charts-grid">
-                  <div class="chart-container" id="performanceMemoryChart">
-                    <div class="chart-header">Memory Usage (RSS)</div>
-                    <div class="chart-bars">
-                      <!-- Chart bars will be populated by JavaScript -->
-                    </div>
-                  </div>
-                  
-                  <div class="chart-container" id="performanceCpuChart">
-                    <div class="chart-header">CPU Usage</div>
-                    <div class="chart-bars">
-                      <!-- Chart bars will be populated by JavaScript -->
-                    </div>
-                  </div>
-                </div>
-                
-                <div class="performance-events" id="performanceEventsList">
-                  <div class="events-container">
-                    <div class="no-events">No performance events recorded</div>
-                  </div>
                 </div>
               </div>
             </div>
