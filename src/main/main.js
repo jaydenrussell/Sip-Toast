@@ -812,14 +812,15 @@ const wireIpc = () => {
     }
 
     try {
-      // Launch update installer
-      const installerPath = path.join(packagesDir, '..', 'sip-toast-update-installer.exe');
-      if (!fs.existsSync(installerPath)) {
-        return { error: 'Update installer not found' };
+      // Launch standalone Squirrel executable directly
+      const squirrelExePath = path.join(path.dirname(app.getAppPath()), 'Update.exe');
+
+      if (!fs.existsSync(squirrelExePath)) {
+        return { error: 'Squirrel update executable not found' };
       }
 
-      console.log(`Launching update installer: ${installerPath}`);
-      const updateProcess = spawn(installerPath, [`--packages=${packagesDir}`], {
+      console.log(`Launching Squirrel update: ${squirrelExePath}`);
+      const updateProcess = spawn(squirrelExePath, ['--update', packagesDir], {
         detached: true,
         stdio: 'ignore',
         windowsHide: true
@@ -830,9 +831,9 @@ const wireIpc = () => {
 
       // Close the application
       app.quit();
-      return { success: true, message: 'Update installer launched, application closing...' };
+      return { success: true, message: 'Squirrel update launched, application closing...' };
     } catch (error) {
-      logger.error(`Failed to launch update installer: ${error.message}`);
+      logger.error(`Failed to launch Squirrel update: ${error.message}`);
       return { error: error.message };
     }
   });

@@ -28,29 +28,33 @@ function handleSquirrelEvent(cmd) {
     // Get the packages directory from command line arguments
     const packagesDir = process.argv.find(arg => arg.startsWith('--packages='))?.split('=')[1];
     if (packagesDir) {
-      // Show installer window first
-      if (mainWindow) {
-        mainWindow.show();
-      } else {
-        createInstallerWindow();
-      }
+      // Launch the standalone Squirrel executable directly
+      // This allows the application to close while the installer runs separately
+      const squirrelExePath = path.join(path.dirname(app.getAppPath()), 'Update.exe');
 
-      // Launch the update installer
-      const installerPath = getUpdateInstallerPath();
-      if (fs.existsSync(installerPath)) {
-        console.log(`[Squirrel] Launching update installer: ${installerPath}`);
-        const updateProcess = spawn(installerPath, [`--packages=${packagesDir}`], {
+      if (fs.existsSync(squirrelExePath)) {
+        console.log(`[Squirrel] Launching standalone Squirrel installer: ${squirrelExePath}`);
+
+        // Build the arguments for Squirrel
+        const args = ['--update', packagesDir];
+        if (cmd === '--squirrel-install') {
+          args.unshift('--install');
+        }
+
+        const updateProcess = spawn(squirrelExePath, args, {
           detached: true,
           stdio: 'ignore',
           windowsHide: true
         });
+
         updateProcess.unref();
-        // Wait a moment for the installer to start, then quit
-        setTimeout(() => { app.quit(); process.exit(0); }, 2000);
+
+        // Close the application immediately - the installer runs separately
+        setTimeout(() => { app.quit(); process.exit(0); }, 1000);
         return true;
       }
     }
-    // Fallback to original behavior if installer fails
+    // Fallback to original behavior if Squirrel.exe fails
     console.log(`[Squirrel] Falling back to original update process`);
     setTimeout(() => { app.quit(); process.exit(0); }, 1000);
     return true;
