@@ -812,7 +812,7 @@ const wireIpc = () => {
     }
 
     try {
-      // Launch standalone Squirrel executable directly
+      // Launch standalone Squirrel executable directly with proper arguments
       const squirrelExePath = path.join(path.dirname(app.getAppPath()), 'Update.exe');
 
       if (!fs.existsSync(squirrelExePath)) {
@@ -829,8 +829,29 @@ const wireIpc = () => {
       // Detach the child process so it continues after we exit
       updateProcess.unref();
 
-      // Close the application
-      app.quit();
+      // Set flag to indicate we're quitting for update
+      isAppQuitting = true;
+
+      // Close all windows and resources immediately
+      if (notificationWindow?.window) {
+        notificationWindow.window.destroy();
+        notificationWindow = null;
+      }
+      if (flyoutWindow?.window) {
+        flyoutWindow.window.destroy();
+        flyoutWindow = null;
+      }
+      if (sipManager) {
+        sipManager.stop();
+        sipManager = null;
+      }
+      if (tray) {
+        tray.destroy();
+        tray = null;
+      }
+
+      // Force immediate application exit
+      app.exit(0);
       return { success: true, message: 'Squirrel update launched, application closing...' };
     } catch (error) {
       logger.error(`Failed to launch Squirrel update: ${error.message}`);
