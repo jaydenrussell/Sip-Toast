@@ -16,6 +16,30 @@ if (squirrelCmd && handleSquirrelEvent(squirrelCmd)) {
   process.exit(0);
 }
 
+// Create installer window for installation/update process
+let installerWindow = null;
+const createInstallerWindow = () => {
+  if (installerWindow) return installerWindow;
+
+  installerWindow = new BrowserWindow({
+    width: 400,
+    height: 500,
+    resizable: false,
+    fullscreenable: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+
+  installerWindow.loadFile('src/renderer/installer.html');
+  installerWindow.on('closed', () => {
+    installerWindow = null;
+  });
+
+  return installerWindow;
+};
+
 // Lazy-loaded modules with memory optimization
 let _acuityClient, _eventLogger;
 const getAcuityClient = () => {
@@ -101,7 +125,7 @@ const simulateIncomingCall = async () => {
   // Execute lookups in parallel
   const [acuityResult] = await Promise.all(lookupPromises);
   
-  let acuity = acuityResult;
+  const acuity = acuityResult;
   
   if (hasAcuity) {
     if (acuity.found) {
