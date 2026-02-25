@@ -345,7 +345,7 @@ class UpdateService extends EventEmitter {
     // 2. Run Update.exe with --update flag pointing to packages directory
     // 3. Exit the application
     // 4. Update.exe applies the update and restarts the app
-    
+
     try {
       // Step 1: Close all windows gracefully
       logger.info('Closing all windows...');
@@ -359,10 +359,10 @@ class UpdateService extends EventEmitter {
           logger.error(`Error closing window: ${e.message}`);
         }
       }
-      
+
       // Step 2: Give windows time to close
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Step 3: Launch Update.exe to apply the update
       // The --update flag tells Squirrel to apply updates from the packages directory
       // Update.exe will:
@@ -370,11 +370,11 @@ class UpdateService extends EventEmitter {
       //   - Update the app files
       //   - Restart the application
       const args = ['--update', this._packagesDir];
-      
+
       logger.info(`Launching Update.exe: ${this._updateExe} ${args.join(' ')}`);
       logger.info(`Working directory: ${this._installDir}`);
       logger.info(`Packages directory: ${this._packagesDir}`);
-      
+
       // Use spawn with detached:true and stdio:'ignore' for proper Squirrel behavior
       // This allows Update.exe to continue after our process exits
       const updateProcess = spawn(this._updateExe, args, {
@@ -383,13 +383,13 @@ class UpdateService extends EventEmitter {
         stdio: 'ignore',  // Ignore stdio to properly detach
         windowsHide: true
       });
-      
+
       // Detach the child process so it continues after we exit
       updateProcess.unref();
-      
+
       logger.info('Update.exe launched successfully');
       logger.info('Exiting application to allow update installation...');
-      
+
       // Step 4: Exit the application
       // Update.exe will restart the app after applying the update
       // Use app.quit() for graceful shutdown, then force exit after timeout
@@ -397,14 +397,14 @@ class UpdateService extends EventEmitter {
         logger.info('Force exiting after timeout');
         process.exit(0);
       }, 3000);
-      
+
       // Try graceful quit first
       app.quit();
-      
+
     } catch (err) {
       logger.error(`Failed to launch Update.exe: ${err.message}`);
       logger.error(err.stack);
-      
+
       // Fallback: Try using app.relaunch() and exit
       try {
         logger.info('Attempting fallback: relaunch and exit');
