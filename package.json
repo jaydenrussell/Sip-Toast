@@ -56,7 +56,8 @@
         }
       ],
       "icon": "Images/app.ico",
-      "artifactName": "SIPCallerID-Setup-${version}.${ext}"
+      "artifactName": "SIPCallerID-Setup-${version}.${ext}",
+      "requestedExecutionLevel": "asInvoker"
     },
     "squirrelWindows": {
       "name": "SIPCallerID",
