@@ -5,21 +5,8 @@
 const { app } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
-const os = require('os');
 const fs = require('fs');
 
-// Get the path to the update installer application
-const getUpdateInstallerPath = () => {
-  if (app.isPackaged) {
-    // In packaged app, find the update installer in the same directory
-    const appDir = path.dirname(app.getAppPath());
-    const installerName = os.platform() === 'win32' ? 'sip-toast-update-installer.exe' : 'sip-toast-update-installer';
-    return path.join(appDir, installerName);
-  } else {
-    // In development, use the local update-installer directory
-    return path.join(__dirname, '..', '..', 'update-installer', 'dist', 'win-unpacked', 'sip-toast-update-installer.exe');
-  }
-};
 
 // Proper Squirrel.Windows event handling
 function handleSquirrelEvent(cmd) {
