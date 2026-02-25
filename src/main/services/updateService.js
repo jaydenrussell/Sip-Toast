@@ -323,18 +323,77 @@ class UpdateService extends EventEmitter {
   restartAutoCheck() { this._checked = false; this.startAutoCheck(); }
 
   async quitAndInstall() {
-    if (!this.state.downloaded || !fs.existsSync(this._updateExe)) {
-      this.setError('No update ready');
+    logger.info('=== Starting Update Installation Process ===');
+    logger.info(`Current version: ${this.state.current}`);
+    logger.info(`Available version: ${this.state.version}`);
+
+    // Verify we have everything needed
+    if (!app.isPackaged) {
+      logger.error('Cannot install update: Application is not packaged');
+      this.setError('Update only available in packaged version');
       return;
     }
 
+    if (!this.state.downloaded) {
+      logger.error('No update downloaded - cannot install');
+      this.setError('No update ready to install');
+      return;
+    }
+
+    // Initialize paths if not already set
+    if (!this._installDir) {
+      this._installDir = path.dirname(path.dirname(path.dirname(app.getAppPath())));
+      logger.info(`Install directory: ${this._installDir}`);
+    }
+
+    if (!this._updateExe) {
+      this._updateExe = path.join(this._installDir, 'Update.exe');
+      logger.info(`Update.exe path: ${this._updateExe}`);
+    }
+
+    if (!this._packagesDir) {
+      this._packagesDir = path.join(this._installDir, 'packages');
+      logger.info(`Packages directory: ${this._packagesDir}`);
+    }
+
+    // Verify Update.exe exists
+    if (!fs.existsSync(this._updateExe)) {
+      logger.error(`Update.exe not found at: ${this._updateExe}`);
+      logger.error('Directory contents:');
+      try {
+        if (fs.existsSync(this._installDir)) {
+          logger.error(`  ${fs.readdirSync(this._installDir).join(', ')}`);
+        } else {
+          logger.error('  Install directory does not exist');
+        }
+      } catch (e) {
+        logger.error(`  Error reading directory: ${e.message}`);
+      }
+      this.setError('Squirrel update executable not found');
+      return;
+    }
+
+    // Verify package exists
     const fullPackage = path.join(this._packagesDir, `SIPCallerID-${this.state.version}-full.nupkg`);
     if (!fs.existsSync(fullPackage)) {
-      this.setError('Package not found');
+      logger.error(`Full package not found: ${fullPackage}`);
+      logger.error('Packages directory contents:');
+      try {
+        if (fs.existsSync(this._packagesDir)) {
+          logger.error(`  ${fs.readdirSync(this._packagesDir).join(', ')}`);
+        } else {
+          logger.error('  Packages directory does not exist');
+        }
+      } catch (e) {
+        logger.error(`  Error reading directory: ${e.message}`);
+      }
+      this.setError('Update package not found');
       this.state.downloaded = false;
       this.emitStatus();
       return;
     }
+
+    logger.info(`Full package verified: ${fullPackage}`);
 
     logger.info(`Installing v${this.state.version}...`);
     this.emit('installing');
@@ -348,12 +407,14 @@ class UpdateService extends EventEmitter {
 
     try {
       // Step 1: Close all windows gracefully
-      logger.info('Closing all windows...');
+      logger.info('Step 1: Closing all windows...');
       const windows = BrowserWindow.getAllWindows();
+      logger.info(`Found ${windows.length} window(s) to close`);
       for (const w of windows) {
         try {
           if (!w.isDestroyed()) {
             w.destroy(); // Force close to ensure clean exit
+            logger.info('Window destroyed');
           }
         } catch (e) {
           logger.error(`Error closing window: ${e.message}`);
@@ -361,17 +422,14 @@ class UpdateService extends EventEmitter {
       }
 
       // Step 2: Give windows time to close
-      await new Promise(resolve => setTimeout(resolve, 500));
+      logger.info('Step 2: Waiting for windows to close...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Step 3: Launch Update.exe to apply the update
-      // The --update flag tells Squirrel to apply updates from the packages directory
-      // Update.exe will:
-      //   - Apply the .nupkg files
-      //   - Update the app files
-      //   - Restart the application
+      logger.info('Step 3: Launching Update.exe...');
       const args = ['--update', this._packagesDir];
 
-      logger.info(`Launching Update.exe: ${this._updateExe} ${args.join(' ')}`);
+      logger.info(`Command: ${this._updateExe} ${args.join(' ')}`);
       logger.info(`Working directory: ${this._installDir}`);
       logger.info(`Packages directory: ${this._packagesDir}`);
 
@@ -387,23 +445,29 @@ class UpdateService extends EventEmitter {
       // Detach the child process so it continues after we exit
       updateProcess.unref();
 
-      logger.info('Update.exe launched successfully');
-      logger.info('Exiting application to allow update installation...');
+      logger.info('Update.exe spawned successfully');
+      logger.info('Process PID: ' + updateProcess.pid);
+      logger.info('Process detached: ' + updateProcess.unrefed);
 
       // Step 4: Exit the application
-      // Update.exe will restart the app after applying the update
+      logger.info('Step 4: Exiting application...');
+      logger.info('Update.exe will continue running and apply the update');
+      logger.info('Application will restart automatically after update');
+
       // Use app.quit() for graceful shutdown, then force exit after timeout
       const exitTimeout = setTimeout(() => {
-        logger.info('Force exiting after timeout');
+        logger.error('Timeout: Application did not exit gracefully');
+        logger.error('Force exiting...');
         process.exit(0);
-      }, 3000);
+      }, 5000);
 
       // Try graceful quit first
       app.quit();
 
     } catch (err) {
-      logger.error(`Failed to launch Update.exe: ${err.message}`);
-      logger.error(err.stack);
+      logger.error('=== UPDATE INSTALLATION FAILED ===');
+      logger.error(`Error: ${err.message}`);
+      logger.error(`Stack: ${err.stack}`);
 
       // Fallback: Try using app.relaunch() and exit
       try {
@@ -413,6 +477,7 @@ class UpdateService extends EventEmitter {
       } catch (fallbackErr) {
         logger.error(`Fallback failed: ${fallbackErr.message}`);
         // Last resort: force exit
+        logger.error('Force exiting as last resort...');
         process.exit(0);
       }
     }
