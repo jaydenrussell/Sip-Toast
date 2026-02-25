@@ -777,63 +777,7 @@ const wireIpc = () => {
     if (!updateService) {
       return { error: 'Update service not initialized' };
     }
-    const status = updateService.getStatus();
-    if (!status.updateDownloaded) {
-      return { error: 'No update ready to install' };
-    }
-
-    // Get the packages directory
-    const packagesDir = process.argv.find(arg => arg.startsWith('--packages='))?.split('=')[1];
-    if (!packagesDir) {
-      return { error: 'Packages directory not found' };
-    }
-
-    try {
-      // Launch standalone Squirrel executable directly with proper arguments
-      const squirrelExePath = path.join(path.dirname(app.getAppPath()), 'Update.exe');
-
-      if (!fs.existsSync(squirrelExePath)) {
-        return { error: 'Squirrel update executable not found' };
-      }
-
-      console.log(`Launching Squirrel update: ${squirrelExePath}`);
-      const updateProcess = spawn(squirrelExePath, ['--update', packagesDir], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true
-      });
-
-      // Detach the child process so it continues after we exit
-      updateProcess.unref();
-
-      // Set flag to indicate we're quitting for update
-      isAppQuitting = true;
-
-      // Close all windows and resources immediately
-      if (notificationWindow?.window) {
-        notificationWindow.window.destroy();
-        notificationWindow = null;
-      }
-      if (flyoutWindow?.window) {
-        flyoutWindow.window.destroy();
-        flyoutWindow = null;
-      }
-      if (sipManager) {
-        sipManager.stop();
-        sipManager = null;
-      }
-      if (tray) {
-        tray.destroy();
-        tray = null;
-      }
-
-      // Force immediate application exit
-      app.exit(0);
-      return { success: true, message: 'Squirrel update launched, application closing...' };
-    } catch (error) {
-      logger.error(`Failed to launch Squirrel update: ${error.message}`);
-      return { error: error.message };
-    }
+    return await updateService.quitAndInstall();
   });
 };
 
