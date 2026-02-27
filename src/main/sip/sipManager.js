@@ -67,9 +67,6 @@ class SipManager extends EventEmitter {
   async start() {
     logger.info(`🔄 Starting SIP manager (current state: ${this.state}, stack: ${!!this.sipStack})`);
     
-    // Request firewall permissions before starting
-    await this.requestFirewallPermissions();
-    
     // Stop existing connection cleanly
     this.stop();
     
@@ -685,45 +682,6 @@ class SipManager extends EventEmitter {
     const min = 49152;
     const max = 65535;
     return Math.floor(Math.random() * (max - min + 1)) + min;
-  }
-
-  // Add method to request firewall permissions on Windows
-  async requestFirewallPermissions() {
-    if (process.platform !== 'win32') {
-      return true; // Not Windows, skip
-    }
-
-    try {
-      const { execAsync } = require('util').promisify;
-      const { app } = require('electron');
-      
-      let appPath;
-      try {
-        appPath = app.getPath('exe');
-      } catch {
-        appPath = process.execPath;
-      }
-
-      // Check if firewall rule already exists
-      const checkCmd = `powershell -Command "Get-NetFirewallRule -DisplayName 'SIP Toast - Outbound' -ErrorAction SilentlyContinue"`;
-      const { stdout: existingRule } = await execAsync(checkCmd);
-      
-      if (existingRule && existingRule.trim()) {
-        logger.info('✅ Firewall rule already exists for SIP Toast');
-        return true;
-      }
-
-      // Request firewall permission by creating a rule
-      const ruleCmd = `powershell -Command "New-NetFirewallRule -DisplayName 'SIP Toast - Outbound' -Direction Outbound -Program '${appPath}' -Action Allow -Profile Any"`;
-      await execAsync(ruleCmd);
-      
-      logger.info('✅ Firewall rule created successfully for SIP Toast');
-      return true;
-    } catch (error) {
-      logger.warn(`⚠️ Could not create firewall rule automatically: ${error.message}`);
-      logger.info('💡 User may need to manually allow SIP Toast through Windows Firewall');
-      return false;
-    }
   }
 
   _scheduleReconnect() {

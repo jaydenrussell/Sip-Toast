@@ -554,13 +554,6 @@ const loadAboutInfo = async () => {
       document.getElementById('aboutAppName').textContent = appInfo.appName || 'SIP Caller ID';
       document.getElementById('aboutVersion').textContent = appInfo.version || 'Unknown';
       document.getElementById('aboutBuildDate').textContent = appInfo.buildDate || 'Unknown';
-      
-      // Add GitHub repository link
-      const githubLink = document.getElementById('githubLink');
-      if (githubLink) {
-        githubLink.href = 'https://github.com/jaydenrussell/Sip-Toast';
-        githubLink.style.display = 'inline-block';
-      }
     } else {
       // If appInfo is null/undefined, set defaults
       document.getElementById('aboutAppName').textContent = 'SIP Caller ID';
