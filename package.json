@@ -33,7 +33,8 @@
     "release:prepare": "node scripts/dev-workflow.js prepare",
     "release:quick": "node scripts/dev-workflow.js quick",
     "release:bump": "node scripts/dev-workflow.js bump",
-    "release:changelog": "node scripts/dev-workflow.js changelog"
+    "release:changelog": "node scripts/dev-workflow.js changelog",
+    "setup:branches": "node scripts/setup-branches.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
