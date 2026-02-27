@@ -1,0 +1,173 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  NODE_VERSION: '18.x'
+  ELECTRON_VERSION: '28.0.0'
+
+jobs:
+  # Development builds for feature branches and PRs
+  dev-build:
+    name: Development Build
+    runs-on: ${{ matrix.os }}
+    if: github.ref != 'refs/heads/main'
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run linting
+        run: npm run lint
+        
+      - name: Run tests
+        run: npm test
+        
+      - name: Build application
+        run: npm run build
+        
+      - name: Create development artifact
+        run: |
+          mkdir -p artifacts
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cp -r dist/* artifacts/ || true
+          else
+            tar -czf artifacts/sip-toast-dev-${{ matrix.os }}.tar.gz dist/ || true
+          fi
+          
+      - name: Upload development artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-build-${{ matrix.os }}
+          path: artifacts/
+          retention-days: 7
+
+  # Production builds for main branch
+  production-build:
+    name: Production Build
+    runs-on: ${{ matrix.os }}
+    if: github.ref == 'refs/heads/main'
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run linting
+        run: npm run lint
+        
+      - name: Run tests
+        run: npm test
+        
+      - name: Build application
+        run: npm run build
+        
+      - name: Create production artifact
+        run: |
+          mkdir -p artifacts
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cp -r dist/* artifacts/ || true
+          else
+            tar -czf artifacts/sip-toast-prod-${{ matrix.os }}.tar.gz dist/ || true
+          fi
+          
+      - name: Upload production artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-build-${{ matrix.os }}
+          path: artifacts/
+          retention-days: 30
+
+  # Automated release creation
+  create-release:
+    name: Create Release
+    needs: [production-build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          
+      - name: Determine version
+        id: version
+        run: |
+          # Get version from package.json
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.TAG }}
+          release_name: Release ${{ steps.version.outputs.TAG }}
+          body: |
+            ## SIP Caller ID v${{ steps.version.outputs.VERSION }}
+            
+            ### Changes in this release:
+            - Automated build and release process
+            - Multi-platform support (Windows, macOS, Linux)
+            - Development and production environments
+            
+            ### Downloads:
+            - [Windows Installer](./sip-toast-windows-installer.exe)
+            - [macOS Package](./sip-toast-macos.pkg)
+            - [Linux Package](./sip-toast-linux.deb)
+            
+            ### Build Information:
+            - Node.js: ${{ env.NODE_VERSION }}
+            - Electron: ${{ env.ELECTRON_VERSION }}
+            - Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          draft: false
+          prerelease: false
+          
+      - name: Upload release assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/
+          asset_name: sip-toast-release-${{ steps.version.outputs.VERSION }}.zip
+          asset_content_type: application/zip

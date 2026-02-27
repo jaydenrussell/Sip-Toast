@@ -210,7 +210,7 @@ const save = (payload = {}) => {
     store.set('app', mergeSection('app', payload.app));
   }
 
-  if (payload.updates) {
+if (payload.updates) {
     store.set('updates', mergeSection('updates', payload.updates));
   }
 

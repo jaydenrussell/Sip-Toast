@@ -1,19 +1,11 @@
 /**
- * Update Service for Squirrel.Windows auto-updates
+ * Update Service for background updates (Discord/Teams-style)
+ * Allows updates to download and install without requiring app restart
  */
 
 const { logger } = require('./logger');
 const { EventEmitter } = require('events');
-const { app, BrowserWindow } = require('electron');
-
-// Lazy-load eventLogger to avoid circular dependencies
-let _eventLogger = null;
-const getEventLogger = () => {
-  if (!_eventLogger) {
-    _eventLogger = require('./eventLogger');
-  }
-  return _eventLogger;
-};
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -26,39 +18,68 @@ class UpdateService extends EventEmitter {
   constructor() {
     super();
     this.state = {
-      checking: false, downloading: false, available: false, downloaded: false,
-      progress: 0, version: null, current: app?.getVersion() || '0.0.0',
-      lastCheck: null, error: null, downloadSpeed: null
+      checking: false,
+      downloading: false,
+      available: false,
+      downloaded: false,
+      progress: 0,
+      version: null,
+      current: app?.getVersion() || '0.0.0',
+      lastCheck: null,
+      error: null,
+      downloadSpeed: null,
+      installing: false
     };
     this._checked = false;
-    if (app?.isPackaged) {
-      this._installDir = path.dirname(path.dirname(path.dirname(app.getAppPath())));
-      this._updateExe = path.join(this._installDir, 'Update.exe');
-      this._packagesDir = path.join(this._installDir, 'packages');
-    }
+    this._updateProcess = null;
+    this._updateWindow = null;
+
+    // Set up IPC handlers
+    this._setupIpcHandlers();
+  }
+
+  _setupIpcHandlers() {
+    ipcMain.handle('update:check', async () => {
+      return await this.checkForUpdates();
+    });
+
+ipcMain.handle('update:install', async () => {
+      await this.installUpdate();
+      return this.getStatus();
+    });
+
+    ipcMain.handle('update:check', async () => {
+      return await this.checkForUpdates();
+    });
+
+    ipcMain.handle('update:manual', async () => {
+      return await this.downloadUpdateInBackground();
+    });
+
+    ipcMain.handle('update:status', () => {
+      return this.getStatus();
+    });
   }
 
   getStatus() {
     return {
-      // Core status
       checking: this.state.checking,
       downloading: this.state.downloading,
       updateAvailable: this.state.available,
       updateDownloaded: this.state.downloaded,
       downloadProgress: this.state.progress,
       downloadSpeed: this.state.downloadSpeed,
-      
-      // Version info
       currentVersion: this.state.current,
       availableVersion: this.state.version,
-      
-      // Additional info
       lastCheck: this.state.lastCheck,
-      error: this.state.error
+      error: this.state.error,
+      installing: this.state.installing
     };
   }
 
-  emitStatus() { this.emit('update-status', this.getStatus()); }
+  emitStatus() {
+    this.emit('update-status', this.getStatus());
+  }
 
   setError(message) {
     this.state.error = message;
@@ -108,7 +129,7 @@ class UpdateService extends EventEmitter {
         return await new Promise((resolve, reject) => {
           const urlObj = new URL(url);
           const httpModule = urlObj.protocol === 'http:' ? http : https;
-          
+
           const req = httpModule.request({
             hostname: urlObj.hostname,
             port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
@@ -119,17 +140,16 @@ class UpdateService extends EventEmitter {
               return this._download(res.headers.location, dest, onProgress, retries).then(resolve).catch(reject);
             }
             if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
-            
+
             const total = parseInt(res.headers['content-length'], 10) || 0;
             let done = 0, lastEmit = 0, startTime = Date.now();
             const dir = path.dirname(dest);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             const tempPath = dest + '.tmp';
             const file = fs.createWriteStream(tempPath);
-            
+
             res.on('data', chunk => {
               done += chunk.length;
-              // Emit progress every 200ms or on first chunk for immediate feedback
               if (Date.now() - lastEmit > 200 || done === chunk.length) {
                 lastEmit = Date.now();
                 if (total > 0) {
@@ -138,7 +158,7 @@ class UpdateService extends EventEmitter {
                 }
               }
             });
-            
+
             res.pipe(file);
             file.on('finish', () => {
               file.close();
@@ -155,7 +175,7 @@ class UpdateService extends EventEmitter {
             });
             file.on('error', err => { fs.unlink(tempPath, () => {}); reject(err); });
           });
-          
+
           req.on('error', reject);
           req.setTimeout(120000, () => { req.destroy(); reject(new Error('Timeout')); });
           req.end();
@@ -179,35 +199,37 @@ class UpdateService extends EventEmitter {
   }
 
   _cleanupOldPackages() {
-    if (!fs.existsSync(this._packagesDir)) return;
-    for (const file of fs.readdirSync(this._packagesDir)) {
+    const installDir = path.dirname(path.dirname(path.dirname(app.getAppPath())));
+    const packagesDir = path.join(installDir, 'packages');
+    if (!fs.existsSync(packagesDir)) return;
+
+    for (const file of fs.readdirSync(packagesDir)) {
       if (file !== 'RELEASES' && !file.includes(this.state.current) && file.endsWith('.nupkg')) {
-        try { fs.unlinkSync(path.join(this._packagesDir, file)); logger.info(`Cleaned: ${file}`); } catch {}
+        try { fs.unlinkSync(path.join(packagesDir, file)); logger.info(`Cleaned: ${file}`); } catch {}
       }
     }
   }
 
   async checkForUpdates() {
     if (this.state.checking || this.state.downloading) return this.getStatus();
-    if (!app.isPackaged || !fs.existsSync(this._updateExe)) {
-      if (!app.isPackaged) logger.info('Skipping update check (dev)');
-      else this.setError('Update system unavailable');
+    if (!app.isPackaged) {
+      logger.info('Skipping update check (dev)');
       return this.getStatus();
     }
 
     this.state.error = null;
     this.state.checking = true;
     this.emitStatus();
-    
-    // Log update check
-    getEventLogger().logUpdateCheck(this._checked ? 'auto' : 'manual');
 
     try {
       const release = await this._fetch(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/releases/latest`);
       this.state.checking = false;
       this.state.lastCheck = new Date();
-      
-      if (!release?.tag_name) { this.emitStatus(); return this.getStatus(); }
+
+      if (!release?.tag_name) {
+        this.emitStatus();
+        return this.getStatus();
+      }
 
       const version = release.tag_name.replace(/^v/, '');
       if (!this._newer(version, this.state.current)) {
@@ -217,10 +239,7 @@ class UpdateService extends EventEmitter {
       }
 
       logger.info(`Update available: v${version}`);
-      
-      // Log update available
-      getEventLogger().logUpdateAvailable(version, release.html_url);
-      
+
       this.state.available = true;
       this.state.version = version;
       this.state.downloading = true;
@@ -231,11 +250,9 @@ class UpdateService extends EventEmitter {
       this.state.downloading = false;
       this.state.downloaded = success;
       this.state.progress = success ? 100 : 0;
-      
+
       if (success) {
         logger.info(`Update v${version} ready`);
-        // Log update downloaded
-        getEventLogger().logUpdateDownloaded(version, this._packagesDir);
       }
       this.emitStatus();
     } catch (error) {
@@ -243,20 +260,21 @@ class UpdateService extends EventEmitter {
       this.state.checking = false;
       this.state.downloading = false;
       this.setError(error.message);
-      // Log update error
-      getEventLogger().logUpdateError(error.message, 'check');
     }
     return this.getStatus();
   }
 
   async _downloadUpdate(tag) {
     const version = this.state.version;
-    if (!fs.existsSync(this._packagesDir)) fs.mkdirSync(this._packagesDir, { recursive: true });
+    const installDir = path.dirname(path.dirname(path.dirname(app.getAppPath())));
+    const packagesDir = path.join(installDir, 'packages');
+
+    if (!fs.existsSync(packagesDir)) fs.mkdirSync(packagesDir, { recursive: true });
     this._cleanupOldPackages();
 
     const baseUrl = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases/download/${tag}`;
-    const releasesPath = path.join(this._packagesDir, 'RELEASES');
-    
+    const releasesPath = path.join(packagesDir, 'RELEASES');
+
     try {
       await this._download(`${baseUrl}/RELEASES`, releasesPath, p => {
         this.state.progress = Math.round(p * 0.02);
@@ -277,8 +295,8 @@ class UpdateService extends EventEmitter {
     let currentProgress = 2;
 
     for (const file of files) {
-      const destPath = path.join(this._packagesDir, file.name);
-      
+      const destPath = path.join(packagesDir, file.name);
+
       if (this._validFile(destPath)) {
         logger.info(`Have: ${file.name}`);
         currentProgress += weightPerFile;
@@ -306,7 +324,7 @@ class UpdateService extends EventEmitter {
       this.emitStatus();
     }
 
-    const fullPackage = path.join(this._packagesDir, `SIPCallerID-${version}-full.nupkg`);
+    const fullPackage = path.join(packagesDir, `SIPCallerID-${version}-full.nupkg`);
     if (!fs.existsSync(fullPackage) || fs.statSync(fullPackage).size === 0) {
       this.setError('Full package unavailable');
       return false;
@@ -320,14 +338,12 @@ class UpdateService extends EventEmitter {
     setTimeout(() => this.checkForUpdates(), 5000);
   }
 
-  restartAutoCheck() { this._checked = false; this.startAutoCheck(); }
+  restartAutoCheck() {
+    this._checked = false;
+    this.startAutoCheck();
+  }
 
-  async quitAndInstall() {
-    logger.info('=== Starting Update Installation Process ===');
-    logger.info(`Current version: ${this.state.current}`);
-    logger.info(`Available version: ${this.state.version}`);
-
-    // Verify we have everything needed
+async installUpdate() {
     if (!app.isPackaged) {
       logger.error('Cannot install update: Application is not packaged');
       this.setError('Update only available in packaged version');
@@ -340,146 +356,125 @@ class UpdateService extends EventEmitter {
       return;
     }
 
-    // Initialize paths if not already set
-    if (!this._installDir) {
-      this._installDir = path.dirname(path.dirname(path.dirname(app.getAppPath())));
-      logger.info(`Install directory: ${this._installDir}`);
-    }
-
-    if (!this._updateExe) {
-      this._updateExe = path.join(this._installDir, 'Update.exe');
-      logger.info(`Update.exe path: ${this._updateExe}`);
-    }
-
-    if (!this._packagesDir) {
-      this._packagesDir = path.join(this._installDir, 'packages');
-      logger.info(`Packages directory: ${this._packagesDir}`);
-    }
-
-    // Verify Update.exe exists
-    if (!fs.existsSync(this._updateExe)) {
-      logger.error(`Update.exe not found at: ${this._updateExe}`);
-      logger.error('Directory contents:');
-      try {
-        if (fs.existsSync(this._installDir)) {
-          logger.error(`  ${fs.readdirSync(this._installDir).join(', ')}`);
-        } else {
-          logger.error('  Install directory does not exist');
-        }
-      } catch (e) {
-        logger.error(`  Error reading directory: ${e.message}`);
-      }
-      this.setError('Squirrel update executable not found');
+    // Show update available notification
+    if (this.state.available && !this.state.downloaded) {
+      this.emit('update-available', this.state.version);
       return;
     }
 
-    // Verify package exists
-    const fullPackage = path.join(this._packagesDir, `SIPCallerID-${this.state.version}-full.nupkg`);
-    if (!fs.existsSync(fullPackage)) {
-      logger.error(`Full package not found: ${fullPackage}`);
-      logger.error('Packages directory contents:');
-      try {
-        if (fs.existsSync(this._packagesDir)) {
-          logger.error(`  ${fs.readdirSync(this._packagesDir).join(', ')}`);
-        } else {
-          logger.error('  Packages directory does not exist');
-        }
-      } catch (e) {
-        logger.error(`  Error reading directory: ${e.message}`);
-      }
-      this.setError('Update package not found');
-      this.state.downloaded = false;
-      this.emitStatus();
-      return;
-    }
-
-    logger.info(`Full package verified: ${fullPackage}`);
-
-    logger.info(`Installing v${this.state.version}...`);
-    this.emit('installing');
-    getEventLogger().logUpdateInstalled(this.state.version);
-
-    // Squirrel.Windows update process:
-    // 1. Close all windows
-    // 2. Run Update.exe with --update flag pointing to packages directory
-    // 3. Exit the application
-    // 4. Update.exe applies the update and restarts the app
+    this.state.installing = true;
+    this.emitStatus();
 
     try {
-      // Step 1: Close all windows gracefully
-      logger.info('Step 1: Closing all windows...');
+      const installDir = path.dirname(path.dirname(path.dirname(app.getAppPath())));
+      const updateExe = path.join(installDir, 'Update.exe');
+      const packagesDir = path.join(installDir, 'packages');
+
+      // Verify Update.exe exists
+      if (!fs.existsSync(updateExe)) {
+        logger.error(`Update.exe not found at: ${updateExe}`);
+        this.setError('Squirrel update executable not found');
+        this.state.installing = false;
+        this.emitStatus();
+        return;
+      }
+
+      // Verify package exists
+      const fullPackage = path.join(packagesDir, `SIPCallerID-${this.state.version}-full.nupkg`);
+      if (!fs.existsSync(fullPackage)) {
+        logger.error(`Full package not found: ${fullPackage}`);
+        this.setError('Update package not found');
+        this.state.installing = false;
+        this.emitStatus();
+        return;
+      }
+
+      logger.info(`Installing v${this.state.version}...`);
+
+      // Spawn Update.exe in detached mode
+      const updateProcess = spawn(updateExe, ['--update', packagesDir], {
+        cwd: installDir,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      });
+
+      updateProcess.unref();
+      this._updateProcess = updateProcess;
+
+      // Close all windows gracefully
       const windows = BrowserWindow.getAllWindows();
-      logger.info(`Found ${windows.length} window(s) to close`);
       for (const w of windows) {
         try {
           if (!w.isDestroyed()) {
-            w.destroy(); // Force close to ensure clean exit
-            logger.info('Window destroyed');
+            w.close();
           }
         } catch (e) {
           logger.error(`Error closing window: ${e.message}`);
         }
       }
 
-      // Step 2: Give windows time to close
-      logger.info('Step 2: Waiting for windows to close...');
+      // Wait a moment for windows to close
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Step 3: Launch Update.exe to apply the update
-      logger.info('Step 3: Launching Update.exe...');
-      const args = ['--update', this._packagesDir];
-
-      logger.info(`Command: ${this._updateExe} ${args.join(' ')}`);
-      logger.info(`Working directory: ${this._installDir}`);
-      logger.info(`Packages directory: ${this._packagesDir}`);
-
-      // Use spawn with detached:true and stdio:'ignore' for proper Squirrel behavior
-      // This allows Update.exe to continue after our process exits
-      const updateProcess = spawn(this._updateExe, args, {
-        cwd: this._installDir,
-        detached: true,
-        stdio: 'ignore',  // Ignore stdio to properly detach
-        windowsHide: true
-      });
-
-      // Detach the child process so it continues after we exit
-      updateProcess.unref();
-
-      logger.info('Update.exe spawned successfully');
-      logger.info('Process PID: ' + updateProcess.pid);
-      logger.info('Process detached: ' + updateProcess.unrefed);
-
-      // Step 4: Exit the application
-      logger.info('Step 4: Exiting application...');
-      logger.info('Update.exe will continue running and apply the update');
-      logger.info('Application will restart automatically after update');
-
-      // Use app.quit() for graceful shutdown, then force exit after timeout
-      const exitTimeout = setTimeout(() => {
-        logger.error('Timeout: Application did not exit gracefully');
-        logger.error('Force exiting...');
-        process.exit(0);
-      }, 5000);
-
-      // Try graceful quit first
+      // Exit the application
       app.quit();
 
+      this.state.installing = false;
+      this.emitStatus();
     } catch (err) {
-      logger.error('=== UPDATE INSTALLATION FAILED ===');
-      logger.error(`Error: ${err.message}`);
-      logger.error(`Stack: ${err.stack}`);
+      logger.error(`Update installation failed: ${err.message}`);
+      this.setError(`Installation failed: ${err.message}`);
+      this.state.installing = false;
+      this.emitStatus();
+    }
+  }
 
-      // Fallback: Try using app.relaunch() and exit
-      try {
-        logger.info('Attempting fallback: relaunch and exit');
-        app.relaunch();
-        app.exit(0);
-      } catch (fallbackErr) {
-        logger.error(`Fallback failed: ${fallbackErr.message}`);
-        // Last resort: force exit
-        logger.error('Force exiting as last resort...');
-        process.exit(0);
+  // New method for background updates
+async downloadUpdateInBackground() {
+    if (this.state.downloading) return this.getStatus();
+
+    this.state.downloading = true;
+    this.state.progress = 0;
+    this.emitStatus();
+
+    // Show update available notification
+    if (this.state.available && !this.state.downloaded) {
+      this.emit('update-available', this.state.version);
+    }
+
+    try {
+      const release = await this._fetch(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/releases/latest`);
+      const version = release.tag_name.replace(/^v/, '');
+
+      if (!this._newer(version, this.state.current)) {
+        this.state.downloading = false;
+        this.emitStatus();
+        return this.getStatus();
       }
+
+      this.state.version = version;
+      this.state.available = true;
+
+      const success = await this._downloadUpdate(release.tag_name);
+      this.state.downloaded = success;
+      this.state.progress = success ? 100 : 0;
+      this.state.downloading = false;
+
+      if (success) {
+        logger.info(`Background update v${version} ready`);
+        // Show notification to user
+        this.emit('update-ready', version);
+      }
+
+      this.emitStatus();
+      return this.getStatus();
+    } catch (error) {
+      logger.error(`Background update failed: ${error.message}`);
+      this.setError(error.message);
+      this.state.downloading = false;
+      this.emitStatus();
+      return this.getStatus();
     }
   }
 }
