@@ -1181,13 +1181,46 @@ if (installUpdateBtn) {
     try {
       installUpdateBtn.disabled = true;
       installUpdateBtn.textContent = 'Installing...';
+      
+      // Show update overlay
+      const updateOverlay = document.getElementById('updateOverlay');
+      if (updateOverlay) {
+        updateOverlay.style.display = 'flex';
+        document.getElementById('updateOverlayTitle').textContent = 'Installing Update...';
+        document.getElementById('updateOverlayMessage').textContent = 'Please wait while the update is being installed.';
+      }
 
-      // Directly call Squirrel.Windows updater without overlay
+      // Call Squirrel.Windows updater
       await window.trayAPI.quitAndInstallUpdate();
+      
+      // This should not reach here as the app will restart, but just in case
+      setTimeout(() => {
+        if (updateOverlay) {
+          updateOverlay.style.display = 'none';
+        }
+        installUpdateBtn.disabled = false;
+        installUpdateBtn.textContent = 'Install Update';
+      }, 5000);
+      
     } catch (error) {
       console.error('Failed to install update:', error);
+      
+      // Hide overlay and reset button
+      const updateOverlay = document.getElementById('updateOverlay');
+      if (updateOverlay) {
+        updateOverlay.style.display = 'none';
+      }
+      
       installUpdateBtn.disabled = false;
       installUpdateBtn.textContent = 'Install Update';
+      
+      // Show error message
+      if (updateMessage) {
+        updateMessage.style.display = 'block';
+        updateMessage.style.background = 'rgba(239, 68, 68, 0.1)';
+        updateMessage.style.color = '#ef4444';
+        updateMessage.innerHTML = `❌ Failed to install update: ${error.message}`;
+      }
     }
   });
 }

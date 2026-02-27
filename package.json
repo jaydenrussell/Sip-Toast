@@ -18,6 +18,7 @@
     "package:squirrel": "electron-builder --win --config.win.target=squirrel",
     "build:release": "node scripts/build-release.js",
     "version:manager": "node scripts/version-manager.js",
+    "upload:packages": "node scripts/upload-packages.js",
     "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
     "release": "node scripts/create-release.js"
   },
