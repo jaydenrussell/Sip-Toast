@@ -1,5 +1,5 @@
 
-# SIP Caller ID Release v0.72.143
+# SIP Caller ID Release v1.00.0
 
 This release includes:
 - Complete update installer with seamless update flow
@@ -14,9 +14,9 @@ This release includes:
 3. Application will auto-update in the future
 
 ## Release artifacts
-- SIPCallerID-Setup-0.72.143.exe (Setup package)
-- SIPCallerID-0.72.143-full.nupkg (Full NuGet package)
-- SIPCallerID-0.72.143-delta.nupkg (Delta NuGet package, if available)
+- SIPCallerID-Setup-1.00.0.exe (Setup package)
+- SIPCallerID-1.00.0-full.nupkg (Full NuGet package)
+- SIPCallerID-1.00.0-delta.nupkg (Delta NuGet package, if available)
 - RELEASES (Release manifest)
 
 ## Changes

@@ -603,11 +603,29 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     loadAboutInfo();
     setupWindowControls();
+    setupGithubButton();
   });
 } else {
   loadAboutInfo();
   setupWindowControls();
+  setupGithubButton();
 }
+
+// GitHub button functionality
+const setupGithubButton = () => {
+  const githubButton = document.getElementById('openGithubBtn');
+  if (githubButton) {
+    githubButton.addEventListener('click', async () => {
+      try {
+        await window.trayAPI.openExternal('https://github.com/jaydenrussell/Sip-Toast');
+      } catch (error) {
+        console.error('Failed to open GitHub repository:', error);
+        // Fallback to window.open if API fails
+        window.open('https://github.com/jaydenrussell/Sip-Toast', '_blank');
+      }
+    });
+  }
+};
 
 // Event Log functionality
 const eventLogStream = document.getElementById('eventLogStream');
