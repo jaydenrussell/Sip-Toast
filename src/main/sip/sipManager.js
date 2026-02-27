@@ -1,24 +1,52 @@
-------- SEARCH
+const EventEmitter = require('eventemitter3');
+const sip = require('sip');
+const digest = require('sip/digest');
+const { logger } = require('../services/logger');
+const dns = require('dns').promises;
+const { URL } = require('url');
+const os = require('os');
+
+// Lazy load eventLogger to avoid issues before app is ready
+let _eventLogger = null;
+const getEventLogger = () => {
+  if (!_eventLogger) {
+    try {
+      _eventLogger = require('../services/eventLogger');
+    } catch (e) {
+      // Event logger not ready yet
+    }
+  }
+  return _eventLogger;
+};
+
+class SipManager extends EventEmitter {
+  constructor(config) {
+    super();
+    this.config = config;
+    this.sipStack = null;
+    this.registrationTimer = null;
+    this.reconnectTimeout = null;
+    this.connectionTimeout = null;
+    this.state = 'idle';
+    this.registrationSession = null;
+    this.serverHost = null;
+    this.serverPort = 5060;
+    this.localPort = 5060;
+    this._incomingRequestHandler = null;
+    this._isDestroyed = false;
+  }
+
+  async updateConfig(nextConfig) {
+    logger.info('SIP configuration updated');
+    this.config = nextConfig;
+    await this.start();
+  }
+
   _parseServerAddress(server) {
     if (!server) return null;
     
-    // Extract protocol and remove it from address
-    let protocol = 'udp';
-    let address = server;
-    
-    if (server.startsWith('sips://')) {
-      protocol = 'tls';
-      address = server.replace(/^sips:\/\//, '');
-    } else if (server.startsWith('sip://')) {
-      protocol = 'udp';
-      address = server.replace(/^sip:\/\//, '');
-    } else if (server.startsWith('wss://')) {
-      protocol = 'ws';
-      address = server.replace(/^wss:\/\//, '');
-    } else if (server.startsWith('ws://')) {
-      protocol = 'ws';
-      address = server.replace(/^ws:\/\//, '');
-    }
+    // Remove protocol if present
+    const address = server.replace(/^sips?:\/\//, '').replace(/^wss?:\/\//, '');
     
     // Extract hostname and port
     let hostname = address;
@@ -33,59 +61,10 @@
     // Remove path if present (e.g., /ws)
     hostname = hostname.split('/')[0];
     
-    // Set default port based on protocol
-    if (protocol === 'tls' && port === 5060) {
-      port = 5061; // Default TLS port
-    } else if (protocol === 'ws' && port === 5060) {
-      port = 443; // Default WebSocket port
-    }
-    
-    return { hostname, port, protocol };
+    return { hostname, port };
   }
-=======
-  _parseServerAddress(server) {
-    if (!server) return null;
-    
-    // Extract protocol and remove it from address
-    let protocol = 'udp';
-    let address = server;
-    
-    if (server.startsWith('sips://')) {
-      protocol = 'tls';
-      address = server.replace(/^sips:\/\//, '');
-    } else if (server.startsWith('sip://')) {
-      protocol = 'udp';
-      address = server.replace(/^sip:\/\//, '');
-    } else if (server.startsWith('wss://')) {
-      protocol = 'ws';
-      address = server.replace(/^wss:\/\//, '');
-    } else if (server.startsWith('ws://')) {
-      protocol = 'ws';
-      address = server.replace(/^ws:\/\//, '');
-    }
-    
-    // Extract hostname and port
-    let hostname = address;
-    let port = 5060;
-    
-    if (address.includes(':')) {
-      const parts = address.split(':');
-      hostname = parts[0];
-      port = parseInt(parts[1]) || 5060;
-    }
-    
-    // Remove path if present (e.g., /ws)
-    hostname = hostname.split('/')[0];
-    
-    // Set default port based on protocol
-    if (protocol === 'tls' && port === 5060) {
-      port = 5061; // Default TLS port
-    } else if (protocol === 'ws' && port === 5060) {
-      port = 443; // Default WebSocket port
-    }
-    
-    return { hostname, port, protocol };
-  }
+
+  async start() {
     logger.info(`🔄 Starting SIP manager (current state: ${this.state}, stack: ${!!this.sipStack})`);
     
     // Stop existing connection cleanly

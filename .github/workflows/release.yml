@@ -1,246 +1,112 @@
-name: Release Workflow
+name: Build and Release
 
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main
+      - master
+    # Only trigger on version changes (when package.json version changes)
+    paths:
+      - 'package.json'
   workflow_dispatch:
+    # Allow manual triggering
     inputs:
       version:
-        description: 'Version to release (e.g., 1.0.0)'
-        required: true
-        type: string
-      prerelease:
-        description: 'Create as prerelease'
+        description: 'Version to release (leave empty to use package.json version)'
         required: false
-        type: boolean
-        default: false
-
-env:
-  NODE_VERSION: '22.x'
-  ELECTRON_VERSION: '28.0.0'
+        type: string
 
 jobs:
-  # Validate release
-  validate-release:
-    name: Validate Release
-    runs-on: ubuntu-latest
+  build-and-release:
+    runs-on: windows-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Validate version format
-        run: |
-          VERSION="${{ github.event.inputs.version || github.event.release.tag_name }}"
-          if [[ ! "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid version format: $VERSION"
-            exit 1
-          fi
-          echo "Valid version: $VERSION"
-          
-      - name: Check for untracked changes
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "Working directory is not clean"
-            git status
-            exit 1
-          fi
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for tags
 
-  # Build release artifacts
-  build-release:
-    name: Build Release
-    needs: validate-release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Build application
-        run: npm run build
-        
-      - name: Package application
-        run: npm run package:${{ matrix.os == 'windows-latest' && 'win' || matrix.os == 'macos-latest' && 'mac' || 'linux' }}
-        
-      - name: Create release artifacts
-        run: |
-          mkdir -p release-artifacts
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            find . -name "*.exe" -o -name "*.msi" -o -name "*.zip" | xargs -I {} cp {} release-artifacts/
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            find . -name "*.dmg" -o -name "*.pkg" -o -name "*.zip" | xargs -I {} cp {} release-artifacts/
-          else
-            find . -name "*.deb" -o -name "*.AppImage" -o -name "*.zip" | xargs -I {} cp {} release-artifacts/
-          fi
-          
-      - name: Calculate checksums
-        run: |
-          cd release-artifacts
-          sha256sum * > SHA256SUMS
-          cat SHA256SUMS
-          
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-artifacts-${{ matrix.os }}
-          path: release-artifacts/
-          retention-days: 90
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
 
-  # Create release notes
-  create-release-notes:
-    name: Create Release Notes
-    needs: build-release
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch full history for changelog generation
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Get version from package.json
+      id: get_version
+      run: |
+        $version = (Get-Content package.json | ConvertFrom-Json).version
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+
+    - name: Set release version
+      id: release_version
+      run: |
+        if ("${{ github.event.inputs.version }}" -ne "") {
+          echo "VERSION=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
+          echo "Using manual version: ${{ github.event.inputs.version }}"
+        } else {
+          echo "VERSION=${{ steps.get_version.outputs.VERSION }}" >> $env:GITHUB_OUTPUT
+          echo "Using package.json version: ${{ steps.get_version.outputs.VERSION }}"
+        }
+
+    - name: Update package.json version if manual
+      if: ${{ github.event.inputs.version != '' }}
+      run: |
+        $packageJson = Get-Content package.json | ConvertFrom-Json
+        $packageJson.version = "${{ github.event.inputs.version }}"
+        $packageJson.buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+        $packageJson | ConvertTo-Json -Depth 10 | Set-Content package.json
+
+    - name: Build application
+      run: npm run package
+      env:
+        # Add your signing certificate environment variables if needed
+        # CSC_LINK: ${{ secrets.CSC_LINK }}
+        # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+    - name: Find MSI installer
+      id: find_msi
+      run: |
+        $msiFile = Get-ChildItem -Path dist -Filter "*.msi" | Select-Object -First 1
+        if ($msiFile) {
+          echo "MSI_PATH=$($msiFile.FullName)" >> $env:GITHUB_OUTPUT
+          echo "MSI_NAME=$($msiFile.Name)" >> $env:GITHUB_OUTPUT
+          echo "Found MSI: $($msiFile.Name)"
+        } else {
+          echo "❌ No MSI file found in dist directory"
+          exit 1
+        }
+
+    - name: Create GitHub Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.release_version.outputs.VERSION }}
+        name: Release v${{ steps.release_version.outputs.VERSION }}
+        body: |
+          ## SIP Toast v${{ steps.release_version.outputs.VERSION }}
           
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Get current version
-          VERSION="${{ github.event.inputs.version || github.event.release.tag_name }}"
-          VERSION=${VERSION#v} # Remove 'v' prefix if present
-          
-          # Generate changelog from commits
-          CHANGELOG=$(git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD^2 2>/dev/null || echo "HEAD~50")..HEAD)
-          
-          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          
-      - name: Create release notes
-        id: release-notes
-        run: |
-          VERSION="${{ github.event.inputs.version || github.event.release.tag_name }}"
-          VERSION=${VERSION#v}
-          
-          cat > RELEASE_NOTES.md << EOF
-          ## SIP Caller ID v$VERSION
-          
-          ### What's Changed
-          ${{ steps.changelog.outputs.CHANGELOG }}
-          
-          ### Build Information
-          - Node.js: ${{ env.NODE_VERSION }}
-          - Electron: ${{ env.ELECTRON_VERSION }}
-          - Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          - Commit: ${{ github.sha }}
+          ### Changes
+          - See commit history for details
           
           ### Installation
-          Download the appropriate installer for your platform from the assets below.
+          Download the MSI installer below and run it to install or update SIP Toast.
           
-          ### Changelog
-          Full changelog available in [CHANGELOG.md](./CHANGELOG.md)
-          EOF
-          
-          echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
-          cat RELEASE_NOTES.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          ### Auto-Update
+          If you have SIP Toast installed, it will automatically check for this update based on your update settings.
+        draft: false
+        prerelease: false
+        files: ${{ steps.find_msi.outputs.MSI_PATH }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Publish release
-  publish-release:
-    name: Publish Release
-    needs: [build-release, create-release-notes]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-artifacts/
-          
-      - name: Determine version
-        id: version
-        run: |
-          VERSION="${{ github.event.inputs.version || github.event.release.tag_name }}"
-          VERSION=${VERSION#v}
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
-          
-      - name: Create or update release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.version.outputs.TAG }}
-          name: SIP Caller ID v${{ steps.version.outputs.VERSION }}
-          body: ${{ steps.release-notes.outputs.RELEASE_NOTES }}
-          draft: ${{ github.event.inputs.prerelease || github.event.release.draft || false }}
-          prerelease: ${{ github.event.inputs.prerelease || github.event.release.prerelease || false }}
-          files: release-artifacts/**/*
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Deploy to package managers
-  deploy-packages:
-    name: Deploy Packages
-    needs: publish-release
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && !contains(github.event.release.tag_name, 'beta') && !contains(github.event.release.tag_name, 'alpha')
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Build and publish to npm
-        run: |
-          # Only publish if this is a new version
-          CURRENT_VERSION=$(npm view sip-caller-id version 2>/dev/null || echo "0.0.0")
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          
-          if [ "$CURRENT_VERSION" != "$NEW_VERSION" ]; then
-            echo "Publishing new version $NEW_VERSION to npm"
-            npm publish --access public
-          else
-            echo "Version $NEW_VERSION already exists on npm, skipping publish"
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  # Notify stakeholders
-  notify:
-    name: Notify Stakeholders
-    needs: [publish-release]
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-      - name: Notify on success
-        if: needs.publish-release.result == 'success'
-        run: |
-          echo "✅ Release ${{ steps.version.outputs.TAG }} published successfully"
-          # Add notification logic here (Slack, Discord, email, etc.)
-          
-      - name: Notify on failure
-        if: needs.publish-release.result == 'failure'
-        run: |
-          echo "❌ Release failed"
-          # Add failure notification logic here
+    - name: Upload MSI as artifact (backup)
+      uses: actions/upload-artifact@v4
+      with:
+        name: sip-toast-installer-v${{ steps.release_version.outputs.VERSION }}
+        path: ${{ steps.find_msi.outputs.MSI_PATH }}
+        retention-days: 30
