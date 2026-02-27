@@ -11,7 +11,7 @@ on:
       - develop
 
 env:
-  NODE_VERSION: '18.x'
+  NODE_VERSION: '20.x'
   ELECTRON_VERSION: '28.0.0'
 
 jobs:
