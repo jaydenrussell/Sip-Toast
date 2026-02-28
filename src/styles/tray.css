@@ -1015,33 +1015,34 @@ button.ghost:hover {
 }
 
 /* GitHub Link Styles */
-.github-link-container {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
 .github-link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   color: #2563eb;
   text-decoration: none;
   font-size: 14px;
   font-weight: 500;
-  transition: color 0.2s ease, transform 0.1s ease;
-  padding: 6px 10px;
-  border-radius: 6px;
+  transition: all 0.2s ease;
+  padding: 8px 12px;
+  border-radius: 8px;
   background: rgba(37, 99, 235, 0.1);
   border: 1px solid rgba(37, 99, 235, 0.2);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.1);
 }
 
 .github-link:hover {
   color: #1d4ed8;
   background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(37, 99, 235, 0.3);
   transform: translateY(-1px);
   text-decoration: none;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+}
+
+.github-link:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.1);
 }
 
 .github-icon {
@@ -1050,32 +1051,9 @@ button.ghost:hover {
 }
 
 .github-text {
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 12px;
+  font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  font-size: 13px;
   letter-spacing: 0.2px;
-}
-
-.github-button {
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 12px;
+  color: var(--text-primary);
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.github-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-}
-
-.github-button:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
 }

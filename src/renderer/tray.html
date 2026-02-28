@@ -67,13 +67,6 @@
           <!-- SIP Provider Section -->
           <section class="content-section active" id="section-sip">
             <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>SIP Connection</h2>
-                  <p class="note">Enter your SIP server credentials to receive calls</p>
-                </div>
-              </div>
-
               <div class="grid two-col">
                 <div class="field-group">
                   <label>Server</label>
@@ -164,12 +157,6 @@
           <!-- Acuity Scheduler Section -->
           <section class="content-section" id="section-acuity">
             <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>Acuity Scheduling API</h2>
-                  <p class="note">Configure API credentials for client lookups</p>
-                </div>
-              </div>
               <div class="toggle-group" style="margin-bottom: 16px;">
                 <label>Enable Acuity Scheduler</label>
                 <button type="button" class="toggle" id="acuityEnabledToggle" role="switch" aria-checked="false">
@@ -223,12 +210,6 @@
           <!-- Options Section -->
           <section class="content-section" id="section-options">
             <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>Options</h2>
-                  <p class="note">Application settings and controls</p>
-                </div>
-              </div>
               <div class="options-grid">
                 <div class="toggle-group">
                   <label>Run at Windows startup</label>
@@ -346,13 +327,6 @@
           <!-- Firewall Section -->
           <section class="content-section" id="section-firewall">
             <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>Firewall Status</h2>
-                  <p class="note">Check Windows Firewall configuration for SIP Caller ID</p>
-                </div>
-              </div>
-              
               <div class="actions" style="margin-bottom: 16px;">
                 <button type="button" class="primary" id="checkFirewallBtn">Check Firewall Status</button>
                 <button type="button" class="secondary" id="refreshFirewallBtn" style="display: none;">Refresh</button>
@@ -400,13 +374,6 @@
           <!-- Event Logs Section -->
           <section class="content-section" id="section-logs">
             <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>Event Logs</h2>
-                  <p class="note">View SIP calls, toast notifications, and user interactions</p>
-                </div>
-              </div>
-              
               <div class="log-controls" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                 <select id="logFilterType" style="padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary);">
                   <option value="">All Events</option>
@@ -447,13 +414,6 @@
           <!-- Updates Section -->
           <section class="content-section" id="section-updates">
             <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>Software Updates</h2>
-                  <p class="note">Check for and install application updates</p>
-                </div>
-              </div>
-              
               <div id="updateStatusSection">
                 <div class="debug-info" id="updateDebugInfo">
                   <div class="debug-item">
@@ -480,15 +440,9 @@
           <!-- About Section -->
           <section class="content-section" id="section-about">
             <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>About</h2>
-                  <p class="note">Application information</p>
-                </div>
-              </div>
               <div class="about-info" id="aboutInfo">
                 <div class="about-item">
-                  <strong>Application Name:</strong> <span id="aboutAppName">-</span>
+                  <strong>Application Name:</strong> <span id="aboutAppName">SIP Caller ID</span>
                 </div>
                 <div class="about-item">
                   <strong>Version:</strong> <span id="aboutVersion">-</span>
@@ -498,15 +452,9 @@
                 </div>
                 <div class="about-item">
                   <strong>Repository:</strong> 
-                  <div class="github-link-container">
-                    <a href="https://github.com/jaydenrussell/Sip-Toast" target="_blank" rel="noopener noreferrer" class="github-link">
-                      <span class="github-icon">🔗</span>
-                      <span class="github-text">github.com/jaydenrussell/Sip-Toast</span>
-                    </a>
-                    <button type="button" class="github-button" id="openGithubBtn" title="Open GitHub Repository">
-                      Open Repository
-                    </button>
-                  </div>
+                  <a href="https://github.com/jaydenrussell/Sip-Toast" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #0078d4); text-decoration: none; font-weight: 600;">
+                    github.com/jaydenrussell/Sip-Toast
+                  </a>
                 </div>
               </div>
             </div>
@@ -530,9 +478,3 @@
           <div id="updateProgressBar" class="update-progress-fill"></div>
         </div>
         <p id="updateOverlaySubtext" style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">The application will restart automatically.</p>
-      </div>
-    </div>
-
-    <script src="./tray.js" type="module"></script>
-  </body>
-</html>
