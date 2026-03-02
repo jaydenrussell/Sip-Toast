@@ -5,8 +5,6 @@ const noteEl = document.getElementById('note');
 const copiedBadge = document.getElementById('copiedBadge');
 let currentPhoneNumber = '';
 
-// Pre-compiled regex for phone number formatting
-const phoneRegex = /\D/g;
 
 // Handle window resize to adjust content
 window.addEventListener('resize', () => {
@@ -63,14 +61,18 @@ window.notificationAPI.onData((payload) => {
     callerEl.style.fontSize = `${payload.callerIdFontSize}px`;
   }
   
-  // Apply color settings for caller name
+// Apply color settings for caller name
   if (payload.callerIdColor) {
     callerEl.style.color = payload.callerIdColor;
+    // Set CSS custom property for caller ID color
+    document.documentElement.style.setProperty('--caller-id-color', payload.callerIdColor);
   }
-  
-  // Apply font settings for caller number
-  if (payload.numberFont) {
-    numberEl.style.fontFamily = payload.numberFont;
+
+  // Apply color settings for caller number
+  if (payload.numberColor) {
+    numberEl.style.color = payload.numberColor;
+    // Set CSS custom property for caller number color
+    document.documentElement.style.setProperty('--caller-number-color', payload.numberColor);
   }
   if (payload.numberFontSize) {
     numberEl.style.fontSize = `${payload.numberFontSize}px`;

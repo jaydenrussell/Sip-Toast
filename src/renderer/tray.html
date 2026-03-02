@@ -58,6 +58,11 @@
         </div>
       </aside>
       <main class="main-content">
+        <header class="content-header">
+          <h1 id="sectionTitle">SIP Provider</h1>
+          <p class="subhead" id="sectionSubtitle">Configure your SIP connection settings</p>
+        </header>
+
         <form id="settingsForm">
           <!-- SIP Provider Section -->
           <section class="content-section active" id="section-sip">
@@ -242,9 +247,10 @@
               </div>
               
               <div class="field-group">
-                <label>Toast Notification Timeout</label>
-                <input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
-                <small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
+<label>Toast Notification Timeout</label>
+<input type="number" name="toast.autoDismissMs" placeholder="20000" min="1000" step="1000" id="toastTimeoutInput" />
+<span id="currentTimeoutDisplay" style="margin-left: 8px; font-size: 13px; color: var(--text-secondary); font-family: monospace;"></span>
+<small class="field-hint">Time in milliseconds before toast auto-dismisses (default: 20000 = 20 seconds)</small>
               </div>
               
               <div class="section-heading" style="margin-top: 24px; margin-bottom: 12px;">
@@ -481,29 +487,20 @@
                   <p class="note">Application information</p>
                 </div>
               </div>
-              <div class="about-info" id="aboutInfo">
-                <div class="about-item">
-                  <strong>Application Name:</strong> <span id="aboutAppName">-</span>
-                </div>
-                <div class="about-item">
-                  <strong>Version:</strong> <span id="aboutVersion">-</span>
-                </div>
-                <div class="about-item">
-                  <strong>Build Date:</strong> <span id="aboutBuildDate">-</span>
-                </div>
-                  <div class="about-item">
-                  <strong>Repository:</strong> 
-                  <div class="github-link-container">
-                    <a href="#" id="githubLink" class="github-link">
-                      <span class="github-icon">🔗</span>
-                      <span class="github-text">github.com/jaydenrussell/Sip-Toast</span>
-                    </a>
-                    <button type="button" class="github-button" id="openGithubBtn" title="Open GitHub Repository">
-                      Open Repository
-                    </button>
-                  </div>
-                </div>
-              </div>
+<div class="about-info" id="aboutInfo">
+  <div class="about-item">
+    <strong>Application Name:</strong> <span id="aboutAppName">-</span>
+  </div>
+  <div class="about-item">
+    <strong>Version:</strong> <span id="aboutVersion">-</span>
+  </div>
+  <div class="about-item">
+    <strong>Build Date:</strong> <span id="aboutBuildDate">-</span>
+  </div>
+  <div class="about-item">
+    <strong>GitHub Repository:</strong> <a href="https://github.com/jaydenrussell/Sip-Toast" target="_blank" rel="noopener noreferrer">jaydenrussell/Sip-Toast</a>
+  </div>
+</div>
             </div>
           </section>
 

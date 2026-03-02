@@ -73,13 +73,6 @@ const fieldNames = [
   'toast.callerIdColor'
 ];
 
-// Pre-compile regex patterns for better performance
-const regexPatterns = {
-  number: /^\d+$/,
-  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  url: /^https?:\/\/.+/,
-  phone: /^[\d\s\-\(\)\+]+$/
-};
 
 // Color picker event handlers - update display when color changes
 const callerIdColorInput = document.getElementById('callerIdColorInput');
@@ -224,7 +217,7 @@ const collectPayload = () => {
       value = value ? Number(value) : (key === 'port' ? 5060 : null);
     }
     
-    // Handle password field specially
+// Handle password field specially
     if (key === 'password') {
       // If user entered a new password, use it
       if (value) {
@@ -378,6 +371,7 @@ const saveAllBtn = document.getElementById('saveAllBtn');
 const sipDebugSection = document.getElementById('sipDebugSection');
 const acuityDebugSection = document.getElementById('acuityDebugSection');
 const toastTimeoutInput = document.getElementById('toastTimeoutInput');
+const currentTimeoutDisplay = document.getElementById('currentTimeoutDisplay');
 const sipTransportSelect = document.getElementById('sipTransport');
 const sipPortInput = form.querySelector('[name="sip.port"]');
 
@@ -448,15 +442,22 @@ if (toastTimeoutInput) {
     }
   });
   
-  // Also save on blur (when user leaves the field)
-  toastTimeoutInput.addEventListener('blur', async (e) => {
-    clearTimeout(timeoutDebounce);
-    const value = e.target.value;
-    if (value && parseInt(value) >= 1000) {
-      await saveSettings('options');
-      setSaveStatus('Toast timeout saved', 'success');
-    }
-  });
+// Also save on blur (when user leaves the field)
+toastTimeoutInput.addEventListener('blur', async (e) => {
+  clearTimeout(timeoutDebounce);
+  const value = e.target.value;
+  if (value && parseInt(value) >= 1000) {
+    await saveSettings('options');
+    setSaveStatus('Toast timeout saved', 'success');
+  }
+});
+
+// Display current timeout value when page loads
+if (currentSettings && currentTimeoutDisplay) {
+  const currentTimeout = currentSettings.toast?.autoDismissMs || 20000;
+  const timeoutSeconds = Math.round(currentTimeout / 1000);
+  currentTimeoutDisplay.textContent = `Current: ${timeoutSeconds}s`;
+}
 }
 
 if (testAcuityBtn) {
@@ -603,46 +604,11 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     loadAboutInfo();
     setupWindowControls();
-    setupGithubButton();
   });
 } else {
   loadAboutInfo();
   setupWindowControls();
-  setupGithubButton();
 }
-
-// GitHub button functionality
-const setupGithubButton = () => {
-  const githubButton = document.getElementById('openGithubBtn');
-  const githubLink = document.getElementById('githubLink');
-  
-  // Handle button click
-  if (githubButton) {
-    githubButton.addEventListener('click', async () => {
-      try {
-        await window.trayAPI.openExternal('https://github.com/jaydenrussell/Sip-Toast');
-      } catch (error) {
-        console.error('Failed to open GitHub repository:', error);
-        // Fallback to window.open if API fails
-        window.open('https://github.com/jaydenrussell/Sip-Toast', '_blank');
-      }
-    });
-  }
-  
-  // Handle link click
-  if (githubLink) {
-    githubLink.addEventListener('click', async (e) => {
-      e.preventDefault();
-      try {
-        await window.trayAPI.openExternal('https://github.com/jaydenrussell/Sip-Toast');
-      } catch (error) {
-        console.error('Failed to open GitHub repository:', error);
-        // Fallback to window.open if API fails
-        window.open('https://github.com/jaydenrussell/Sip-Toast', '_blank');
-      }
-    });
-  }
-};
 
 // Event Log functionality
 const eventLogStream = document.getElementById('eventLogStream');
@@ -1216,46 +1182,13 @@ if (installUpdateBtn) {
     try {
       installUpdateBtn.disabled = true;
       installUpdateBtn.textContent = 'Installing...';
-      
-      // Show update overlay
-      const updateOverlay = document.getElementById('updateOverlay');
-      if (updateOverlay) {
-        updateOverlay.style.display = 'flex';
-        document.getElementById('updateOverlayTitle').textContent = 'Installing Update...';
-        document.getElementById('updateOverlayMessage').textContent = 'Please wait while the update is being installed.';
-      }
 
-      // Call Squirrel.Windows updater
+      // Directly call Squirrel.Windows updater without overlay
       await window.trayAPI.quitAndInstallUpdate();
-      
-      // This should not reach here as the app will restart, but just in case
-      setTimeout(() => {
-        if (updateOverlay) {
-          updateOverlay.style.display = 'none';
-        }
-        installUpdateBtn.disabled = false;
-        installUpdateBtn.textContent = 'Install Update';
-      }, 5000);
-      
     } catch (error) {
       console.error('Failed to install update:', error);
-      
-      // Hide overlay and reset button
-      const updateOverlay = document.getElementById('updateOverlay');
-      if (updateOverlay) {
-        updateOverlay.style.display = 'none';
-      }
-      
       installUpdateBtn.disabled = false;
       installUpdateBtn.textContent = 'Install Update';
-      
-      // Show error message
-      if (updateMessage) {
-        updateMessage.style.display = 'block';
-        updateMessage.style.background = 'rgba(239, 68, 68, 0.1)';
-        updateMessage.style.color = '#ef4444';
-        updateMessage.innerHTML = `❌ Failed to install update: ${error.message}`;
-      }
     }
   });
 }
