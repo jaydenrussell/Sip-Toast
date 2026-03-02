@@ -519,4 +519,3 @@ module.exports = {
   getWindowBounds,
   setWindowBounds
 };
-

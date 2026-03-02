@@ -1,75 +1,32 @@
-const EventEmitter = require('eventemitter3');
+const { EventEmitter } = require('events');
+const os = require('os');
 const sip = require('sip');
 const digest = require('sip/digest');
 const { logger } = require('../services/logger');
-const dns = require('dns').promises;
-const { URL } = require('url');
-const os = require('os');
-
-// Lazy load eventLogger to avoid issues before app is ready
-let _eventLogger = null;
-const getEventLogger = () => {
-  if (!_eventLogger) {
-    try {
-      _eventLogger = require('../services/eventLogger');
-    } catch (e) {
-      // Event logger not ready yet
-    }
-  }
-  return _eventLogger;
-};
 
 class SipManager extends EventEmitter {
   constructor(config) {
     super();
     this.config = config;
+    this.state = 'idle';
     this.sipStack = null;
+    this.registrationSession = null;
     this.registrationTimer = null;
     this.reconnectTimeout = null;
     this.connectionTimeout = null;
-    this.state = 'idle';
-    this.registrationSession = null;
+    this.localPort = null;
     this.serverHost = null;
-    this.serverPort = 5060;
-    this.localPort = 5060;
+    this.serverPort = null;
     this._incomingRequestHandler = null;
     this._isDestroyed = false;
   }
 
-  async updateConfig(nextConfig) {
-    logger.info('SIP configuration updated');
-    this.config = nextConfig;
-    await this.start();
-  }
-
-  _parseServerAddress(server) {
-    if (!server) return null;
-    
-    // Remove protocol if present
-    const address = server.replace(/^sips?:\/\//, '').replace(/^wss?:\/\//, '');
-    
-    // Extract hostname and port
-    let hostname = address;
-    let port = 5060;
-    
-    if (address.includes(':')) {
-      const parts = address.split(':');
-      hostname = parts[0];
-      port = parseInt(parts[1]) || 5060;
-    }
-    
-    // Remove path if present (e.g., /ws)
-    hostname = hostname.split('/')[0];
-    
-    return { hostname, port };
-  }
-
   async start() {
     logger.info(`🔄 Starting SIP manager (current state: ${this.state}, stack: ${!!this.sipStack})`);
-    
+
     // Stop existing connection cleanly
     this.stop();
-    
+
     // Small delay to ensure clean shutdown
     await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -96,7 +53,7 @@ class SipManager extends EventEmitter {
     logger.info(`   SIP URI: ${this.config.uri}`);
     logger.info(`   Username: ${this.config.username || 'N/A'}`);
     logger.info(`   Port: ${this.config.port || 5060}`);
-    
+
     // Set connection timeout
     const connectionTimeout = setTimeout(() => {
       if (this.state === 'registering') {
@@ -110,7 +67,7 @@ class SipManager extends EventEmitter {
         this.stop();
       }
     }, 15000);
-    
+
     try {
       // Configure transport based on selection
       const transport = this.config.transport || 'udp';
@@ -119,9 +76,9 @@ class SipManager extends EventEmitter {
         tcp: transport === 'tcp',
         tls: transport === 'tls'
       };
-      
+
       logger.info(`🔌 Starting SIP stack with ${transport.toUpperCase()} transport`);
-      
+
       // Always create a fresh callback handler to ensure it's properly bound
       // Use arrow function to preserve 'this' context
       this._incomingRequestHandler = (rq) => {
@@ -141,20 +98,20 @@ class SipManager extends EventEmitter {
           }
         }
       };
-      
+
       // Start SIP stack with transport configuration
       // Important: sip.start() must be called with the callback - it registers the handler
       // Use a random high port for local binding to avoid firewall prompts on well-known ports
       // SIP servers will send responses back to this port, and incoming INVITEs will come here
-      
+
       // Try to start SIP stack with retry logic for port binding
       let lastError = null;
       const maxPortRetries = 5;
-      
+
       for (let attempt = 1; attempt <= maxPortRetries; attempt++) {
         const localPort = this._getRandomPort();
         logger.info(`📝 Registering SIP callback handler on local port ${localPort}... (attempt ${attempt}/${maxPortRetries})`);
-        
+
         try {
           sip.start({
             ...transportOptions,
@@ -172,24 +129,24 @@ class SipManager extends EventEmitter {
               }
             }
           }, this._incomingRequestHandler);
-          
+
           // If we get here, the port binding succeeded
           logger.info(`✅ SIP callback handler registered on port ${localPort}`);
           this.localPort = localPort;
           lastError = null;
           break; // Exit the retry loop on success
-          
+
         } catch (bindError) {
           lastError = bindError;
-          
+
           // Check if this is a port binding error
-          if (bindError.code === 'EACCES' || bindError.code === 'EADDRINUSE' || 
+          if (bindError.code === 'EACCES' || bindError.code === 'EADDRINUSE' ||
               bindError.message.includes('EACCES') || bindError.message.includes('EADDRINUSE')) {
             logger.warn(`⚠️ Port ${localPort} unavailable (${bindError.message}), trying another port...`);
-            
+
             // Stop any partially initialized SIP stack
             try { sip.stop(); } catch {}
-            
+
             if (attempt < maxPortRetries) {
               // Wait a moment before trying another port
               await new Promise(resolve => setTimeout(resolve, 100));
@@ -201,7 +158,7 @@ class SipManager extends EventEmitter {
           }
         }
       }
-      
+
       // If all port attempts failed
       if (lastError) {
         throw new Error(`Failed to bind to any port after ${maxPortRetries} attempts: ${lastError.message}`);
@@ -210,10 +167,10 @@ class SipManager extends EventEmitter {
       this.sipStack = true;
       this.connectionTimeout = connectionTimeout;
       this._setState('registering');
-      
+
       // Start registration
       await this._register();
-      
+
       logger.info('✅ SIP stack started successfully - attempting registration...');
       logger.info('✅ SIP stack callback registered and ready to receive calls');
       logger.info(`   Callback handler: ${!!this._incomingRequestHandler}, Stack: ${!!this.sipStack}`);
@@ -251,7 +208,7 @@ class SipManager extends EventEmitter {
     const realm = domain;
     const transport = this.config.transport || 'udp';
     const port = this.config.port || (transport === 'tls' ? 5061 : 5060);
-    
+
     logger.info(`📝 Registering SIP account: ${username}@${domain}`);
     logger.info(`   Server: ${this.serverHost}:${port}, Transport: ${transport.toUpperCase()}, Realm: ${realm}`);
     logger.info(`   SIP stack active: ${!!this.sipStack}, State: ${this.state}`);
@@ -264,10 +221,10 @@ class SipManager extends EventEmitter {
     // Build SIP URI - use sips: for TLS, sip: for UDP/TCP
     const scheme = transport === 'tls' ? 'sips' : 'sip';
     const sipUri = this.config.uri || `${scheme}:${username}@${domain}`;
-    
+
     // Build contact URI using domain
     const contactUri = `${scheme}:${username}@${domain}`;
-    
+
     // Registration URI uses server hostname with appropriate scheme
     const registerRequest = {
       method: 'REGISTER',
@@ -287,7 +244,7 @@ class SipManager extends EventEmitter {
     // Send REGISTER request
     logger.info(`📤 Sending REGISTER to ${scheme}:${this.serverHost}:${port} (${transport.toUpperCase()})`);
     logger.info(`   To: ${sipUri}, From: ${sipUri}, Contact: ${contactUri}`);
-    
+
     sip.send(registerRequest, (rs) => {
       if (!rs) {
         logger.error('❌ Registration response is null or undefined');
@@ -295,27 +252,27 @@ class SipManager extends EventEmitter {
         this._scheduleReconnect();
         return;
       }
-      
+
       logger.info(`📥 Received registration response: ${rs.status} ${rs.reason || ''}`);
       logger.info(`   SIP stack still active: ${!!this.sipStack}, State: ${this.state}`);
-      
+
       if (rs.status === 401 || rs.status === 407) {
         // Authentication required - process challenge
         logger.info('🔐 Authentication challenge received, retrying with credentials...');
-        
+
         try {
           // Initialize session if needed
           if (!this.registrationSession) {
             this.registrationSession = { realm: realm };
           }
-          
+
           // Sign the request with authentication (signRequest handles initClientContext internally)
           digest.signRequest(this.registrationSession, registerRequest, rs, {
             user: username,
             password: this.config.password,
             realm: realm
           });
-          
+
           // Update CSeq and resend with authentication
           registerRequest.headers.cseq.seq++;
           logger.info('📤 Resending REGISTER with authentication...');
@@ -340,10 +297,10 @@ class SipManager extends EventEmitter {
       this._scheduleReconnect();
       return;
     }
-    
+
     if (rs.status >= 200 && rs.status < 300) {
       logger.info('✅ SIP successfully registered and connected');
-      
+
       // Verify SIP stack is still active
       if (!this.sipStack) {
         logger.error('❌ SIP stack is null after successful registration! This should not happen.');
@@ -351,36 +308,36 @@ class SipManager extends EventEmitter {
         this._scheduleReconnect();
         return;
       }
-      
+
       this._setState('registered');
-      
+
       // Schedule re-registration before expiration
       const expires = rs.headers.expires ? parseInt(rs.headers.expires) : 3600;
       const reRegisterInterval = Math.max(expires * 0.5 * 1000, 30000); // Re-register at 50% of expiration time
-      
+
       if (this.registrationTimer) {
         clearTimeout(this.registrationTimer);
         this.registrationTimer = null;
       }
-      
+
       this.registrationTimer = setTimeout(async () => {
         logger.info(`🔄 Re-registration timer fired (expires was: ${expires}s, re-registering at ${reRegisterInterval/1000}s)`);
         logger.info(`   Current state: ${this.state}, SIP stack active: ${!!this.sipStack}`);
-        
+
         // Verify SIP stack is still active before re-registering
         if (!this.sipStack) {
           logger.error('❌ SIP stack is not active during re-registration! Restarting...');
           await this.start();
           return;
         }
-        
+
         // Re-register to keep the connection alive
         await this._register();
       }, reRegisterInterval);
-      
+
       logger.info(`⏰ Scheduled re-registration in ${(reRegisterInterval / 1000).toFixed(0)}s (expires: ${expires}s)`);
       logger.info(`   Callback handler active: ${!!this._incomingRequestHandler}`);
-      
+
       // Clear connection timeout
       if (this.connectionTimeout) {
         clearTimeout(this.connectionTimeout);
@@ -419,7 +376,7 @@ class SipManager extends EventEmitter {
   _handleIncomingRequest(rq) {
     // Log that we received a request - this helps debug if callback is working
     logger.info(`📥 _handleIncomingRequest called - method: ${rq?.method || 'unknown'}, state: ${this.state}, stack active: ${!!this.sipStack}`);
-    
+
     try {
       // Verify SIP stack is still active
       if (!this.sipStack) {
@@ -433,7 +390,7 @@ class SipManager extends EventEmitter {
         }
         return;
       }
-      
+
       if (this.state !== 'registered') {
         logger.warn(`⚠️ Received SIP request but not registered (state: ${this.state})`);
         if (rq) {
@@ -465,7 +422,7 @@ class SipManager extends EventEmitter {
         const number = sip.parseUri(from.uri).user;
         const displayName = from.name || number;
         const normalizedNumber = (number || '').replace(/[^\d]/g, '');
-        
+
         logger.info(`📞 Incoming SIP call from ${displayName} (${number})`);
         logger.info(`   SIP stack state: ${this.state}, Active: ${!!this.sipStack}`);
 
@@ -486,13 +443,13 @@ class SipManager extends EventEmitter {
         // Emit incoming call event - ensure listeners are still attached
         const listenerCount = this.listenerCount('incomingCall');
         logger.info(`📢 Emitting incomingCall event (listeners: ${listenerCount})`);
-        
+
         if (listenerCount === 0) {
           logger.error(`❌ CRITICAL: No listeners attached to 'incomingCall' event!`);
           logger.error(`   This means the event handler was lost. Attempting to re-register...`);
           // Try to notify main.js to re-register - but this is a fallback
         }
-        
+
         try {
           this.emit('incomingCall', {
             displayName,
@@ -544,7 +501,7 @@ class SipManager extends EventEmitter {
 
   stop() {
     logger.info(`🛑 Stopping SIP manager (state: ${this.state}, stack: ${!!this.sipStack})`);
-    
+
     // Clear all timers first
     if (this.registrationTimer) {
       clearTimeout(this.registrationTimer);
@@ -577,52 +534,52 @@ class SipManager extends EventEmitter {
       logger.info('✅ SIP stack stopped and cleaned up');
     }
   }
-  
+
   // Restart the SIP connection - more robust than stop+start
   async restart() {
     logger.info('🔄 Restarting SIP connection...');
-    
+
     // Get current config before stopping
     const currentConfig = this.config;
-    
+
     // Stop completely
     this.stop();
-    
+
     // Wait for full cleanup
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     // Verify config is still valid
     if (!currentConfig || !currentConfig.server || !currentConfig.username || !currentConfig.password) {
       logger.error('❌ Cannot restart: configuration is incomplete');
       this._setState('error', { cause: 'Configuration incomplete after restart' });
       return false;
     }
-    
+
     // Start fresh
     this.config = currentConfig;
     await this.start();
-    
+
     logger.info(`✅ SIP restart complete (new state: ${this.state})`);
     return this.state === 'registered' || this.state === 'registering';
   }
-  
+
   // Complete cleanup for app shutdown - removes all listeners and clears all resources
   destroy() {
     this._isDestroyed = true;
-    
+
     // Stop SIP connection
     this.stop();
-    
+
     // Remove all event listeners to prevent memory leaks
     this.removeAllListeners('incomingCall');
     this.removeAllListeners('status');
-    
+
     // Clear handler reference
     this._incomingRequestHandler = null;
-    
+
     // Clear registration session
     this.registrationSession = null;
-    
+
     logger.info('🧹 SIP manager destroyed and resources cleaned up');
   }
 
@@ -637,9 +594,9 @@ class SipManager extends EventEmitter {
   _setState(state, meta) {
     const previousState = this.state;
     this.state = state;
-    
+
     // Log state changes to Event Log
-    const evtLogger = getEventLogger();
+    const evtLogger = require('../services/eventLogger');
     if (evtLogger) {
       const eventData = {
         previousState,
@@ -649,7 +606,7 @@ class SipManager extends EventEmitter {
         username: this.config?.username || null,
         ...meta
       };
-      
+
       if (state === 'registered' && previousState !== 'registered') {
         evtLogger.logSipRegistered(eventData);
       } else if (state === 'error' && previousState !== 'error') {
@@ -660,12 +617,56 @@ class SipManager extends EventEmitter {
         evtLogger.logSipDisconnected(eventData);
       }
     }
-    
+
     this.emit('status', {
       state,
       meta,
       timestamp: new Date().toISOString()
     });
+  }
+
+  _parseServerAddress(server) {
+    if (!server) return null;
+
+    // Extract protocol and remove it from address
+    let protocol = 'udp';
+    let address = server;
+
+    if (server.startsWith('sips://')) {
+      protocol = 'tls';
+      address = server.replace(/^sips:\/\//, '');
+    } else if (server.startsWith('sip://')) {
+      protocol = 'udp';
+      address = server.replace(/^sip:\/\//, '');
+    } else if (server.startsWith('wss://')) {
+      protocol = 'ws';
+      address = server.replace(/^wss:\/\//, '');
+    } else if (server.startsWith('ws://')) {
+      protocol = 'ws';
+      address = server.replace(/^ws:\/\//, '');
+    }
+
+    // Extract hostname and port
+    let hostname = address;
+    let port = 5060;
+
+    if (address.includes(':')) {
+      const parts = address.split(':');
+      hostname = parts[0];
+      port = parseInt(parts[1]) || 5060;
+    }
+
+    // Remove path if present (e.g., /ws)
+    hostname = hostname.split('/')[0];
+
+    // Set default port based on protocol
+    if (protocol === 'tls' && port === 5060) {
+      port = 5061; // Default TLS port
+    } else if (protocol === 'ws' && port === 5060) {
+      port = 443; // Default WebSocket port
+    }
+
+    return { hostname, port, protocol };
   }
 
   _generateTag() {
@@ -693,11 +694,11 @@ class SipManager extends EventEmitter {
     this.reconnectTimeout = setTimeout(async () => {
       logger.info('🔄 Attempting SIP reconnection...');
       this.reconnectTimeout = null; // Clear before starting
-      
+
       // Add retry logic with exponential backoff
       let retryCount = 0;
       const maxRetries = 3;
-      
+
       while (retryCount < maxRetries) {
         try {
           await this.start();
@@ -717,7 +718,7 @@ class SipManager extends EventEmitter {
       }
     }, 5000);
   }
-  
+
   // Health check method to verify SIP stack is still active
   checkHealth() {
     const health = {
@@ -728,17 +729,17 @@ class SipManager extends EventEmitter {
       registrationTimerActive: !!this.registrationTimer,
       reconnectScheduled: !!this.reconnectTimeout
     };
-    
+
     if (this.state === 'registered' && !this.sipStack) {
       logger.error('❌ HEALTH CHECK FAILED: State is registered but SIP stack is null!');
       return { ...health, healthy: false, issue: 'SIP stack lost' };
     }
-    
+
     if (this.state === 'registered' && !this._incomingRequestHandler) {
       logger.error('❌ HEALTH CHECK FAILED: State is registered but callback handler is missing!');
       return { ...health, healthy: false, issue: 'Callback handler lost' };
     }
-    
+
     return { ...health, healthy: this.state === 'registered' && !!this.sipStack && !!this._incomingRequestHandler };
   }
 }

@@ -3,8 +3,6 @@ const path = require('path');
 const fs = require('fs');
 const dns = require('dns').promises;
 
-app.setAppUserModelId('com.siptoast.app');
-
 // Handle Squirrel.Windows events (install, update, uninstall)
 // This must be done before any other initialization
 const { handleSquirrelEvent, checkForSquirrelEvent } = require('./squirrelEvents');
@@ -1046,7 +1044,10 @@ if (powerMonitor) {
 app.whenReady().then(async () => {
   logger.info('🚀 SIP Caller ID application starting');
   logger.info('📦 Initializing components...');
-  
+
+  // Set Windows app user model ID for proper taskbar behavior
+  app.setAppUserModelId('com.siptoast.app');
+
   // Check for and migrate settings from previous installations
   logger.info('🔄 Checking for previous installation settings...');
   const migrated = settings.checkAndMigrate();
@@ -1057,30 +1058,30 @@ app.whenReady().then(async () => {
   } else {
     logger.info('ℹ️  No previous installation settings found or migration not needed');
   }
-  
+
   // Initialize flyoutWindow BEFORE creating tray
   // This ensures flyoutWindow exists when tray click handler runs
   flyoutWindow = new TrayWindow();
   logger.info('✅ Control center window created');
-  
+
   createTray();
   logger.info('✅ System tray icon created');
   wireIpc();
   logger.info('✅ IPC handlers registered');
-  
+
   // Initialize update service
   updateService = new UpdateService();
-  
+
   // Set up update status event listener to update tray icon and send to renderer
   // Wrap entire handler in try-catch to prevent uncaught exceptions during update
   updateService.on('update-status', (status) => {
     // Early exit if app is shutting down
     if (isAppQuitting) return;
-    
+
     try {
       updateTrayIcon(status);
     } catch (e) { /* Ignore tray errors during shutdown */ }
-    
+
     // Send status to renderer (including when update is downloaded)
     try {
       // Check if window exists and is not destroyed before sending
@@ -1089,18 +1090,18 @@ app.whenReady().then(async () => {
       }
     } catch (e) { /* Ignore window errors during shutdown */ }
   });
-  
+
   // Set isAppQuitting when install starts
   updateService.on('installing', () => { isAppQuitting = true; });
-  
+
   // Start auto-check (this will also check on app load)
   updateService.startAutoCheck();
   logger.info('✅ Update service initialized');
-  
+
   // Reload events from file after app is ready (ensures log directory is properly resolved)
   getEventLogger().reloadEvents();
   logger.info('✅ Event logs loaded from persistent storage');
-  
+
   await boot();
   logger.info('✅ SIP manager and notification window initialized');
   applyAutoLaunch();

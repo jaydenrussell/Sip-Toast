@@ -38,14 +38,18 @@ class UpdateService extends EventEmitter {
     this._setupIpcHandlers();
   }
 
-  _setupIpcHandlers() {
-    ipcMain.handle('update:check', async () => {
-      return await this.checkForUpdates();
-    });
+_setupIpcHandlers() {
+ipcMain.handle('update:check', async () => {
+  return await this.checkForUpdates();
+});
 
-    ipcMain.handle('update:install', async () => {
+ipcMain.handle('update:install', async () => {
       await this.installUpdate();
       return this.getStatus();
+    });
+
+    ipcMain.handle('update:manual', async () => {
+      return await this.downloadUpdateInBackground();
     });
 
     ipcMain.handle('update:status', () => {
@@ -335,7 +339,7 @@ class UpdateService extends EventEmitter {
     this.startAutoCheck();
   }
 
-  async installUpdate() {
+async installUpdate() {
     if (!app.isPackaged) {
       logger.error('Cannot install update: Application is not packaged');
       this.setError('Update only available in packaged version');
@@ -345,6 +349,12 @@ class UpdateService extends EventEmitter {
     if (!this.state.downloaded) {
       logger.error('No update downloaded - cannot install');
       this.setError('No update ready to install');
+      return;
+    }
+
+    // Show update available notification
+    if (this.state.available && !this.state.downloaded) {
+      this.emit('update-available', this.state.version);
       return;
     }
 
@@ -417,12 +427,17 @@ class UpdateService extends EventEmitter {
   }
 
   // New method for background updates
-  async downloadUpdateInBackground() {
+async downloadUpdateInBackground() {
     if (this.state.downloading) return this.getStatus();
 
     this.state.downloading = true;
     this.state.progress = 0;
     this.emitStatus();
+
+    // Show update available notification
+    if (this.state.available && !this.state.downloaded) {
+      this.emit('update-available', this.state.version);
+    }
 
     try {
       const release = await this._fetch(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/releases/latest`);
