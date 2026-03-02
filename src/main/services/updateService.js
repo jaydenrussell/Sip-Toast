@@ -4,6 +4,7 @@
  */
 
 const { logger } = require('./logger');
+const { logUpdateCheck, logUpdateAvailable, logUpdateDownloaded, logUpdateInstalled, logUpdateError } = require('./eventLogger');
 const { EventEmitter } = require('events');
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
@@ -206,7 +207,7 @@ ipcMain.handle('update:install', async () => {
     }
   }
 
-  async checkForUpdates() {
+async checkForUpdates() {
     if (this.state.checking || this.state.downloading) return this.getStatus();
     if (!app.isPackaged) {
       logger.info('Skipping update check (dev)');
@@ -218,6 +219,7 @@ ipcMain.handle('update:install', async () => {
     this.emitStatus();
 
     try {
+      logUpdateCheck('manual');
       const release = await this._fetch(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/releases/latest`);
       this.state.checking = false;
       this.state.lastCheck = new Date();
@@ -234,6 +236,7 @@ ipcMain.handle('update:install', async () => {
         return this.getStatus();
       }
 
+      logUpdateAvailable(version, `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases/download/${release.tag_name}/`);
       logger.info(`Update available: v${version}`);
 
       this.state.available = true;
@@ -248,10 +251,12 @@ ipcMain.handle('update:install', async () => {
       this.state.progress = success ? 100 : 0;
 
       if (success) {
+        logUpdateDownloaded(version);
         logger.info(`Update v${version} ready`);
       }
       this.emitStatus();
     } catch (error) {
+      logUpdateError(error.message, 'download');
       logger.error(`Update check failed: ${error.message}`);
       this.state.checking = false;
       this.state.downloading = false;
@@ -416,9 +421,12 @@ async installUpdate() {
       // Exit the application
       app.quit();
 
+      // Log successful installation
+      logUpdateInstalled(this.state.version);
       this.state.installing = false;
       this.emitStatus();
     } catch (err) {
+      logUpdateError(err.message, 'installation');
       logger.error(`Update installation failed: ${err.message}`);
       this.setError(`Installation failed: ${err.message}`);
       this.state.installing = false;
