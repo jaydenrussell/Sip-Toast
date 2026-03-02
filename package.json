@@ -1,7 +1,7 @@
 {
   "name": "sip-caller-id",
-  "version": "0.72.141",
-  "buildDate": "2026-02-28T13:31:26.564Z",
+  "version": "1.0.4",
+  "buildDate": "2026-03-02T06:34:13.522Z",
   "description": "Windows 11-ready SIP caller ID toast that looks up clients via Acuity Scheduling.",
   "main": "src/main/main.js",
   "author": "Jayden Russell",
@@ -16,9 +16,6 @@
     "dev": "electronmon .",
     "lint": "eslint \"src/**/*.js\"",
     "package:squirrel": "electron-builder --win --config.win.target=squirrel",
-    "build:release": "node scripts/build-release.js",
-    "version:manager": "node scripts/version-manager.js",
-    "upload:packages": "node scripts/upload-packages.js",
     "create-cert": "powershell -ExecutionPolicy Bypass -File scripts/create-certificate.ps1",
     "release": "node scripts/create-release.js"
   },
