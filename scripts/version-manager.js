@@ -10,13 +10,14 @@ const packageJsonPath = path.join(__dirname, '..', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const currentVersion = packageJson.version;
 
-// Increment version
+// Increment version based on strategy
 const newVersion = incrementVersion(currentVersion);
 console.log(`Current version: ${currentVersion}`);
 console.log(`New version: ${newVersion}`);
 
 // Update package.json
 packageJson.version = newVersion;
+packageJson.buildDate = new Date().toISOString();
 fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
 // Build the application
