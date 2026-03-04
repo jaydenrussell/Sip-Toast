@@ -19,31 +19,16 @@ if (!fs.existsSync(packagesDir)) {
 const fullPackage = `SIPCallerID-${version}-full.nupkg`;
 const fullPackagePath = path.join(packagesDir, fullPackage);
 
-// Create delta package (if previous version exists)
-const previousVersion = getPreviousVersion(version);
-let deltaPackage = null;
-if (previousVersion) {
-  deltaPackage = `SIPCallerID-${version}-delta.nupkg`;
-}
-
-// Create full package
+// Create full package only (delta packages removed)
 createFullPackage(fullPackagePath);
-
-// Create delta package if needed
-if (deltaPackage) {
-  createDeltaPackage(deltaPackage, previousVersion, version);
-}
 
 // Create RELEASES file
 const releasesPath = path.join(packagesDir, 'RELEASES');
-const releasesContent = createReleasesContent(version, fullPackage, deltaPackage);
+const releasesContent = createReleasesContent(version, fullPackage);
 fs.writeFileSync(releasesPath, releasesContent);
 
 console.log('NuGet packages created successfully!');
 console.log(`Full package: ${fullPackagePath}`);
-if (deltaPackage) {
-  console.log(`Delta package: ${deltaPackage}`);
-}
 
 function getPreviousVersion(currentVersion) {
   // Get previous version from Git tags
@@ -146,15 +131,10 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
   console.log(`Created delta package: ${packageName}`);
 }
 
-function createReleasesContent(version, fullPackage, deltaPackage) {
+function createReleasesContent(version, fullPackage) {
   const content = [];
   const fullPackagePath = path.join(__dirname, '..', 'packages', fullPackage);
   const fullPackageSize = fs.statSync(fullPackagePath).size;
   content.push(`${version}|${fullPackage}|${fullPackageSize}|1234567890`);
-  if (deltaPackage) {
-    const deltaPackagePath = path.join(__dirname, '..', 'packages', deltaPackage);
-    const deltaPackageSize = fs.statSync(deltaPackagePath).size;
-    content.push(`${version}|${deltaPackage}|${deltaPackageSize}|1234567891`);
-  }
   return content.join('\n');
 }

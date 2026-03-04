@@ -832,7 +832,7 @@ const restartSipConnection = async () => {
 const boot = async () => {
   // Initialize notification window first and wait for it to be ready
   notificationWindow = new NotificationWindow();
-  
+
   // Wait for notification window to be ready before proceeding
   await new Promise((resolve) => {
     if (notificationWindow.isReady) {
@@ -851,7 +851,7 @@ const boot = async () => {
           }, 500);
         }
       }, 100);
-      
+
       // Timeout after 5 seconds
       setTimeout(() => {
         clearInterval(checkReady);
@@ -859,9 +859,9 @@ const boot = async () => {
       }, 5000);
     }
   });
-  
+
   logger.info('✅ Notification window ready');
-  
+
   // Now initialize SIP manager and set up event listeners
   sipManager = new SipManager(cachedSettings.sip);
   // flyoutWindow is already created in app.whenReady() before createTray() is called
@@ -869,11 +869,11 @@ const boot = async () => {
   // Set up event listener BEFORE starting SIP
   // Remove any existing listeners first to prevent duplicates
   sipManager.removeAllListeners('incomingCall');
-  
+
   // Create a persistent handler function
   const incomingCallHandler = async (call) => {
     const { logIncomingCall, logToastDeployed } = getEventLogger();
-    
+
     // Log incoming SIP call
     logIncomingCall({
       displayName: call.displayName,
@@ -881,14 +881,14 @@ const boot = async () => {
       normalizedNumber: call.normalizedNumber,
       timestamp: call.timestamp
     });
-    
+
     logger.info(`📞 Incoming SIP call received from ${call.displayName} (${call.number})`);
     logger.info(`🔍 Performing lookups for phone number: ${call.normalizedNumber}`);
-    
+
     // Use cached settings
     const acuityConfig = cachedSettings.acuity || {};
     const hasAcuity = acuityConfig?.enabled && acuityConfig?.userId && acuityConfig?.apiKey;
-    
+
     // Perform Acuity lookup
     let acuity;
     if (hasAcuity) {
@@ -897,15 +897,15 @@ const boot = async () => {
     } else {
       acuity = { found: false, clientName: null, appointmentTime: null };
     }
-    
+
     if (acuity.found) {
       logger.info(`✅ Acuity lookup found: ${acuity.clientName} - Next appointment: ${acuity.appointmentTime || 'N/A'}`);
     } else {
       logger.info('❌ Acuity lookup: No client match found');
     }
-    
+
     logger.info('🔔 Showing toast notification');
-    
+
     const toastPayload = {
       callerLabel: call.displayName || call.number,
       phoneNumber: call.number,
@@ -915,19 +915,25 @@ const boot = async () => {
       acuityConfigured: hasAcuity, // Indicate if Acuity API is configured
       timestamp: call.timestamp
     };
-    
+
     // Log toast deployment
     logToastDeployed(toastPayload);
-    
+
+    // Ensure notificationWindow exists before showing
+    if (!notificationWindow || !notificationWindow.window || notificationWindow.window.isDestroyed()) {
+      logger.error('❌ Notification window not initialized, cannot show toast');
+      return;
+    }
+
     notificationWindow.show(toastPayload);
   };
-  
+
   // Register the handler
   sipManager.on('incomingCall', incomingCallHandler);
-  
+
   // Log that we've registered the handler
   logger.info(`✅ Registered incomingCall handler (listeners: ${sipManager.listenerCount('incomingCall')})`);
-  
+
   // Set up a periodic check to ensure the handler is still registered (every 30s for memory efficiency)
   const handlerCheckInterval = setInterval(() => {
     if (!sipManager) return;
@@ -938,7 +944,7 @@ const boot = async () => {
       logger.info(`✅ Re-registered incomingCall handler`);
     }
   }, 30000);
-  
+
   // Store interval reference for cleanup
   if (!global.sipHandlerCheckIntervals) {
     global.sipHandlerCheckIntervals = [];
@@ -966,16 +972,16 @@ const boot = async () => {
   // Start SIP connection after ensuring everything is initialized
   // Wait for network to be ready (especially important on system startup)
   await waitForNetwork();
-  
+
   // Wait a moment to ensure all event listeners are properly registered and notification window is ready
   await new Promise(resolve => setTimeout(resolve, 1500));
-  
+
   logger.info('🚀 Starting SIP connection...');
   await sipManager.start();
   latestSipStatus = { state: sipManager.getState(), timestamp: new Date().toISOString() };
   flyoutWindow?.send('sip:status', latestSipStatus);
   logger.info('✅ SIP manager started and ready to receive calls');
-  
+
   // Set up periodic health check to detect if SIP stack becomes inactive
   const healthCheckInterval = setInterval(() => {
     if (sipManager) {
@@ -991,7 +997,7 @@ const boot = async () => {
       }
     }
   }, 30000); // Check every 30 seconds
-  
+
   // Store interval for cleanup
   if (!global.sipHealthCheckIntervals) {
     global.sipHealthCheckIntervals = [];

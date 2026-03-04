@@ -1,22 +1,9 @@
 const { app } = require('electron');
-const { createLogger, format, transports } = require('winston');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-const resolveLogDirectory = () => {
-  try {
-    if (app?.getPath) {
-      return path.join(app.getPath('userData'), 'logs');
-    }
-  } catch (error) {
-    // Fallback below if app isn't ready yet.
-  }
-
-  return path.join(os.homedir(), 'AppData', 'Roaming', 'sip-toast', 'logs');
-};
-
-const logDir = resolveLogDirectory();
+const logDir = path.join(os.homedir(), 'AppData', 'Roaming', 'sip-toast', 'logs');
 fs.mkdirSync(logDir, { recursive: true });
 const eventLogFilePath = path.join(logDir, 'sip-toast-events.log');
 const eventJsonFilePath = path.join(logDir, 'sip-toast-events.json');
@@ -25,45 +12,6 @@ const eventJsonFilePath = path.join(logDir, 'sip-toast-events.json');
 // Events are persisted to file, so this is just a hot cache for recent events
 const MAX_IN_MEMORY_EVENTS = 500; // Reduced from 1000 to 250KB max
 const eventLogBuffer = [];
-
-const eventLogger = createLogger({
-  level: 'info',
-  format: format.combine(
-    format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
-    format.printf(info => {
-      const { timestamp, level, message, ...meta } = info;
-      const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
-      return `${timestamp} [${level.toUpperCase()}] ${message}${metaStr}`;
-    })
-  ),
-  transports: [
-    new transports.File({
-      filename: eventLogFilePath,
-      maxsize: 5 * 1024 * 1024, // 5MB
-      maxFiles: 10,
-      tailable: true
-    })
-  ]
-});
-
-// Get the current JSON file path (may change if app.getPath becomes available)
-const getEventJsonFilePath = () => {
-  const currentLogDir = resolveLogDirectory();
-  return path.join(currentLogDir, 'sip-toast-events.json');
-};
-
-// Write event to JSON file (one event per line for easy parsing)
-const writeEventToJsonFile = (event) => {
-  try {
-    // Use current log directory (in case it changed)
-    const jsonFilePath = getEventJsonFilePath();
-    // Append event as JSON line
-    const jsonLine = JSON.stringify(event) + '\n';
-    fs.appendFileSync(jsonFilePath, jsonLine, 'utf8');
-  } catch (error) {
-    console.error('Failed to write event to JSON file:', error);
-  }
-};
 
 // Helper to add event to buffer with memory limit and persist to file
 const addToBuffer = (event) => {
@@ -74,6 +22,19 @@ const addToBuffer = (event) => {
   eventLogBuffer.push(event);
   // Also write to JSON file for persistence (full history is in file)
   writeEventToJsonFile(event);
+};
+
+// Write event to JSON file (one event per line for easy parsing)
+const writeEventToJsonFile = (event) => {
+  try {
+    // Use current log directory (in case it changed)
+    const jsonFilePath = eventJsonFilePath;
+    // Append event as JSON line
+    const jsonLine = JSON.stringify(event) + '\n';
+    fs.appendFileSync(jsonFilePath, jsonLine, 'utf8');
+  } catch (error) {
+    console.error('Failed to write event to JSON file:', error);
+  }
 };
 
 // Log incoming SIP call
@@ -87,8 +48,8 @@ const logIncomingCall = (callData) => {
       normalizedNumber: callData.normalizedNumber || callData.number?.replace(/[^\d]/g, '')
     }
   };
-  
-  eventLogger.info(`SIP_INCOMING: Call from ${callData.displayName} (${callData.number})`, event);
+
+  console.log(`SIP_INCOMING: Call from ${callData.displayName} (${callData.number})`, event);
   addToBuffer(event);
   return event;
 };
@@ -105,8 +66,8 @@ const logToastDeployed = (toastData) => {
       lookupState: toastData.lookupState || 'unknown'
     }
   };
-  
-  eventLogger.info(`TOAST_DEPLOYED: ${toastData.callerLabel} (${toastData.phoneNumber})`, event);
+
+  console.log(`TOAST_DEPLOYED: ${toastData.callerLabel} (${toastData.phoneNumber})`, event);
   addToBuffer(event);
   return event;
 };
@@ -123,8 +84,8 @@ const logToastTimeout = (durationMs, phoneNumber) => {
       phoneNumber: phoneNumber || 'unknown'
     }
   };
-  
-  eventLogger.info(`TOAST_TIMEOUT: Duration ${durationSeconds}s for ${phoneNumber || 'unknown'}`, event);
+
+  console.log(`TOAST_TIMEOUT: Duration ${durationSeconds}s for ${phoneNumber || 'unknown'}`, event);
   addToBuffer(event);
   return event;
 };
@@ -140,8 +101,8 @@ const logToastClick = (phoneNumber, success = true) => {
       success
     }
   };
-  
-  eventLogger.info(`TOAST_CLICK: User copied ${phoneNumber || 'unknown'} to clipboard`, event);
+
+  console.log(`TOAST_CLICK: User copied ${phoneNumber || 'unknown'} to clipboard`, event);
   addToBuffer(event);
   return event;
 };
@@ -155,8 +116,8 @@ const logUpdateCheck = (trigger = 'manual') => {
       trigger // 'manual', 'auto', 'app_load'
     }
   };
-  
-  eventLogger.info(`UPDATE_CHECK: Check triggered by ${trigger}`, event);
+
+  console.log(`UPDATE_CHECK: Check triggered by ${trigger}`, event);
   addToBuffer(event);
   return event;
 };
@@ -171,8 +132,8 @@ const logUpdateAvailable = (version, downloadUrl = null) => {
       downloadUrl
     }
   };
-  
-  eventLogger.info(`UPDATE_AVAILABLE: Version ${version} is available`, event);
+
+  console.log(`UPDATE_AVAILABLE: Version ${version} is available`, event);
   addToBuffer(event);
   return event;
 };
@@ -187,8 +148,8 @@ const logUpdateDownloaded = (version, filePath = null) => {
       filePath
     }
   };
-  
-  eventLogger.info(`UPDATE_DOWNLOADED: Version ${version} downloaded`, event);
+
+  console.log(`UPDATE_DOWNLOADED: Version ${version} downloaded`, event);
   addToBuffer(event);
   return event;
 };
@@ -202,8 +163,8 @@ const logUpdateInstalled = (version) => {
       version
     }
   };
-  
-  eventLogger.info(`UPDATE_INSTALLED: Version ${version} installed`, event);
+
+  console.log(`UPDATE_INSTALLED: Version ${version} installed`, event);
   addToBuffer(event);
   return event;
 };
@@ -218,8 +179,8 @@ const logUpdateError = (errorMessage, context = '') => {
       context
     }
   };
-  
-  eventLogger.error(`UPDATE_ERROR: ${errorMessage} (${context})`, event);
+
+  console.error(`UPDATE_ERROR: ${errorMessage} (${context})`, event);
   addToBuffer(event);
   return event;
 };
@@ -235,8 +196,8 @@ const logSipRegistering = (eventData) => {
       username: eventData.username
     }
   };
-  
-  eventLogger.info(`SIP_REGISTERING: Attempting to register to ${eventData.server} (${eventData.transport})`, event);
+
+  console.log(`SIP_REGISTERING: Attempting to register to ${eventData.server} (${eventData.transport})`, event);
   addToBuffer(event);
   return event;
 };
@@ -253,8 +214,8 @@ const logSipRegistered = (eventData) => {
       expires: eventData.expires
     }
   };
-  
-  eventLogger.info(`SIP_REGISTERED: Successfully registered to ${eventData.server} as ${eventData.username}`, event);
+
+  console.log(`SIP_REGISTERED: Successfully registered to ${eventData.server} as ${eventData.username}`, event);
   addToBuffer(event);
   return event;
 };
@@ -271,8 +232,8 @@ const logSipDisconnected = (eventData) => {
       reason: eventData.reason || 'stopped'
     }
   };
-  
-  eventLogger.info(`SIP_DISCONNECTED: Disconnected from ${eventData.server} (reason: ${eventData.reason || 'stopped'})`, event);
+
+  console.log(`SIP_DISCONNECTED: Disconnected from ${eventData.server} (reason: ${eventData.reason || 'stopped'})`, event);
   addToBuffer(event);
   return event;
 };
@@ -291,8 +252,8 @@ const logSipError = (errorMessage, eventData) => {
       cause: eventData.cause
     }
   };
-  
-  eventLogger.error(`SIP_ERROR: ${errorMessage} (server: ${eventData.server})`, event);
+
+  console.error(`SIP_ERROR: ${errorMessage} (server: ${eventData.server})`, event);
   addToBuffer(event);
   return event;
 };
@@ -336,18 +297,17 @@ const deleteAllEvents = () => {
   try {
     // Clear in-memory buffer
     eventLogBuffer.length = 0;
-    
+
     // Clear log file by truncating it
     if (fs.existsSync(eventLogFilePath)) {
       fs.writeFileSync(eventLogFilePath, '', 'utf8');
     }
-    
+
     // Clear JSON file (use current path)
-    const jsonFilePath = getEventJsonFilePath();
-    if (fs.existsSync(jsonFilePath)) {
-      fs.writeFileSync(jsonFilePath, '', 'utf8');
+    if (fs.existsSync(eventJsonFilePath)) {
+      fs.writeFileSync(eventJsonFilePath, '', 'utf8');
     }
-    
+
     return { success: true, message: 'All events deleted successfully' };
   } catch (error) {
     return { success: false, message: `Failed to delete events: ${error.message}` };
@@ -362,21 +322,21 @@ const loadEventsFromFile = (clearBuffer = false) => {
     if (clearBuffer) {
       eventLogBuffer.length = 0;
     }
-    
+
     // Use current log directory (in case it changed)
-    const jsonFilePath = getEventJsonFilePath();
-    
+    const jsonFilePath = eventJsonFilePath;
+
     // First try to load from JSON file (preferred format)
     if (fs.existsSync(jsonFilePath)) {
       const jsonContent = fs.readFileSync(jsonFilePath, 'utf8');
       if (jsonContent.trim()) {
         const lines = jsonContent.split('\n').filter(line => line.trim());
-        
+
         // Memory optimization: Only load the most recent events
         // Start from the end of the file and work backwards
         const startIndex = Math.max(0, lines.length - MAX_IN_MEMORY_EVENTS);
         let loadedCount = 0;
-        
+
         for (let i = startIndex; i < lines.length; i++) {
           const line = lines[i];
           try {
@@ -403,14 +363,14 @@ const loadEventsFromFile = (clearBuffer = false) => {
         return;
       }
     }
-    
+
     // Fallback: Try to parse winston log format if JSON file doesn't exist
     if (fs.existsSync(eventLogFilePath)) {
       const fileContent = fs.readFileSync(eventLogFilePath, 'utf8');
       if (!fileContent.trim()) {
         return;
       }
-      
+
       // Parse winston log format: "YYYY-MM-DD HH:mm:ss.SSS [LEVEL] message {json}"
       const lines = fileContent.split('\n').filter(line => line.trim());
       let loadedCount = 0;
@@ -423,7 +383,7 @@ const loadEventsFromFile = (clearBuffer = false) => {
             // Convert timestamp to ISO format
             const date = new Date(timestamp.replace(' ', 'T'));
             const isoTimestamp = date.toISOString();
-            
+
             // Try to parse JSON metadata if present
             if (jsonStr) {
               try {
@@ -438,7 +398,7 @@ const loadEventsFromFile = (clearBuffer = false) => {
                 // Not valid JSON, continue
               }
             }
-            
+
             // If we can't parse structured data, create a basic event from the log line
             const typeMatch = message.match(/^(SIP_INCOMING|TOAST_DEPLOYED|TOAST_TIMEOUT|TOAST_CLICK):/);
             if (typeMatch) {

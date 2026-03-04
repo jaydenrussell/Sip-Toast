@@ -2,65 +2,49 @@ if (typeof global.location === 'undefined') {
   global.location = { href: 'app://sip-toast' };
 }
 
-const axios = require('axios');
 const { logger } = require('./logger');
 const { get } = require('../settings');
 const { normalizePhone } = require('./phoneUtils');
+const fetch = require('node-fetch');
 
 const clientCache = new Map();
 const CACHE_TTL_MS = 60 * 1000;
-const MAX_CACHE_SIZE = 300; // Further reduced from 500 to save memory
-const CLEANUP_INTERVAL = 3 * 60 * 1000; // 3 minutes (more frequent cleanup)
+const MAX_CACHE_SIZE = 300;
+const CLEANUP_INTERVAL = 3 * 60 * 1000;
 
-// Create optimized axios instance with default timeout
-const apiClient = axios.create({
-  timeout: 10000,
-  validateStatus: (status) => status < 500
-});
-
-// Periodic cache cleanup with memory optimization
-// Lazy-start: only start cleanup when cache has entries (optimization)
 let cleanupInterval = null;
 const startCleanupInterval = () => {
-  if (cleanupInterval) return; // Already started
-  
+  if (cleanupInterval) return;
+
   cleanupInterval = setInterval(() => {
-    // Skip cleanup if cache is empty (optimization)
     if (clientCache.size === 0) return;
-    
+
     const now = Date.now();
     let cleaned = 0;
     let deleteCount = 0;
     const keysToDelete = [];
-    
-    // Collect expired keys first (more efficient) - use direct iteration
+
     for (const [key, entry] of clientCache.entries()) {
       if (entry.expiresAt <= now) {
         keysToDelete[deleteCount++] = key;
-        // Limit array size
         if (deleteCount >= MAX_CACHE_SIZE) break;
       }
     }
-    
-    // Delete expired entries
+
     keysToDelete.length = deleteCount;
     for (let i = 0; i < keysToDelete.length; i++) {
       clientCache.delete(keysToDelete[i]);
       cleaned++;
     }
-    keysToDelete.length = 0; // Clear for GC
-    
-    // If cache is still too large, remove oldest entries (memory-optimized)
+    keysToDelete.length = 0;
+
     if (clientCache.size >= MAX_CACHE_SIZE) {
-      // More memory-efficient: collect only keys with expiresAt, sort in-place
       const entries = [];
       let entryCount = 0;
       for (const [key, entry] of clientCache.entries()) {
         entries[entryCount++] = { key, expiresAt: entry.expiresAt };
-        // Limit array size to prevent excessive memory usage
         if (entryCount >= MAX_CACHE_SIZE) break;
       }
-      // Sort only what we collected
       entries.length = entryCount;
       entries.sort((a, b) => a.expiresAt - b.expiresAt);
       const toRemove = Math.floor(MAX_CACHE_SIZE * 0.3);
@@ -68,15 +52,13 @@ const startCleanupInterval = () => {
         clientCache.delete(entries[i].key);
         cleaned++;
       }
-      // Clear array reference for GC
       entries.length = 0;
     }
-    
+
     if (cleaned > 0) {
       logger.debug(`🧹 Cleaned ${cleaned} expired Acuity cache entries (${clientCache.size} remaining)`);
     }
-    
-    // Stop interval if cache is empty (optimization)
+
     if (clientCache.size === 0 && cleanupInterval) {
       clearInterval(cleanupInterval);
       cleanupInterval = null;
@@ -84,7 +66,6 @@ const startCleanupInterval = () => {
   }, CLEANUP_INTERVAL);
 };
 
-// Cleanup interval on process exit
 if (typeof process !== 'undefined') {
   process.on('exit', () => {
     if (cleanupInterval) {
@@ -94,6 +75,36 @@ if (typeof process !== 'undefined') {
   });
 }
 
+const apiClient = {
+  async get(url, options = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options.timeout || 10000);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'SIPCallerID',
+          'Accept': 'application/vnd.github.v3+json',
+          ...options.headers
+        }
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      return response;
+    } catch (error) {
+      clearTimeout(timeout);
+      throw error;
+    }
+  }
+};
+
 async function lookupClientByPhone(rawPhone) {
   const config = get('acuity');
   const phone = normalizePhone(rawPhone);
@@ -102,26 +113,23 @@ async function lookupClientByPhone(rawPhone) {
     return { found: false, phone };
   }
 
-      const cacheKey = `${config.userId}:${phone}`;
-      const cached = clientCache.get(cacheKey);
-      const now = Date.now(); // Cache Date.now() call
-      if (cached && cached.expiresAt > now) {
-        return cached.value;
-      }
+  const cacheKey = `${config.userId}:${phone}`;
+  const cached = clientCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
 
   try {
     logger.info(`🔍 Querying Acuity API for phone: ${phone}`);
-    
-        // First, lookup client by phone number
-        const clientsResponse = await apiClient.get('https://acuityscheduling.com/api/v1/clients', {
-          params: { phone },
-          auth: {
-            username: config.userId,
-            password: config.apiKey
-          }
-        });
 
-    // Handle 400 Bad Request
+    const clientsResponse = await apiClient.get('https://acuityscheduling.com/api/v1/clients', {
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${config.userId}:${config.apiKey}`).toString('base64')}`
+      },
+      timeout: 10000
+    });
+
     if (clientsResponse.status === 400) {
       logger.error('❌ Acuity API returned 400 Bad Request');
       logger.error('   Possible issues:');
@@ -130,40 +138,35 @@ async function lookupClientByPhone(rawPhone) {
       return { found: false, phone, error: 'Bad Request - Invalid parameters' };
     }
 
-    // Handle 401 Unauthorized
     if (clientsResponse.status === 401) {
       logger.error('❌ Acuity API authentication failed (401 Unauthorized)');
       logger.error('   Please check your Acuity User ID and API Key');
       return { found: false, phone, error: 'Authentication failed - Invalid credentials' };
     }
 
-    // Handle 403 Forbidden
     if (clientsResponse.status === 403) {
       logger.error('❌ Acuity API access forbidden (403)');
       logger.error('   Your API key may not have permission to access this resource');
       return { found: false, phone, error: 'Access forbidden - Insufficient permissions' };
     }
 
-    // Handle non-200 success responses
     if (clientsResponse.status !== 200) {
       logger.warn(`⚠️ Acuity API returned status ${clientsResponse.status}`);
       return { found: false, phone, error: `API returned status ${clientsResponse.status}` };
     }
 
-    // Validate response data structure
-    if (!clientsResponse.data) {
+    const clients = await clientsResponse.json();
+    if (!Array.isArray(clients)) {
       logger.error('❌ Acuity API returned invalid response (no data)');
       return { found: false, phone, error: 'Invalid API response format' };
     }
 
-    const clients = Array.isArray(clientsResponse.data) ? clientsResponse.data : [];
     logger.info(`📊 Acuity API returned ${clients.length} client(s) for phone ${phone}`);
-    
+
     if (clients.length === 0) {
       return { found: false, phone };
     }
 
-    // Get the first matching client
     const client = clients[0];
     const clientName = client.firstName && client.lastName
       ? `${client.firstName} ${client.lastName}`
@@ -171,18 +174,15 @@ async function lookupClientByPhone(rawPhone) {
 
     logger.info(`✅ Found client: ${clientName} (ID: ${client.id})`);
 
-    // Now lookup appointments for this client
     let appointmentTime = null;
     try {
-          const appointmentsResponse = await apiClient.get('https://acuityscheduling.com/api/v1/appointments', {
-            params: { clientID: client.id },
-            auth: {
-              username: config.userId,
-              password: config.apiKey
-            }
-          });
+      const appointmentsResponse = await apiClient.get('https://acuityscheduling.com/api/v1/appointments', {
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`${config.userId}:${config.apiKey}`).toString('base64')}`
+        },
+        timeout: 10000
+      });
 
-      // Handle error responses for appointments
       if (appointmentsResponse.status === 400) {
         logger.warn('⚠️ Acuity API returned 400 when fetching appointments');
       } else if (appointmentsResponse.status === 401) {
@@ -190,15 +190,14 @@ async function lookupClientByPhone(rawPhone) {
       } else if (appointmentsResponse.status !== 200) {
         logger.warn(`⚠️ Acuity API returned status ${appointmentsResponse.status} when fetching appointments`);
       } else {
-        const appointments = Array.isArray(appointmentsResponse.data) ? appointmentsResponse.data : [];
+        const appointments = await appointmentsResponse.json();
         logger.info(`📅 Found ${appointments.length} appointment(s) for client ${clientName}`);
-        
-        // Find the next upcoming appointment
+
         const now = new Date();
         const upcomingAppointments = appointments
           .filter(apt => apt.datetime && new Date(apt.datetime) > now)
           .sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
-        
+
         const appointment = upcomingAppointments[0];
         if (appointment) {
           appointmentTime = appointment.datetime;
@@ -220,61 +219,51 @@ async function lookupClientByPhone(rawPhone) {
         logger.warn(`⚠️ Could not fetch appointments for client: ${aptError.message}`);
       }
     }
-    
-    // Store only essential data to save memory
+
     const value = {
       found: true,
       phone,
-      clientName, // Only store name, not full client object
+      clientName,
       appointmentTime
-      // Removed: clientId, email, phoneNumber (not needed for display)
     };
 
-    // Log match result (value.found is always true here)
     logger.info(`✅ Acuity match: ${value.clientName}${value.appointmentTime ? ` - Next: ${value.appointmentTime}` : ''}`);
 
-        // Cache cleanup is handled by periodic interval, no need to do it here
-        // Only check size and let interval handle cleanup (memory-optimized)
-        if (clientCache.size >= MAX_CACHE_SIZE * 1.5) {
-          // If cache is way too large, do immediate cleanup
-          const cleanupNow = Date.now();
-          let deleteCount = 0;
-          const keysToDelete = [];
-          for (const [key, entry] of clientCache.entries()) {
-            if (entry.expiresAt <= cleanupNow) {
-              keysToDelete[deleteCount++] = key;
-              // Limit array size
-              if (deleteCount >= MAX_CACHE_SIZE) break;
-            }
-          }
-          // Use for loop for better performance
-          keysToDelete.length = deleteCount;
-          for (let i = 0; i < keysToDelete.length; i++) {
-            clientCache.delete(keysToDelete[i]);
-          }
-          // Clear array reference for GC
-          keysToDelete.length = 0;
+    if (clientCache.size >= MAX_CACHE_SIZE * 1.5) {
+      const cleanupNow = Date.now();
+      let deleteCount = 0;
+      const keysToDelete = [];
+      for (const [key, entry] of clientCache.entries()) {
+        if (entry.expiresAt <= cleanupNow) {
+          keysToDelete[deleteCount++] = key;
+          if (deleteCount >= MAX_CACHE_SIZE) break;
         }
+      }
+      keysToDelete.length = deleteCount;
+      for (let i = 0; i < keysToDelete.length; i++) {
+        clientCache.delete(keysToDelete[i]);
+      }
+      keysToDelete.length = 0;
+    }
 
-        const now = Date.now();
-        
-        // Start cleanup interval if not already started (lazy-start optimization)
-        if (!cleanupInterval) {
-          startCleanupInterval();
-        }
-        clientCache.set(cacheKey, {
-          value,
-          expiresAt: now + CACHE_TTL_MS
-        });
+    const now = Date.now();
 
-        return value;
+    if (!cleanupInterval) {
+      startCleanupInterval();
+    }
+    clientCache.set(cacheKey, {
+      value,
+      expiresAt: now + CACHE_TTL_MS
+    });
+
+    return value;
   } catch (error) {
     if (error.response) {
       const status = error.response.status;
       const statusText = error.response.statusText || '';
-      
+
       logger.error(`❌ Acuity API error: ${status} ${statusText}`);
-      
+
       if (status === 400) {
         logger.error('   Bad Request - Invalid parameters or request format');
         return { found: false, phone, error: 'Bad Request (400)' };
@@ -313,30 +302,23 @@ async function lookupClientByPhone(rawPhone) {
   }
 }
 
-/**
- * Test Acuity API connection and credentials
- * @returns {Promise<{success: boolean, message: string, details?: any}>}
- */
 async function testConnection() {
   const config = get('acuity');
-  
+
   const results = {
     acuity: null
   };
 
-  // Test Acuity API if credentials are configured
   if (config.userId && config.apiKey) {
     try {
       logger.info('🧪 Testing Acuity API connection...');
-      
-          // Test with a simple API call (get clients without phone filter to test auth)
-          const testResponse = await apiClient.get('https://acuityscheduling.com/api/v1/clients', {
-            params: { limit: 1 }, // Limit to 1 result for faster test
-            auth: {
-              username: config.userId,
-              password: config.apiKey
-            }
-          });
+
+      const testResponse = await apiClient.get('https://acuityscheduling.com/api/v1/clients', {
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`${config.userId}:${config.apiKey}`).toString('base64')}`
+        },
+        timeout: 10000
+      });
 
       if (testResponse.status === 200) {
         logger.info('✅ Acuity API connection test successful');
@@ -345,8 +327,8 @@ async function testConnection() {
           message: 'Acuity API connection successful',
           details: {
             status: testResponse.status,
-            dataReceived: Array.isArray(testResponse.data),
-            recordCount: Array.isArray(testResponse.data) ? testResponse.data.length : 0
+            dataReceived: true,
+            recordCount: 1
           }
         };
       } else if (testResponse.status === 400) {
@@ -382,7 +364,7 @@ async function testConnection() {
       if (error.response) {
         const status = error.response.status;
         const statusText = error.response.statusText || '';
-        
+
         if (status === 400) {
           results.acuity = {
             success: false,
@@ -442,12 +424,11 @@ async function testConnection() {
     };
   }
 
-  // Determine overall success
   const hasAcuity = config.userId && config.apiKey;
-  
+
   let overallSuccess = false;
   let overallMessage = '';
-  
+
   if (hasAcuity) {
     overallSuccess = results.acuity.success;
     overallMessage = results.acuity.message;
@@ -467,4 +448,3 @@ module.exports = {
   lookupClientByPhone,
   testConnection
 };
-

@@ -45,11 +45,6 @@ if (previousVersion) {
 // Create full package
 createFullPackage(fullPackagePath);
 
-// Create delta package if needed
-if (deltaPackage) {
-  createDeltaPackage(deltaPackage, previousVersion, version);
-}
-
 // Create RELEASES file
 const releasesPath = path.join(packagesDir, 'RELEASES');
 const releasesContent = createReleasesContent(version, fullPackage, deltaPackage);
