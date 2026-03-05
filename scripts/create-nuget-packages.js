@@ -16,9 +16,9 @@ if (!fs.existsSync(packagesDir)) {
   fs.mkdirSync(packagesDir, { recursive: true });
 }
 
-// Define file names with consistent lowercase hyphenated format
-const setupExeName = `SIP Caller ID Setup ${version}.exe`;
-const nupkgName = `sip-caller-id-${version}-full.nupkg`;
+// Define file names with consistent uppercase format
+const setupExeName = `SIPCallerID-Setup-${version}.exe`;
+const nupkgName = `SIPCallerID-${version}-full.nupkg`;
 
 // Create full package
 const fullPackagePath = path.join(packagesDir, nupkgName);
@@ -68,7 +68,7 @@ function getPreviousVersion(currentVersion) {
 function createFullPackage(packagePath, setupExeName, version) {
   const zip = new AdmZip();
 
-  // Create the NuGet package structure
+// Create the NuGet package structure
   const squirrelPackagePath = path.join(__dirname, '..', 'dist', 'squirrel-windows', setupExeName);
   if (fs.existsSync(squirrelPackagePath)) {
     zip.addLocalFile(squirrelPackagePath, 'tools');
@@ -90,7 +90,7 @@ function createFullPackage(packagePath, setupExeName, version) {
     zip.addLocalFile(releasesPath, '');
   }
 
-  // Add NuGet package metadata
+// Add NuGet package metadata
   const nuspecContent = `
     <?xml version="1.0"?>
     <package>
@@ -124,7 +124,7 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
   zip.addLocalFile(path.join(__dirname, '..', 'dist', 'squirrel-windows', oldSetupExe), 'tools');
   zip.addLocalFile(path.join(__dirname, '..', 'packages', 'RELEASES'), '');
 
-  // Add NuGet package metadata
+// Add NuGet package metadata
   const nuspecContent = `
     <?xml version="1.0"?>
     <package>
@@ -149,7 +149,7 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
 function createReleasesContent(version, fullPackage, fullPackagePath) {
   const content = [];
   const fullPackageSize = fs.statSync(fullPackagePath).size;
-  // Use lowercase package name as it appears in the actual file
+// Use uppercase package name as it appears in the actual file
   content.push(`${version}|${fullPackage}|${fullPackageSize}|1234567890`);
   return content.join('\n');
 }

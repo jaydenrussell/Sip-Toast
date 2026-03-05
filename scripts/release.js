@@ -71,10 +71,10 @@ For more information, see the documentation.
   console.log('Creating GitHub release...');
   execSync(`gh release create v${version} --title "Release v${version}" --notes-file "${releaseNotesPath}"`, { stdio: 'inherit' });
 
-  // Upload artifacts
+// Upload artifacts
   const artifacts = [
     `../dist/squirrel-windows/SIPCallerID-Setup-${version}.exe`,
-    `../packages/sip-caller-id-${version}-full.nupkg`,
+    `../packages/SIPCallerID-${version}-full.nupkg`,
     `../packages/RELEASES`
   ];
 
