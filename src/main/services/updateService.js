@@ -39,12 +39,12 @@ class UpdateService extends EventEmitter {
     this._setupIpcHandlers();
   }
 
-_setupIpcHandlers() {
-ipcMain.handle('update:check', async () => {
-  return await this.checkForUpdates();
-});
+  _setupIpcHandlers() {
+    ipcMain.handle('update:check', async () => {
+      return await this.checkForUpdates();
+    });
 
-ipcMain.handle('update:install', async () => {
+    ipcMain.handle('update:install', async () => {
       await this.installUpdate();
       return this.getStatus();
     });

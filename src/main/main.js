@@ -2,6 +2,32 @@ const { app, Tray, Menu, nativeImage, ipcMain, clipboard, powerMonitor } = requi
 const path = require('path');
 const fs = require('fs');
 const dns = require('dns').promises;
+const { EventEmitter } = require('events');
+
+// Global error handling to prevent white error dialogs
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  console.error(error.stack);
+  try {
+    const { logger } = require('./services/logger');
+    logger.error(`Uncaught Exception: ${error.message}`);
+    logger.error(error.stack);
+  } catch (e) {
+    // Ignore if logger is not available
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error(reason?.stack || reason);
+  try {
+    const { logger } = require('./services/logger');
+    logger.error(`Unhandled Rejection: ${reason?.message || reason}`);
+    logger.error(reason?.stack || 'No stack available');
+  } catch (e) {
+    // Ignore if logger is not available
+  }
+});
 
 // Handle Squirrel.Windows events (install, update, uninstall)
 // This must be done before any other initialization
@@ -123,10 +149,10 @@ const simulateIncomingCall = async () => {
   logger.info(`🔔 Showing simulated toast notification (will auto-dismiss in ${toastTimeout / 1000} seconds)`);
   
   try {
-    // Ensure notificationWindow exists
-    if (!notificationWindow) {
-      logger.error('❌ Notification window not initialized');
-      throw new Error('Notification window not initialized');
+    // Ensure notificationWindow exists and is ready
+    if (!notificationWindow || !notificationWindow.window || notificationWindow.window.isDestroyed()) {
+      logger.error('❌ Notification window not initialized, cannot show toast');
+      return false;
     }
     
     notificationWindow.show({
@@ -328,6 +354,8 @@ const createDownloadIcon = () => {
 let originalTrayIcon = null;
 let cachedDownloadIcon = null; // Cache download icon to avoid recreating
 let cachedTrayIcon = null; // Cache main tray icon
+let cachedGreenIcon = null; // Cache green (registered) icon
+let cachedRedIcon = null; // Cache red (error/idle) icon
 
 // Cached tray icon - create once and reuse
 const getTrayIcon = () => {
@@ -337,8 +365,110 @@ const getTrayIcon = () => {
   return cachedTrayIcon;
 };
 
-// Update tray icon based on update status (Discord-style)
-const updateTrayIcon = (status) => {
+// Create a green version of the tray icon (SIP registered)
+const createGreenTrayIcon = () => {
+  const size = 16;
+  const pixelData = Buffer.alloc(size * size * 4);
+  
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      
+      // Create a rounded square base (green)
+      const inBounds = x >= 1 && x < 15 && y >= 1 && y < 15;
+      
+      if (inBounds) {
+        // Green color for registered state
+        pixelData[idx] = 16;     // R - green
+        pixelData[idx + 1] = 185; // G
+        pixelData[idx + 2] = 88;  // B
+        pixelData[idx + 3] = 255; // A
+        
+        // Add white phone outline in center
+        if (y >= 4 && y <= 11 && x >= 5 && x <= 10) {
+          // Phone body
+          if (y >= 5 && y <= 10 && x >= 6 && x <= 9) {
+            pixelData[idx] = 255;     // R - white
+            pixelData[idx + 1] = 255; // G
+            pixelData[idx + 2] = 255; // B
+          }
+          // Phone receiver
+          else if (y === 4 && x >= 6 && x <= 9) {
+            pixelData[idx] = 255;     // R - white
+            pixelData[idx + 1] = 255; // G
+            pixelData[idx + 2] = 255; // B
+          }
+        }
+      } else {
+        // Transparent outside
+        pixelData[idx] = 0;
+        pixelData[idx + 1] = 0;
+        pixelData[idx + 2] = 0;
+        pixelData[idx + 3] = 0;
+      }
+    }
+  }
+  
+  const icon = nativeImage.createFromBuffer(pixelData, { width: size, height: size });
+  if (process.platform === 'win32') {
+    icon.setTemplateImage(false);
+  }
+  return icon;
+};
+
+// Create a red version of the tray icon (SIP error/idle)
+const createRedTrayIcon = () => {
+  const size = 16;
+  const pixelData = Buffer.alloc(size * size * 4);
+  
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      
+      // Create a rounded square base (red)
+      const inBounds = x >= 1 && x < 15 && y >= 1 && y < 15;
+      
+      if (inBounds) {
+        // Red color for error/idle state
+        pixelData[idx] = 239;    // R - red
+        pixelData[idx + 1] = 68;  // G
+        pixelData[idx + 2] = 68;  // B
+        pixelData[idx + 3] = 255; // A
+        
+        // Add white phone outline in center
+        if (y >= 4 && y <= 11 && x >= 5 && x <= 10) {
+          // Phone body
+          if (y >= 5 && y <= 10 && x >= 6 && x <= 9) {
+            pixelData[idx] = 255;     // R - white
+            pixelData[idx + 1] = 255; // G
+            pixelData[idx + 2] = 255; // B
+          }
+          // Phone receiver
+          else if (y === 4 && x >= 6 && x <= 9) {
+            pixelData[idx] = 255;     // R - white
+            pixelData[idx + 1] = 255; // G
+            pixelData[idx + 2] = 255; // B
+          }
+        }
+      } else {
+        // Transparent outside
+        pixelData[idx] = 0;
+        pixelData[idx + 1] = 0;
+        pixelData[idx + 2] = 0;
+        pixelData[idx + 3] = 0;
+      }
+    }
+  }
+  
+  const icon = nativeImage.createFromBuffer(pixelData, { width: size, height: size });
+  if (process.platform === 'win32') {
+    icon.setTemplateImage(false);
+  }
+  return icon;
+};
+
+// Update tray icon based on SIP status and update status
+const updateTrayIcon = (sipStatus, updateStatus) => {
   try {
     if (!tray || !tray.getImage) return;
     
@@ -351,19 +481,46 @@ const updateTrayIcon = (status) => {
       }
     }
     
-    // Only show download icon when update is DOWNLOADED and ready (Discord-style)
-    if (status.updateDownloaded) {
+// Priority 1: Update status takes precedence over SIP status
+    if (updateStatus?.updateDownloaded && updateService) {
       // Update ready - show download icon (cached)
       if (!cachedDownloadIcon) {
         cachedDownloadIcon = createDownloadIcon();
       }
       tray.setImage(cachedDownloadIcon);
       tray.setToolTip('SIP Caller ID - Update ready to install');
-    } else if (status.downloading) {
-      // Downloading - show progress in tooltip
-      tray.setToolTip(`SIP Caller ID - Updating ${status.downloadProgress}%`);
-    } else if (!status.checking) {
-      // No update - restore original icon
+      return;
+    }
+    
+    // Priority 2: SIP status
+    const sipState = sipStatus?.state || 'idle';
+    
+    if (sipState === 'registered') {
+      // SIP registered - show green icon
+      if (!cachedGreenIcon) {
+        cachedGreenIcon = createGreenTrayIcon();
+      }
+      tray.setImage(cachedGreenIcon);
+      tray.setToolTip('SIP Caller ID - Connected and ready');
+    } else if (sipState === 'registering') {
+      // SIP registering - show original blue icon with registering tooltip
+      if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
+        tray.setImage(originalTrayIcon);
+      }
+      tray.setToolTip('SIP Caller ID - Registering...');
+    } else if (sipState === 'error' || sipState === 'idle') {
+      // SIP error or idle - show red icon
+      if (!cachedRedIcon) {
+        cachedRedIcon = createRedTrayIcon();
+      }
+      tray.setImage(cachedRedIcon);
+      const errorCause = sipStatus?.meta?.cause;
+      const tooltip = errorCause 
+        ? `SIP Caller ID - Error: ${errorCause}`
+        : 'SIP Caller ID - Disconnected';
+      tray.setToolTip(tooltip);
+    } else {
+      // Fallback to original icon
       if (originalTrayIcon && !originalTrayIcon.isEmpty()) {
         tray.setImage(originalTrayIcon);
       }
@@ -928,11 +1085,13 @@ const boot = async () => {
     notificationWindow.show(toastPayload);
   };
 
-  // Register the handler
-  sipManager.on('incomingCall', incomingCallHandler);
-
-  // Log that we've registered the handler
-  logger.info(`✅ Registered incomingCall handler (listeners: ${sipManager.listenerCount('incomingCall')})`);
+// Register the handler
+  if (sipManager) {
+    sipManager.on('incomingCall', incomingCallHandler);
+    logger.info(`✅ Registered incomingCall handler (listeners: ${sipManager.listenerCount('incomingCall')})`);
+  } else {
+    logger.warn('⚠️ SIP manager not initialized, cannot register incomingCall handler');
+  }
 
   // Set up a periodic check to ensure the handler is still registered (every 30s for memory efficiency)
   const handlerCheckInterval = setInterval(() => {
@@ -956,6 +1115,11 @@ const boot = async () => {
   sipManager.on('status', (status) => {
     latestSipStatus = status;
     flyoutWindow?.send('sip:status', status);
+    
+    // Update tray icon based on SIP status
+    const updateStatus = updateService?.getStatus() || {};
+    updateTrayIcon(status, updateStatus);
+    
     // Log status changes
     if (status.state === 'registered') {
       logger.info('SIP status: Registered and ready to receive calls');
@@ -1075,34 +1239,66 @@ app.whenReady().then(async () => {
   wireIpc();
   logger.info('✅ IPC handlers registered');
 
-  // Initialize update service
-  updateService = new UpdateService();
+  // Initialize update service BEFORE boot() to ensure it's available for sipManager status events
+  try {
+    updateService = new UpdateService();
+    logger.info('✅ Update service created');
+    logger.info(`   Update service type: ${typeof updateService}`);
+    logger.info(`   Update service on method: ${typeof updateService.on}`);
+    logger.info(`   Update service instanceof EventEmitter: ${updateService instanceof EventEmitter}`);
+  } catch (error) {
+    logger.error(`Failed to create update service: ${error.message}`);
+    logger.error(error.stack);
+    updateService = null;
+  }
 
   // Set up update status event listener to update tray icon and send to renderer
-  // Wrap entire handler in try-catch to prevent uncaught exceptions during update
-  updateService.on('update-status', (status) => {
-    // Early exit if app is shutting down
-    if (isAppQuitting) return;
-
+  // Use optional chaining for maximum safety
+  if (updateService?.on) {
     try {
-      updateTrayIcon(status);
-    } catch (e) { /* Ignore tray errors during shutdown */ }
+      // Set up update-status event listener
+      updateService.on('update-status', (status) => {
+        // Early exit if app is shutting down
+        if (isAppQuitting) return;
 
-    // Send status to renderer (including when update is downloaded)
-    try {
-      // Check if window exists and is not destroyed before sending
-      if (flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
-        flyoutWindow.send('update:status', status);
-      }
-    } catch (e) { /* Ignore window errors during shutdown */ }
-  });
+        try {
+          // Update tray icon with both SIP status and update status
+          updateTrayIcon(latestSipStatus, status);
+        } catch (e) { /* Ignore tray errors during shutdown */ }
 
-  // Set isAppQuitting when install starts
-  updateService.on('installing', () => { isAppQuitting = true; });
+        // Send status to renderer (including when update is downloaded)
+        try {
+          // Check if window exists and is not destroyed before sending
+          if (flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
+            flyoutWindow.send('update:status', status);
+          }
+        } catch (e) { /* Ignore window errors during shutdown */ }
+      });
+
+      // Set up installing event listener
+      updateService.on('installing', () => { 
+        isAppQuitting = true; 
+      });
+      
+      logger.info('✅ Update service event listeners registered');
+    } catch (error) {
+      logger.error(`Failed to set up update service listeners: ${error.message}`);
+    }
+  } else {
+    logger.warn('Update service on method not available - skipping event listener setup');
+  }
 
   // Start auto-check (this will also check on app load)
-  updateService.startAutoCheck();
-  logger.info('✅ Update service initialized');
+  try {
+    if (updateService && typeof updateService.startAutoCheck === 'function') {
+      updateService.startAutoCheck();
+      logger.info('✅ Update service initialized');
+    } else {
+      logger.warn('⚠️ Update service not available or invalid');
+    }
+  } catch (error) {
+    logger.error(`Failed to start update service: ${error.message}`);
+  }
 
   // Reload events from file after app is ready (ensures log directory is properly resolved)
   getEventLogger().reloadEvents();
@@ -1130,7 +1326,7 @@ app.on('window-all-closed', () => {
 
 app.on('second-instance', () => {
   // Bring toast window forward on re-launch attempts.
-  if (notificationWindow?.window) {
+  if (notificationWindow?.window && !notificationWindow.window.isDestroyed()) {
     notificationWindow.window.showInactive();
   }
 });

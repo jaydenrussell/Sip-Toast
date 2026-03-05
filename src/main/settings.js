@@ -133,6 +133,7 @@ const schema = {
 
 const store = new Store({
   name: 'sip-toast',
+  projectName: 'sip-toast',
   schema
 });
 
