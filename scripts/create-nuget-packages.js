@@ -10,8 +10,8 @@ const packageJsonPath = path.join(__dirname, '..', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const version = packageJson.version;
 
-// Create packages directory
-const packagesDir = path.join(__dirname, '..', 'packages');
+// Create packages directory in dist/squirrel-windows
+const packagesDir = path.join(__dirname, '..', 'dist', 'squirrel-windows');
 if (!fs.existsSync(packagesDir)) {
   fs.mkdirSync(packagesDir, { recursive: true });
 }
@@ -68,7 +68,7 @@ function getPreviousVersion(currentVersion) {
 function createFullPackage(packagePath, setupExeName, version) {
   const zip = new AdmZip();
 
-// Create the NuGet package structure
+  // Create the NuGet package structure
   const squirrelPackagePath = path.join(__dirname, '..', 'dist', 'squirrel-windows', setupExeName);
   if (fs.existsSync(squirrelPackagePath)) {
     zip.addLocalFile(squirrelPackagePath, 'tools');
@@ -85,12 +85,12 @@ function createFullPackage(packagePath, setupExeName, version) {
   }
 
   // Add RELEASES file
-  const releasesPath = path.join(__dirname, '..', 'packages', 'RELEASES');
+  const releasesPath = path.join(__dirname, '..', 'dist', 'squirrel-windows', 'RELEASES');
   if (fs.existsSync(releasesPath)) {
     zip.addLocalFile(releasesPath, '');
   }
 
-// Add NuGet package metadata
+  // Add NuGet package metadata
   const nuspecContent = `
     <?xml version="1.0"?>
     <package>
@@ -116,15 +116,15 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
   const zip = new AdmZip();
 
   // Get the old and new package paths
-  const oldPackagePath = path.join(__dirname, '..', 'packages', `sip-caller-id-${oldVersion}-full.nupkg`);
-  const newPackagePath = path.join(__dirname, '..', 'packages', `sip-caller-id-${newVersion}-full.nupkg`);
+  const oldPackagePath = path.join(__dirname, '..', 'dist', 'squirrel-windows', `sip-caller-id-${oldVersion}-full.nupkg`);
+  const newPackagePath = path.join(__dirname, '..', 'dist', 'squirrel-windows', `sip-caller-id-${newVersion}-full.nupkg`);
 
   // Create delta package structure
   const oldSetupExe = `SIP Caller ID Setup ${oldVersion}.exe`;
   zip.addLocalFile(path.join(__dirname, '..', 'dist', 'squirrel-windows', oldSetupExe), 'tools');
-  zip.addLocalFile(path.join(__dirname, '..', 'packages', 'RELEASES'), '');
+  zip.addLocalFile(path.join(__dirname, '..', 'dist', 'squirrel-windows', 'RELEASES'), '');
 
-// Add NuGet package metadata
+  // Add NuGet package metadata
   const nuspecContent = `
     <?xml version="1.0"?>
     <package>
@@ -149,7 +149,7 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
 function createReleasesContent(version, fullPackage, fullPackagePath) {
   const content = [];
   const fullPackageSize = fs.statSync(fullPackagePath).size;
-// Use uppercase package name as it appears in the actual file
+  // Use uppercase package name as it appears in the actual file
   content.push(`${version}|${fullPackage}|${fullPackageSize}|1234567890`);
   return content.join('\n');
 }

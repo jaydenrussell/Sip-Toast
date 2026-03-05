@@ -67,8 +67,8 @@ For more information, see the documentation.`;
 
   const artifacts = [
     `dist/squirrel-windows/SIPCallerID-Setup-${version}.exe`,
-    `packages/SIPCallerID-${version}-full.nupkg`,
-    `packages/RELEASES`
+    `dist/squirrel-windows/SIPCallerID-${version}-full.nupkg`,
+    `dist/squirrel-windows/RELEASES`
   ];
 
   for (const artifact of artifacts) {

@@ -1,6 +1,6 @@
 {
   "name": "sip-caller-id",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "SIP Caller ID application",
   "author": "Jayden Russell",
   "main": "src/main/main.js",
