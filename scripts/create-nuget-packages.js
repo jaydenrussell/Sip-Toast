@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 const { execSync } = require('child_process');
+const crypto = require('crypto');
 
 console.log('Creating NuGet packages...');
 
@@ -149,7 +150,12 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
 function createReleasesContent(version, fullPackage, fullPackagePath) {
   const content = [];
   const fullPackageSize = fs.statSync(fullPackagePath).size;
+  
+  // Calculate SHA1 hash of the package file
+  const fileBuffer = fs.readFileSync(fullPackagePath);
+  const sha1Hash = crypto.createHash('sha1').update(fileBuffer).digest('hex');
+  
   // Use uppercase package name as it appears in the actual file
-  content.push(`${version}|${fullPackage}|${fullPackageSize}|1234567890`);
+  content.push(`${version}|${fullPackage}|${fullPackageSize}|${sha1Hash}`);
   return content.join('\n');
 }
