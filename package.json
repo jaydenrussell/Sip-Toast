@@ -1,6 +1,6 @@
 {
   "name": "sip-caller-id",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "SIP Caller ID application",
   "author": "Jayden Russell",
   "main": "src/main/main.js",
@@ -35,7 +35,7 @@
       "icon": "Images/app.ico"
     }
   },
-"dependencies": {
+  "dependencies": {
     "conf": "^15.1.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^11.0.2",
@@ -46,5 +46,6 @@
     "electron-builder": "^26.8.1",
     "electron-packager": "^17.1.2",
     "mocha": "^11.7.5"
-  }
+  },
+  "buildDate": "2026-03-05T05:21:19.383Z"
 }

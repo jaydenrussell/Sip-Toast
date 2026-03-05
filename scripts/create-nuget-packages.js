@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
-
+const { execSync } = require('child_process');
 console.log('Creating NuGet packages...');
 
 // Get current version
