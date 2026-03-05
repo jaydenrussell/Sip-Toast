@@ -66,9 +66,9 @@ For more information, see the documentation.`;
   execSync(`gh release create v${version} --title "Release v${version}" --notes-file "${releaseNotesPath}"`, { stdio: 'inherit' });
 
   const artifacts = [
-    `../dist/squirrel-windows/SIPCallerID-Setup-${version}.exe`,
-    `../packages/SIPCallerID-${version}-full.nupkg`,
-    `../packages/RELEASES`
+    `dist/squirrel-windows/SIPCallerID-Setup-${version}.exe`,
+    `packages/SIPCallerID-${version}-full.nupkg`,
+    `packages/RELEASES`
   ];
 
   for (const artifact of artifacts) {
