@@ -1,7 +1,6 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const AdmZip = require('adm-zip');
 
 console.log('Starting SIP Caller ID release process...');
 
@@ -24,36 +23,11 @@ function buildApplication() {
   execSync('npm run package:squirrel', { stdio: 'inherit' });
 }
 
-// Step 3: Create NuGet packages
+// Step 3: Create NuGet packages using existing script
 function createNuGetPackages(version) {
   console.log('Creating NuGet packages...');
-  const packagesDir = path.join(__dirname, '..', 'packages');
-  if (!fs.existsSync(packagesDir)) {
-    fs.mkdirSync(packagesDir, { recursive: true });
-  }
-
-  // Create full package
-  const fullPackage = `sip-caller-id-${version}-full.nupkg`;
-  const fullPackagePath = path.join(packagesDir, fullPackage);
-
-  // Create delta package (if previous version exists)
-  const previousVersion = getPreviousVersion(version);
-  let deltaPackage = null;
-  if (previousVersion) {
-    deltaPackage = `sip-caller-id-${previousVersion}-delta.nupkg`;
-  }
-
-  // Create full package
-  createFullPackage(fullPackagePath);
-
-  // Create RELEASES file
-  const releasesPath = path.join(packagesDir, 'RELEASES');
-  const releasesContent = createReleasesContent(version, fullPackage, deltaPackage);
-  fs.writeFileSync(releasesPath, releasesContent);
-
-  console.log('NuGet packages created successfully!');
-  console.log(`Full package: ${fullPackagePath}`);
-  console.log(`RELEASES file: ${releasesPath}`);
+  // Use the existing create-nuget-packages.js script
+  execSync('node scripts/create-nuget-packages.js', { stdio: 'inherit' });
 }
 
 // Step 4: Create GitHub release
@@ -122,68 +96,6 @@ function commitAndPush(version) {
   execSync('git add .', { stdio: 'inherit' });
   execSync(`git commit -m "Update version to ${version} and build packages"`, { stdio: 'inherit' });
   execSync('git push origin main', { stdio: 'inherit' });
-}
-
-// Helper functions
-function getPreviousVersion(currentVersion) {
-  try {
-    const tags = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
-      .split('\n')
-      .filter(tag => tag.startsWith('v') && tag !== `v${currentVersion}`);
-    return tags[0]?.replace('v', '');
-  } catch (error) {
-    console.warn('Could not get previous version from Git tags');
-    return null;
-  }
-}
-
-function createFullPackage(packagePath) {
-  // Create a simple archive by copying files instead of zipping
-  // This avoids the size limitations of adm-zip
-  const buildPath = path.join(__dirname, '..', 'dist', 'squirrel-windows');
-  const packagesDir = path.join(__dirname, '..', 'packages');
-
-  // Create a directory with the package name
-  const packageDir = path.join(packagesDir, `sip-caller-id-${packagePath.split('-').pop().replace('.nupkg', '')}`);
-  if (fs.existsSync(packageDir)) {
-    fs.rmSync(packageDir, { recursive: true, force: true });
-  }
-  fs.mkdirSync(packageDir, { recursive: true });
-
-  // Copy all files from build directory
-  const buildFiles = fs.readdirSync(buildPath);
-  for (const file of buildFiles) {
-    const srcPath = path.join(buildPath, file);
-    const destPath = path.join(packageDir, file);
-    if (fs.statSync(srcPath).isFile()) {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-
-  // Copy RELEASES file
-  const releasesPath = path.join(packagesDir, 'RELEASES');
-  if (fs.existsSync(releasesPath)) {
-    fs.copyFileSync(releasesPath, path.join(packageDir, 'RELEASES'));
-  }
-
-  // Create a simple manifest file
-  const manifest = {
-    name: 'sip-caller-id',
-    version: packagePath.split('-').pop().replace('.nupkg', ''),
-    files: buildFiles
-  };
-  fs.writeFileSync(path.join(packageDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
-
-  console.log(`Created package directory: ${packageDir}`);
-}
-
-function createReleasesContent(version, fullPackage, deltaPackage) {
-  const content = [];
-  content.push(`${version}|${fullPackage}|100000|1234567890`);
-  if (deltaPackage) {
-    content.push(`${version}|${deltaPackage}|50000|1234567891`);
-  }
-  return content.join('\n');
 }
 
 // Main execution
