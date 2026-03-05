@@ -5,7 +5,8 @@
   "main": "index.html",
   "author": "SIP Caller ID Team",
   "scripts": {
-    "start": "echo 'Update installer is ready. Open index.html in a browser.'"
+    "start": "echo 'Update installer is ready. Open index.html in a browser.'",
+    "build": "electron-builder --win --x64"
   },
   "build": {
     "appId": "com.siptoast.update-installer",

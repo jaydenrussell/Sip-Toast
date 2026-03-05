@@ -1,6 +1,7 @@
 node_modules
 dist
 out
+packages
 *.log
 *.lock
 .DS_Store
@@ -8,4 +9,3 @@ Thumbs.db
 certificate.pfx
 *.pfx
 *.p12
-

@@ -286,11 +286,47 @@ async checkForUpdates() {
       return false;
     }
 
-    const hasDelta = fs.readFileSync(releasesPath, 'utf8').includes(`SIPCallerID-${version}-delta.nupkg`);
-    const files = [
-      { name: `SIPCallerID-${version}-full.nupkg`, required: true },
-      hasDelta && { name: `SIPCallerID-${version}-delta.nupkg`, required: false }
-    ].filter(Boolean);
+    // Read RELEASES file to get actual package names (respects case sensitivity)
+    let packageNames = [];
+    try {
+      const releasesContent = fs.readFileSync(releasesPath, 'utf8');
+      const lines = releasesContent.split('\n').filter(line => line.trim());
+      for (const line of lines) {
+        const parts = line.split('|');
+        if (parts.length >= 2) {
+          const packageName = parts[1].trim();
+          if (packageName.endsWith('.nupkg')) {
+            packageNames.push(packageName);
+          }
+        }
+      }
+      logger.info(`Found packages in RELEASES: ${packageNames.join(', ')}`);
+    } catch (e) {
+      logger.warn(`Could not parse RELEASES file, using default naming: ${e.message}`);
+      // Fallback to lowercase naming
+      packageNames = [
+        `sip-caller-id-${version}-full.nupkg`,
+        `sip-caller-id-${version}-delta.nupkg`
+      ];
+    }
+
+    // Build file list based on what's in RELEASES
+    const files = [];
+    for (const name of packageNames) {
+      if (name.includes('full')) {
+        files.push({ name, required: true });
+      } else if (name.includes('delta')) {
+        files.push({ name, required: false });
+      }
+    }
+
+    // Ensure we have at least the full package
+    const hasFull = files.some(f => f.name.includes('full'));
+    if (!hasFull) {
+      const fallbackFull = `sip-caller-id-${version}-full.nupkg`;
+      files.unshift({ name: fallbackFull, required: true });
+      logger.warn(`Full package not found in RELEASES, adding fallback: ${fallbackFull}`);
+    }
 
     const weightPerFile = 98 / files.length;
     let currentProgress = 2;
@@ -325,8 +361,16 @@ async checkForUpdates() {
       this.emitStatus();
     }
 
-    const fullPackage = path.join(packagesDir, `SIPCallerID-${version}-full.nupkg`);
-    if (!fs.existsSync(fullPackage) || fs.statSync(fullPackage).size === 0) {
+    // Verify the full package exists (check both possible names)
+    const fullPackageCandidates = files
+      .filter(f => f.name.includes('full'))
+      .map(f => path.join(packagesDir, f.name));
+    
+    const fullPackageExists = fullPackageCandidates.some(p => 
+      fs.existsSync(p) && fs.statSync(p).size > 0
+    );
+    
+    if (!fullPackageExists) {
       this.setError('Full package unavailable');
       return false;
     }
@@ -380,10 +424,19 @@ async installUpdate() {
         return;
       }
 
-      // Verify package exists
-      const fullPackage = path.join(packagesDir, `SIPCallerID-${this.state.version}-full.nupkg`);
-      if (!fs.existsSync(fullPackage)) {
-        logger.error(`Full package not found: ${fullPackage}`);
+      // Find the full package (case-insensitive)
+      let fullPackagePath = null;
+      const files = fs.readdirSync(packagesDir);
+      for (const file of files) {
+        if (file.toLowerCase().includes(`sip-caller-id-${this.state.version}-full.nupkg`) || 
+            file.toLowerCase().includes(`sipcallerid-${this.state.version}-full.nupkg`)) {
+          fullPackagePath = path.join(packagesDir, file);
+          break;
+        }
+      }
+
+      if (!fullPackagePath) {
+        logger.error(`Full package not found for version ${this.state.version}`);
         this.setError('Update package not found');
         this.state.installing = false;
         this.emitStatus();

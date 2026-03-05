@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 const { execSync } = require('child_process');
+
 console.log('Creating NuGet packages...');
 
 // Get current version
@@ -15,16 +16,19 @@ if (!fs.existsSync(packagesDir)) {
   fs.mkdirSync(packagesDir, { recursive: true });
 }
 
+// Define file names with consistent lowercase hyphenated format
+const setupExeName = `SIP Caller ID Setup ${version}.exe`;
+const nupkgName = `sip-caller-id-${version}-full.nupkg`;
+
 // Create full package
-const fullPackage = `SIPCallerID-${version}-full.nupkg`;
-const fullPackagePath = path.join(packagesDir, fullPackage);
+const fullPackagePath = path.join(packagesDir, nupkgName);
 
 // Create full package only (delta packages removed)
-createFullPackage(fullPackagePath);
+createFullPackage(fullPackagePath, setupExeName, version);
 
 // Create RELEASES file
 const releasesPath = path.join(packagesDir, 'RELEASES');
-const releasesContent = createReleasesContent(version, fullPackage);
+const releasesContent = createReleasesContent(version, nupkgName, fullPackagePath);
 fs.writeFileSync(releasesPath, releasesContent);
 
 console.log('NuGet packages created successfully!');
@@ -61,13 +65,23 @@ function getPreviousVersion(currentVersion) {
   }
 }
 
-function createFullPackage(packagePath) {
+function createFullPackage(packagePath, setupExeName, version) {
   const zip = new AdmZip();
 
   // Create the NuGet package structure
-  const squirrelPackagePath = path.join(__dirname, '..', 'dist', 'squirrel-windows', 'SIPCallerID-Setup-0.72.118.exe');
+  const squirrelPackagePath = path.join(__dirname, '..', 'dist', 'squirrel-windows', setupExeName);
   if (fs.existsSync(squirrelPackagePath)) {
     zip.addLocalFile(squirrelPackagePath, 'tools');
+  } else {
+    console.warn(`Setup executable not found: ${squirrelPackagePath}`);
+    // Try to find any setup executable
+    const files = fs.readdirSync(path.join(__dirname, '..', 'dist', 'squirrel-windows'));
+    const setupFile = files.find(f => f.includes('Setup') && f.endsWith('.exe'));
+    if (setupFile) {
+      const actualPath = path.join(__dirname, '..', 'dist', 'squirrel-windows', setupFile);
+      console.log(`Using alternative setup file: ${setupFile}`);
+      zip.addLocalFile(actualPath, 'tools');
+    }
   }
 
   // Add RELEASES file
@@ -87,7 +101,7 @@ function createFullPackage(packagePath) {
         <description>SIP Caller ID Application</description>
       </metadata>
       <files>
-        <file src="tools\\SIPCallerID-Setup-0.72.118.exe" target="tools" />
+        <file src="tools\\${setupExeName}" target="tools" />
         <file src="RELEASES" target="" />
       </files>
     </package>
@@ -102,11 +116,12 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
   const zip = new AdmZip();
 
   // Get the old and new package paths
-  const oldPackagePath = path.join(__dirname, '..', 'packages', `SIPCallerID-${oldVersion}-full.nupkg`);
-  const newPackagePath = path.join(__dirname, '..', 'packages', `SIPCallerID-${newVersion}-full.nupkg`);
+  const oldPackagePath = path.join(__dirname, '..', 'packages', `sip-caller-id-${oldVersion}-full.nupkg`);
+  const newPackagePath = path.join(__dirname, '..', 'packages', `sip-caller-id-${newVersion}-full.nupkg`);
 
   // Create delta package structure
-  zip.addLocalFile(path.join(__dirname, '..', 'dist', 'squirrel-windows', 'SIPCallerID-Setup-0.72.117.exe'), 'tools');
+  const oldSetupExe = `SIP Caller ID Setup ${oldVersion}.exe`;
+  zip.addLocalFile(path.join(__dirname, '..', 'dist', 'squirrel-windows', oldSetupExe), 'tools');
   zip.addLocalFile(path.join(__dirname, '..', 'packages', 'RELEASES'), '');
 
   // Add NuGet package metadata
@@ -120,7 +135,7 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
         <description>SIP Caller ID Application Delta Package</description>
       </metadata>
       <files>
-        <file src="tools\\SIPCallerID-Setup-0.72.117.exe" target="tools" />
+        <file src="tools\\${oldSetupExe}" target="tools" />
         <file src="RELEASES" target="" />
       </files>
     </package>
@@ -131,10 +146,10 @@ function createDeltaPackage(packageName, oldVersion, newVersion) {
   console.log(`Created delta package: ${packageName}`);
 }
 
-function createReleasesContent(version, fullPackage) {
+function createReleasesContent(version, fullPackage, fullPackagePath) {
   const content = [];
-  const fullPackagePath = path.join(__dirname, '..', 'packages', fullPackage);
   const fullPackageSize = fs.statSync(fullPackagePath).size;
+  // Use lowercase package name as it appears in the actual file
   content.push(`${version}|${fullPackage}|${fullPackageSize}|1234567890`);
   return content.join('\n');
 }

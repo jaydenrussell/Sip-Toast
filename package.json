@@ -1,6 +1,6 @@
 {
   "name": "sip-caller-id",
-  "version": "1.0.14",
+  "version": "1.0.18",
   "description": "SIP Caller ID application",
   "author": "Jayden Russell",
   "main": "src/main/main.js",
@@ -32,7 +32,8 @@
     ],
     "win": {
       "target": "squirrel",
-      "icon": "Images/app.ico"
+      "icon": "Images/app.ico",
+      "artifactName": "SIPCallerID-Setup-${version}.exe"
     }
   },
   "dependencies": {
