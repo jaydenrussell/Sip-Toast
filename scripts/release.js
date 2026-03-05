@@ -23,10 +23,66 @@ function buildApplication() {
   execSync('npm run package:squirrel', { stdio: 'inherit' });
 }
 
-// Step 3: Create NuGet packages using existing script
+// Step 3: Create NuGet packages using existing setup executable
 function createNuGetPackages(version) {
   console.log('Creating NuGet packages...');
-  execSync('node scripts/create-nuget-packages.js', { stdio: 'inherit' });
+  
+  // Get the setup executable created by electron-builder
+  const setupExePath = path.join(__dirname, '..', 'dist', 'squirrel-windows', `SIPCallerID-Setup-${version}.exe`);
+  
+  if (!fs.existsSync(setupExePath)) {
+    console.error(`Setup executable not found: ${setupExePath}`);
+    throw new Error('Setup executable not found');
+  }
+  
+  // Create the NuGet package using the existing setup executable
+  const nupkgName = `SIPCallerID-${version}-full.nupkg`;
+  const nupkgPath = path.join(__dirname, '..', 'dist', 'squirrel-windows', nupkgName);
+  
+  // Create the NuGet package structure
+  const zip = require('adm-zip');
+  const nuspecContent = `
+    <?xml version="1.0"?>
+    <package>
+      <metadata>
+        <id>SIPCallerID</id>
+        <version>${version}</version>
+        <authors>Jayden Russell</authors>
+        <description>SIP Caller ID Application</description>
+      </metadata>
+      <files>
+        <file src="tools\\${path.basename(setupExePath)}" target="tools" />
+        <file src="RELEASES" target="" />
+      </files>
+    </package>
+  `.trim();
+  
+  const nupkg = new zip();
+  nupkg.addLocalFile(setupExePath, 'tools');
+  
+  // Add RELEASES file if it exists
+  const releasesPath = path.join(__dirname, '..', 'dist', 'squirrel-windows', 'RELEASES');
+  if (fs.existsSync(releasesPath)) {
+    nupkg.addLocalFile(releasesPath, '');
+  }
+  
+  nupkg.addFile('SIPCallerID.nuspec', Buffer.from(nuspecContent));
+  nupkg.writeZip(nupkgPath);
+  
+  console.log(`Created NuGet package: ${nupkgPath}`);
+  
+  // Create RELEASES file
+  const crypto = require('crypto');
+  const fileBuffer = fs.readFileSync(nupkgPath);
+  const sha1Hash = crypto.createHash('sha1').update(fileBuffer).digest('hex');
+  const fullPackageSize = fs.statSync(nupkgPath).size;
+  
+  const releasesContent = `${version}|${nupkgName}|${fullPackageSize}|${sha1Hash}`;
+  const releasesPathFinal = path.join(__dirname, '..', 'dist', 'squirrel-windows', 'RELEASES');
+  fs.writeFileSync(releasesPathFinal, releasesContent);
+  
+  console.log('NuGet packages created successfully!');
+  console.log(`Full package: ${nupkgPath}`);
 }
 
 // Step 4: Create GitHub release

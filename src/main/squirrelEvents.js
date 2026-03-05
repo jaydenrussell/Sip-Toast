@@ -21,12 +21,13 @@ function handleSquirrelEvent(cmd) {
 
       if (fs.existsSync(squirrelExePath)) {
         console.log(`[Squirrel] Launching standalone Squirrel installer: ${squirrelExePath}`);
+        console.log(`[Squirrel] Packages directory: ${packagesDir}`);
 
         // Build the arguments for Squirrel
-        const args = ['--update', packagesDir];
-        if (cmd === '--squirrel-install') {
-          args.unshift('--install');
-        }
+        // Correct format: Update.exe --install --packages <packagesDir>
+        const args = [cmd === '--squirrel-install' ? '--install' : '--update', '--packages', packagesDir];
+
+        console.log(`[Squirrel] Executing: ${squirrelExePath} ${args.join(' ')}`);
 
         const updateProcess = spawn(squirrelExePath, args, {
           detached: true,
@@ -39,9 +40,13 @@ function handleSquirrelEvent(cmd) {
         // Close the application immediately - the installer runs separately
         setTimeout(() => { app.quit(); process.exit(0); }, 1000);
         return true;
+      } else {
+        console.error(`[Squirrel] Update.exe not found at: ${squirrelExePath}`);
       }
+    } else {
+      console.error(`[Squirrel] No --packages argument found in: ${process.argv.join(' ')}`);
     }
-    // Fallback to original behavior if Squirrel.exe fails
+    // Fallback to original behavior if Squirrel.exe fails or packages dir not found
     console.log(`[Squirrel] Falling back to original update process`);
     setTimeout(() => { app.quit(); process.exit(0); }, 1000);
     return true;
