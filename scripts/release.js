@@ -26,15 +26,12 @@ function buildApplication() {
 // Step 3: Create NuGet packages using existing script
 function createNuGetPackages(version) {
   console.log('Creating NuGet packages...');
-  // Use the existing create-nuget-packages.js script
   execSync('node scripts/create-nuget-packages.js', { stdio: 'inherit' });
 }
 
 // Step 4: Create GitHub release
 function createGitHubRelease(version) {
-  // Create release notes
-  const releaseNotes = `
-SIP Caller ID Release v${version}
+  const releaseNotes = `SIP Caller ID Release v${version}
 
 This release includes:
 - Complete update installer with seamless update flow
@@ -50,7 +47,7 @@ Installation:
 
 Release artifacts:
 - SIPCallerID-Setup-${version}.exe (Setup package)
-- sip-caller-id-${version}-full.nupkg (Full NuGet package)
+- SIPCallerID-${version}-full.nupkg (Full NuGet package)
 - RELEASES (Release manifest)
 
 Changelog:
@@ -60,18 +57,14 @@ Changelog:
 - Added automatic restart functionality
 - Created NuGet packages for distribution
 
-For more information, see the documentation.
-`;
+For more information, see the documentation.`;
 
-  // Create release notes file
   const releaseNotesPath = path.join(__dirname, '..', 'release-notes.md');
   fs.writeFileSync(releaseNotesPath, releaseNotes);
 
-  // Create release
   console.log('Creating GitHub release...');
   execSync(`gh release create v${version} --title "Release v${version}" --notes-file "${releaseNotesPath}"`, { stdio: 'inherit' });
 
-// Upload artifacts
   const artifacts = [
     `../dist/squirrel-windows/SIPCallerID-Setup-${version}.exe`,
     `../packages/SIPCallerID-${version}-full.nupkg`,
@@ -81,7 +74,14 @@ For more information, see the documentation.
   for (const artifact of artifacts) {
     if (fs.existsSync(artifact)) {
       console.log(`Uploading artifact: ${artifact}`);
-      execSync(`gh release upload v${version} ${artifact}`, { stdio: 'inherit' });
+      try {
+        execSync(`gh release upload v${version} ${artifact}`, { stdio: 'inherit' });
+      } catch (error) {
+        console.error(`Failed to upload ${artifact}: ${error.message}`);
+        throw error;
+      }
+    } else {
+      console.warn(`Artifact not found: ${artifact}`);
     }
   }
 
@@ -103,19 +103,10 @@ async function main() {
   console.log('SIP Caller ID Release Script');
   console.log('================================');
 
-  // Step 1: Auto-increment version
   const newVersion = incrementVersion();
-
-  // Step 2: Build the application
   buildApplication();
-
-  // Step 3: Create NuGet packages
   createNuGetPackages(newVersion);
-
-  // Step 4: Create GitHub release
   createGitHubRelease(newVersion);
-
-  // Step 5: Commit and push changes
   commitAndPush(newVersion);
 
   console.log('================================');
@@ -125,5 +116,4 @@ async function main() {
   console.log('Changes committed and pushed to repository');
 }
 
-// Run the main function
 main();
