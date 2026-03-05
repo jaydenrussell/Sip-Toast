@@ -1,4 +1,4 @@
-SIP Caller ID Release v1.0.26
+SIP Caller ID Release v1.0.27
 
 This release includes:
 - Complete update installer with seamless update flow
@@ -13,8 +13,8 @@ Installation:
 3. Application will auto-update in the future
 
 Release artifacts:
-- SIPCallerID-Setup-1.0.26.exe (Setup package)
-- SIPCallerID-1.0.26-full.nupkg (Full NuGet package)
+- SIPCallerID-Setup-1.0.27.exe (Setup package)
+- SIPCallerID-1.0.27-full.nupkg (Full NuGet package)
 - RELEASES (Release manifest)
 
 Changelog:

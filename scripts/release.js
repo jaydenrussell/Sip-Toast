@@ -41,21 +41,20 @@ function createNuGetPackages(version) {
   
   // Create the NuGet package structure
   const zip = require('adm-zip');
-  const nuspecContent = `
-    <?xml version="1.0"?>
-    <package>
-      <metadata>
-        <id>SIPCallerID</id>
-        <version>${version}</version>
-        <authors>Jayden Russell</authors>
-        <description>SIP Caller ID Application</description>
-      </metadata>
-      <files>
-        <file src="tools\\${path.basename(setupExePath)}" target="tools" />
-        <file src="RELEASES" target="" />
-      </files>
-    </package>
-  `.trim();
+  const nuspecContent = `<?xml version="1.0"?>
+<package>
+  <metadata>
+    <id>SIPCallerID</id>
+    <version>${version}</version>
+    <authors>Jayden Russell</authors>
+    <description>SIP Caller ID Application</description>
+    <framework targetFramework="net461" />
+  </metadata>
+  <files>
+    <file src="tools\\${path.basename(setupExePath)}" target="tools" />
+    <file src="RELEASES" target="" />
+  </files>
+</package>`;
   
   const nupkg = new zip();
   nupkg.addLocalFile(setupExePath, 'tools');
@@ -71,7 +70,7 @@ function createNuGetPackages(version) {
   
   console.log(`Created NuGet package: ${nupkgPath}`);
   
-  // Create RELEASES file
+  // Create RELEASES file with proper SHA1 hash
   const crypto = require('crypto');
   const fileBuffer = fs.readFileSync(nupkgPath);
   const sha1Hash = crypto.createHash('sha1').update(fileBuffer).digest('hex');
