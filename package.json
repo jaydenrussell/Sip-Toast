@@ -58,9 +58,9 @@
     "electron": "^40.8.0",
     "electron-builder": "^26.8.1",
     "electron-packager": "^17.1.2",
-    "electron-forge": "^7.0.0",
+    "electron-forge": "^5.2.4",
     "electron-squirrel-startup": "^1.0.1",
-    "electron-winstaller": "^6.0.1",
+    "electron-winstaller": "^5.4.0",
     "mocha": "^11.7.5"
   },
   "buildDate": "2026-03-05T05:21:19.383Z"
