@@ -15,6 +15,64 @@ const { spawn } = require('child_process');
 
 const GITHUB = { owner: 'jaydenrussell', repo: 'Sip-Toast' };
 
+// Squirrel.Windows specific paths and utilities
+const getSquirrelPaths = () => {
+  const appFolder = path.dirname(app.getPath('exe'));
+  const rootAtomFolder = path.dirname(appFolder);
+  const updateDotExe = path.join(rootAtomFolder, 'Update.exe');
+  const packagesDir = path.join(rootAtomFolder, 'packages');
+  const releasesFile = path.join(packagesDir, 'RELEASES');
+  
+  return {
+    appFolder,
+    rootAtomFolder,
+    updateDotExe,
+    packagesDir,
+    releasesFile
+  };
+};
+
+// Helper function to spawn Squirrel.Windows Update.exe
+const spawnSquirrelUpdate = (args, options = {}) => {
+  const { updateDotExe } = getSquirrelPaths();
+  
+  if (!fs.existsSync(updateDotExe)) {
+    logger.error(`Squirrel Update.exe not found at: ${updateDotExe}`);
+    throw new Error('Squirrel Update.exe not found');
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(updateDotExe, args, {
+      ...options,
+      stdio: 'pipe',
+      windowsHide: true
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ code, stdout, stderr });
+      } else {
+        reject(new Error(`Squirrel update failed with code ${code}: ${stderr || stdout}`));
+      }
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+  });
+};
+
 class UpdateService extends EventEmitter {
   constructor() {
     super();

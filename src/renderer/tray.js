@@ -14,7 +14,6 @@ let currentSettings = null;
 const navItems = document.querySelectorAll('.nav-item');
 const sections = {
   sip: { title: 'SIP Provider', subtitle: 'Configure your SIP connection settings' },
-  acuity: { title: 'Acuity Scheduler', subtitle: 'Configure API credentials for client lookups' },
   options: { title: 'Options', subtitle: 'Application settings and controls' },
   firewall: { title: 'Firewall', subtitle: 'Check Windows Firewall configuration' },
   logs: { title: 'Event Logs', subtitle: 'View SIP calls, toast notifications, and user interactions' },
@@ -61,9 +60,6 @@ const fieldNames = [
   'sip.domain',
   'sip.username',
   'sip.password',
-  'acuity.enabled',
-  'acuity.userId',
-  'acuity.apiKey',
   'toast.autoDismissMs',
   'toast.numberFont',
   'toast.numberFontSize',
@@ -166,19 +162,6 @@ const renderSettings = (settings) => {
       ? settings.app.launchAtLogin
       : true);
   updateToggleVisual(launchAtLogin);
-  
-  // Handle Acuity enabled toggle
-  const acuityEnabledToggle = document.getElementById('acuityEnabledToggle');
-  if (acuityEnabledToggle) {
-    const acuityEnabled = settings.acuity && typeof settings.acuity.enabled === 'boolean'
-      ? settings.acuity.enabled
-      : false;
-    acuityEnabledToggle.setAttribute('aria-checked', acuityEnabled ? 'true' : 'false');
-    const acuityEnabledInput = form.querySelector('[name="acuity.enabled"]');
-    if (acuityEnabledInput) {
-      acuityEnabledInput.value = acuityEnabled ? 'true' : 'false';
-    }
-  }
 };
 
 const buildSipUri = (username, domain, server, transport) => {
@@ -198,7 +181,6 @@ const buildSipUri = (username, domain, server, transport) => {
 const collectPayload = () => {
   const payload = {
     sip: {},
-    acuity: {},
     toast: {},
     app: {}
   };
@@ -217,7 +199,7 @@ const collectPayload = () => {
       value = value ? Number(value) : (key === 'port' ? 5060 : null);
     }
     
-// Handle password field specially
+    // Handle password field specially
     if (key === 'password') {
       // If user entered a new password, use it
       if (value) {
@@ -229,19 +211,6 @@ const collectPayload = () => {
         console.log('[Settings] Preserving existing password (field was empty)');
       } else {
         console.log('[Settings] No password provided and no existing password');
-      }
-    }
-    
-    // Handle API key field specially
-    if (key === 'apiKey') {
-      // If user entered a new API key, use it
-      if (value) {
-        console.log('[Settings] Using new API key from form input');
-      }
-      // If API key field is empty but we have an existing key, preserve it
-      else if (currentSettings?.acuity?.apiKey) {
-        value = currentSettings.acuity.apiKey;
-        console.log('[Settings] Preserving existing API key (field was empty)');
       }
     }
     
@@ -267,13 +236,6 @@ const collectPayload = () => {
 
   const launchAtLogin = autoLaunchToggle.getAttribute('aria-checked') === 'true';
   payload.app.launchAtLogin = launchAtLogin;
-  
-  // Handle Acuity enabled toggle
-  const acuityEnabledToggle = document.getElementById('acuityEnabledToggle');
-  if (acuityEnabledToggle) {
-    const acuityEnabled = acuityEnabledToggle.getAttribute('aria-checked') === 'true';
-    payload.acuity.enabled = acuityEnabled;
-  }
 
   // Set default port based on transport
   if (!payload.sip.port) {
@@ -326,12 +288,6 @@ const saveSettings = async (section = 'all') => {
     setSaveStatus('SIP settings saved and connecting…', 'success');
     // Log the save action
     await window.trayAPI.logAction('SIP settings saved and connection initiated');
-  } else if (section === 'acuity') {
-    const acuityPayload = { acuity: payload.acuity };
-    const saved = await window.trayAPI.saveSettings(acuityPayload);
-    currentSettings = saved;
-    setSaveStatus('Acuity settings saved', 'success');
-    await window.trayAPI.logAction('Acuity settings saved');
   } else if (section === 'options') {
     const optionsPayload = { 
       toast: payload.toast,
@@ -364,12 +320,9 @@ restartButton.addEventListener('click', async () => {
 // Save buttons
 const saveSipBtn = document.getElementById('saveSipBtn');
 const testSipBtn = document.getElementById('testSipBtn');
-const saveAcuityBtn = document.getElementById('saveAcuityBtn');
-const testAcuityBtn = document.getElementById('testAcuityBtn');
 const saveOptionsBtn = document.getElementById('saveOptionsBtn');
 const saveAllBtn = document.getElementById('saveAllBtn');
 const sipDebugSection = document.getElementById('sipDebugSection');
-const acuityDebugSection = document.getElementById('acuityDebugSection');
 const toastTimeoutInput = document.getElementById('toastTimeoutInput');
 const currentTimeoutDisplay = document.getElementById('currentTimeoutDisplay');
 const sipTransportSelect = document.getElementById('sipTransport');
@@ -415,12 +368,6 @@ if (testSipBtn) {
   });
 }
 
-if (saveAcuityBtn) {
-  saveAcuityBtn.addEventListener('click', async () => {
-    await saveSettings('acuity');
-  });
-}
-
 if (saveOptionsBtn) {
   saveOptionsBtn.addEventListener('click', async () => {
     await saveSettings('options');
@@ -460,61 +407,6 @@ if (currentSettings && currentTimeoutDisplay) {
 }
 }
 
-if (testAcuityBtn) {
-  testAcuityBtn.addEventListener('click', async () => {
-    setSaveStatus('Testing Acuity API connection...', 'neutral');
-    try {
-      const testResult = await window.trayAPI.testAcuityConnection();
-      if (acuityDebugSection) {
-        acuityDebugSection.style.display = 'block';
-        
-        // Overall status
-        document.getElementById('debugAcuityStatus').textContent = testResult.success ? 'Success' : 'Failed';
-        document.getElementById('debugAcuityMessage').textContent = testResult.message || '-';
-        document.getElementById('debugAcuityError').textContent = testResult.error || 'None';
-        
-        // Acuity API results
-        if (testResult.acuity) {
-          document.getElementById('debugAcuityApiStatus').textContent = testResult.acuity.success ? 'Success' : 'Failed';
-          document.getElementById('debugAcuityApiMessage').textContent = testResult.acuity.message || '-';
-          document.getElementById('debugAcuityApiError').textContent = testResult.acuity.error || 'None';
-        } else {
-          document.getElementById('debugAcuityApiStatus').textContent = 'Not tested';
-          document.getElementById('debugAcuityApiMessage').textContent = 'Not configured';
-          document.getElementById('debugAcuityApiError').textContent = '-';
-        }
-        
-      }
-      setSaveStatus(testResult.message || 'Connection test completed', testResult.success ? 'success' : 'error');
-    } catch (error) {
-      if (acuityDebugSection) {
-        acuityDebugSection.style.display = 'block';
-        document.getElementById('debugAcuityStatus').textContent = 'Error';
-        document.getElementById('debugAcuityMessage').textContent = 'Test failed';
-        document.getElementById('debugAcuityError').textContent = error.message || 'Unknown error';
-        document.getElementById('debugAcuityApiStatus').textContent = 'Error';
-        document.getElementById('debugAcuityApiMessage').textContent = 'Test failed';
-        document.getElementById('debugAcuityApiError').textContent = error.message || 'Unknown error';
-      }
-      setSaveStatus(`Test failed: ${error.message}`, 'error');
-    }
-  });
-}
-
-// Acuity enabled toggle handler
-const acuityEnabledToggle = document.getElementById('acuityEnabledToggle');
-if (acuityEnabledToggle) {
-  const acuityEnabledInput = form.querySelector('[name="acuity.enabled"]');
-  acuityEnabledToggle.addEventListener('click', () => {
-    const current = acuityEnabledToggle.getAttribute('aria-checked') === 'true';
-    const newState = !current;
-    acuityEnabledToggle.setAttribute('aria-checked', newState ? 'true' : 'false');
-    if (acuityEnabledInput) {
-      acuityEnabledInput.value = newState ? 'true' : 'false';
-    }
-  });
-}
-
 if (saveAllBtn) {
   saveAllBtn.addEventListener('click', async () => {
     await saveSettings('all');
@@ -523,7 +415,7 @@ if (saveAllBtn) {
 
 if (simulateButton) {
   simulateButton.addEventListener('click', async () => {
-    setSaveStatus('Simulating SIP call and Acuity API query…');
+    setSaveStatus('Simulating SIP call…');
     try {
       await window.trayAPI.logAction('Test SIP call initiated');
       await window.trayAPI.simulateCall();
@@ -1194,12 +1086,6 @@ if (installUpdateBtn) {
 }
 
 // Listen for update status changes
-window.trayAPI.onUpdateStatus((status) => {
-  updateSidebarChip(status);
-  updateAboutSection(status);
-});
-
-// Listen for update status changes from main process
 window.trayAPI.onUpdateStatus((status) => {
   updateSidebarChip(status);
   updateAboutSection(status);

@@ -24,10 +24,6 @@
             <span class="nav-icon">📞</span>
             <span class="nav-label">SIP Provider</span>
           </button>
-          <button class="nav-item" data-section="acuity">
-            <span class="nav-icon">📅</span>
-            <span class="nav-label">Acuity Scheduler</span>
-          </button>
           <button class="nav-item" data-section="options">
             <span class="nav-icon">⚙️</span>
             <span class="nav-label">Options</span>
@@ -161,64 +157,6 @@
             </div>
           </section>
 
-          <!-- Acuity Scheduler Section -->
-          <section class="content-section" id="section-acuity">
-            <div class="card">
-              <div class="section-heading">
-                <div>
-                  <h2>Acuity Scheduling API</h2>
-                  <p class="note">Configure API credentials for client lookups</p>
-                </div>
-              </div>
-              <div class="toggle-group" style="margin-bottom: 16px;">
-                <label>Enable Acuity Scheduler</label>
-                <button type="button" class="toggle" id="acuityEnabledToggle" role="switch" aria-checked="false">
-                  <span></span>
-                </button>
-                <input type="hidden" name="acuity.enabled" value="false" />
-              </div>
-              <div class="grid two-col">
-                <div class="field-group">
-                  <label>Acuity user ID</label>
-                  <input type="text" name="acuity.userId" placeholder="user@example.com" />
-                </div>
-                <div class="field-group">
-                  <label>Acuity API key</label>
-                  <input type="password" name="acuity.apiKey" placeholder="API key" autocomplete="new-password" />
-                </div>
-              </div>
-              <div class="actions">
-                <button type="button" class="primary" id="saveAcuityBtn">Save</button>
-                <button type="button" class="secondary" id="testAcuityBtn">Test Connection</button>
-              </div>
-
-              <div class="debug-section" id="acuityDebugSection" style="display: none;">
-                <div class="section-heading">
-                  <h3>Connection Test Results</h3>
-                </div>
-                <div class="debug-info" id="acuityDebugInfo">
-                  <div class="debug-item">
-                    <strong>Overall Status:</strong> <span id="debugAcuityStatus">-</span>
-                  </div>
-                  <div class="debug-item">
-                    <strong>Message:</strong> <span id="debugAcuityMessage">-</span>
-                  </div>
-                  <div class="debug-item">
-                    <strong>Error:</strong> <span id="debugAcuityError">-</span>
-                  </div>
-                  <div class="debug-item" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-                    <strong>Acuity API:</strong> <span id="debugAcuityApiStatus">-</span>
-                  </div>
-                  <div class="debug-item">
-                    <strong>Acuity Message:</strong> <span id="debugAcuityApiMessage">-</span>
-                  </div>
-                  <div class="debug-item">
-                    <strong>Acuity Error:</strong> <span id="debugAcuityApiError">-</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
 
           <!-- Options Section -->
           <section class="content-section" id="section-options">
@@ -484,7 +422,6 @@
               <div class="section-heading">
                 <div>
                   <h2>About</h2>
-                  <p class="note">Application information</p>
                 </div>
               </div>
 <div class="about-info" id="aboutInfo">

@@ -54,6 +54,23 @@ function createNuGetPackages(version) {
     <file src="tools\\${path.basename(setupExePath)}" target="tools" />
     <file src="RELEASES" target="" />
   </files>
+  <packageTypes>
+    <packageType name="install" />
+  </packageTypes>
+  <installPackage>
+    <installCommands>
+      <installCommand>Update.exe --install --packages %APPDIR%</installCommand>
+    </installCommands>
+    <uninstallCommands>
+      <uninstallCommand>Update.exe --uninstall</uninstallCommand>
+    </uninstallCommands>
+  </installPackage>
+  <packageFiles>
+    <packageFile target="lib/net461" src="tools/${path.basename(setupExePath)}" />
+  </packageFiles>
+  <packageMetadata>
+    <packageType>install</packageType>
+  </packageMetadata>
 </package>`;
   
   const nupkg = new zip();

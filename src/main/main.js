@@ -31,25 +31,149 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Handle Squirrel.Windows events (install, update, uninstall)
 // This must be done before any other initialization
-const { handleSquirrelEvent, checkForSquirrelEvent } = require('./squirrelEvents');
-const squirrelCmd = checkForSquirrelEvent();
-if (squirrelCmd && handleSquirrelEvent(squirrelCmd)) {
-  // Squirrel event was handled, app will exit
-} else if (require('electron-squirrel-startup')) {
-  app.quit();
-  process.exit(0);
+const handleSquirrelEvent = () => {
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  const squirrelEvent = process.argv[1];
+  const appFolder = path.resolve(process.execPath, '..');
+  const rootAtomFolder = path.resolve(appFolder, '..');
+  const updateDotExe = path.resolve(path.join(rootAtomFolder, 'Update.exe'));
+  const exeName = path.basename(process.execPath);
+
+  const spawn = (command, args) => {
+    let spawned;
+    try {
+      spawned = require('child_process').spawn(command, args, { detached: true });
+    } catch (error) {
+      console.error(`Failed to spawn: ${command} ${args.join(' ')}`, error);
+      return false;
+    }
+    return true;
+  };
+
+  const spawnUpdate = (args) => {
+    if (!fs.existsSync(updateDotExe)) {
+      console.error(`Cannot find Update.exe at ${updateDotExe}`);
+      return false;
+    }
+    console.log(`Spawning: ${updateDotExe} ${args.join(' ')}`);
+    return spawn(updateDotExe, args);
+  };
+
+  const handleStartupEvent = () => {
+    // Create desktop shortcut
+    spawnUpdate(['--createShortcut', exeName]);
+    return true;
+  };
+
+  const handleUpdateEvent = () => {
+    // Called on the outgoing version of the app before the new version starts downloading
+    // Use process.env.npm_package_version or fallback to a default version
+    const version = process.env.npm_package_version || app?.getVersion() || '1.0.0';
+    spawnUpdate(['--update', version]);
+    return true;
+  };
+
+  const handleUninstallEvent = () => {
+    // Called on the outgoing version of the app before the new version starts downloading
+    spawnUpdate(['--removeShortcut', exeName]);
+    return true;
+  };
+
+  switch (squirrelEvent) {
+    case '--squirrel-install':
+      console.log('[Main] Squirrel install event detected');
+      handleStartupEvent();
+      setTimeout(() => {
+        if (app && typeof app.quit === 'function') {
+          app.quit();
+        } else {
+          process.exit(0);
+        }
+      }, 1000);
+      return true;
+
+    case '--squirrel-updated':
+      console.log('[Main] Squirrel update event detected');
+      handleStartupEvent();
+      setTimeout(() => {
+        if (app && typeof app.quit === 'function') {
+          app.quit();
+        } else {
+          process.exit(0);
+        }
+      }, 1000);
+      return true;
+
+    case '--squirrel-uninstall':
+      console.log('[Main] Squirrel uninstall event detected');
+      handleUninstallEvent();
+      setTimeout(() => {
+        if (app && typeof app.quit === 'function') {
+          app.quit();
+        } else {
+          process.exit(0);
+        }
+      }, 1000);
+      return true;
+
+    case '--squirrel-obsolete':
+      console.log('[Main] Squirrel obsolete event detected');
+      if (app && typeof app.quit === 'function') {
+        app.quit();
+      } else {
+        process.exit(0);
+      }
+      return true;
+  }
+
+  return false;
+};
+
+// First check for Squirrel events
+try {
+  const squirrelHandled = handleSquirrelEvent();
+  if (squirrelHandled) {
+    console.log('[Main] Squirrel event handled, exiting');
+    return;
+  }
+} catch (error) {
+  console.error('[Main] Error handling Squirrel event:', error.message);
+  // Continue with normal startup
+}
+
+// Then check electron-squirrel-startup for additional handling
+try {
+  const electronSquirrelStartup = require('electron-squirrel-startup');
+  console.log('[Main] Checking for Squirrel event with electron-squirrel-startup...');
+  console.log('[Main] Process argv:', process.argv);
+  
+  // electron-squirrel-startup returns a boolean indicating if it handled the event
+  const handled = electronSquirrelStartup;
+  console.log('[Main] electron-squirrel-startup result:', handled);
+  
+  if (handled) {
+    // Squirrel event was handled, app will exit
+    console.log('[Main] Squirrel event handled by electron-squirrel-startup, exiting');
+    // Give a moment for any async operations
+    setTimeout(() => {
+      app.quit();
+      process.exit(0);
+    }, 100);
+    return;
+  } else {
+    console.log('[Main] No Squirrel event to handle, continuing with normal startup');
+  }
+} catch (error) {
+  console.error('[Main] electron-squirrel-startup not available or failed:', error.message);
+  // Continue with normal app startup
 }
 
 
 // Lazy-loaded modules with memory optimization
-let _acuityClient, _eventLogger;
-const getAcuityClient = () => {
-  if (!_acuityClient) {
-    // Only load when needed to save memory
-    _acuityClient = require('./services/acuityClient');
-  }
-  return _acuityClient;
-};
+let _eventLogger;
 const getEventLogger = () => {
   if (!_eventLogger) {
     // Only load when needed to save memory
@@ -65,7 +189,34 @@ const TrayWindow = require('./tray/trayWindow');
 const UpdateService = require('./services/updateService');
 const { logger, logEmitter, getRecentLogs, adjustLogBufferSize } = require('./services/logger');
 const { checkFirewallStatus, getFirewallInstructions } = require('./services/firewallChecker');
-const settings = require('./settings');
+const { initStore, getStore } = require('./settings');
+
+// Initialize settings store before using it
+(async () => {
+  try {
+    await initStore();
+    console.log('[Main] Settings store initialized successfully');
+    // Initialize settings cache and listeners after store is ready
+    await initializeSettingsCache();
+    await setupSettingsListeners();
+  } catch (error) {
+    console.error('[Main] Failed to initialize settings store:', error.message);
+  }
+})();
+
+// Create a promise to track store initialization
+let storeInitialized = false;
+const storeInitPromise = (async () => {
+  try {
+    await initStore();
+    await initializeSettingsCache();
+    await setupSettingsListeners();
+    storeInitialized = true;
+    console.log('[Main] Settings store fully initialized');
+  } catch (error) {
+    console.error('[Main] Failed to initialize settings store:', error.message);
+  }
+})();
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -81,20 +232,45 @@ let isMainWindowVisible = false, isAppQuitting = false;
 let cachedIconPath = null;
 
 // Cache settings to avoid repeated lookups (memory-optimized)
-let cachedSettings = settings.getAll();
-// Use individual listeners for each section (electron-store doesn't have onDidChangeAny)
-settings.store.onDidChange('sip', () => { cachedSettings.sip = settings.get('sip'); });
-settings.store.onDidChange('acuity', () => { cachedSettings.acuity = settings.get('acuity'); });
-settings.store.onDidChange('callerId', () => { cachedSettings.callerId = settings.get('callerId'); });
-settings.store.onDidChange('toast', () => { cachedSettings.toast = settings.get('toast'); });
-settings.store.onDidChange('app', () => { cachedSettings.app = settings.get('app'); });
-settings.store.onDidChange('updates', () => { 
-  cachedSettings.updates = settings.get('updates');
-  // Restart auto-check when update settings change
-  if (updateService) {
-    updateService.restartAutoCheck();
+let cachedSettings = {};
+
+// Initialize settings cache after store is ready
+async function initializeSettingsCache() {
+  try {
+    const store = getStore();
+    cachedSettings = {
+      sip: store.get('sip'),
+      callerId: store.get('callerId'),
+      toast: store.get('toast'),
+      app: store.get('app'),
+      updates: store.get('updates')
+    };
+    console.log('[Main] Settings cache initialized');
+  } catch (error) {
+    console.error('[Main] Failed to initialize settings cache:', error.message);
   }
-});
+}
+
+// Use individual listeners for each section (electron-store doesn't have onDidChangeAny)
+async function setupSettingsListeners() {
+  try {
+    const store = getStore();
+    store.onDidChange('sip', () => { cachedSettings.sip = store.get('sip'); });
+    store.onDidChange('callerId', () => { cachedSettings.callerId = store.get('callerId'); });
+    store.onDidChange('toast', () => { cachedSettings.toast = store.get('toast'); });
+    store.onDidChange('app', () => { cachedSettings.app = store.get('app'); });
+    store.onDidChange('updates', () => { 
+      cachedSettings.updates = store.get('updates');
+      // Restart auto-check when update settings change
+      if (updateService) {
+        updateService.restartAutoCheck();
+      }
+    });
+    console.log('[Main] Settings listeners configured');
+  } catch (error) {
+    console.error('[Main] Failed to setup settings listeners:', error.message);
+  }
+}
 
 const simulateIncomingCall = async () => {
   const fakeCall = {
@@ -106,43 +282,6 @@ const simulateIncomingCall = async () => {
 
   logger.info('🧪 Test SIP call simulation initiated');
   logger.info(`📞 Simulated call from: ${fakeCall.displayName} (${fakeCall.number})`);
-  
-  // Check if APIs are configured - use cached settings
-  const acuityConfig = cachedSettings.acuity || {};
-  const hasAcuity = acuityConfig?.enabled && acuityConfig?.userId && acuityConfig?.apiKey;
-  
-  // Perform lookups in parallel for better performance
-  const lookupPromises = [];
-  
-  if (hasAcuity) {
-    logger.info(`🔍 Performing lookups for phone number: ${fakeCall.normalizedNumber}`);
-    logger.info('   Using Acuity API');
-    const { lookupClientByPhone } = getAcuityClient();
-    lookupPromises.push(lookupClientByPhone(fakeCall.normalizedNumber));
-  } else {
-    lookupPromises.push(Promise.resolve({ found: false, clientName: null, appointmentTime: null }));
-  }
-  
-  // Execute lookups in parallel
-  const [acuityResult] = await Promise.all(lookupPromises);
-  
-  const acuity = acuityResult;
-  
-  if (hasAcuity) {
-    if (acuity.found) {
-      logger.info(`✅ Lookup found client: ${acuity.clientName}`);
-      if (acuity.appointmentTime) {
-        logger.info(`   📅 Next appointment: ${acuity.appointmentTime}`);
-      } else {
-        logger.info('   📅 No upcoming appointment found');
-      }
-    } else {
-      logger.info('❌ Lookup: No client match found for test number');
-      logger.info('   (This is expected - test number may not exist in your account)');
-    }
-  } else {
-    logger.info('📝 Acuity API not enabled - client info will not be shown');
-  }
   
   // Get toast timeout from cached settings
   const toastTimeout = cachedSettings.toast?.autoDismissMs || 20000;
@@ -158,10 +297,10 @@ const simulateIncomingCall = async () => {
     notificationWindow.show({
       callerLabel: fakeCall.displayName,
       phoneNumber: fakeCall.number,
-      clientName: hasAcuity && acuity.found ? acuity.clientName : null,
-      appointmentTime: hasAcuity ? acuity.appointmentTime : null,
-      lookupState: hasAcuity && acuity.found ? 'match' : 'unknown',
-      acuityConfigured: hasAcuity, // Indicate if Acuity API is configured
+      clientName: null,
+      appointmentTime: null,
+      lookupState: 'unknown',
+      acuityConfigured: false,
       timestamp: fakeCall.timestamp,
       simulated: true
     });
@@ -280,12 +419,17 @@ const createTrayIcon = () => {
 };
 
 const applyAutoLaunch = () => {
-  const launchAtLogin = settings.get('app.launchAtLogin', true);
-  app.setLoginItemSettings({
-    openAtLogin: Boolean(launchAtLogin),
-    path: process.execPath,
-    args: []
-  });
+  try {
+    const store = getStore();
+    const launchAtLogin = store.get('app.launchAtLogin', true);
+    app.setLoginItemSettings({
+      openAtLogin: Boolean(launchAtLogin),
+      path: process.execPath,
+      args: []
+    });
+  } catch (error) {
+    console.error('[Main] Failed to apply auto-launch settings:', error.message);
+  }
 };
 
 // Create a download/update icon with an arrow indicator
@@ -626,7 +770,10 @@ const createTray = () => {
 
 const wireIpc = () => {
   ipcMain.handle('app:info', () => {
-    const appName = app.getName() || 'SIP Caller ID';
+    // Use the productName from package.json instead of app.getName()
+    // app.getName() returns the package.json "name" field which is "sip-caller-id"
+    // We want the display name "SIP Caller ID"
+    const appName = 'SIP Caller ID'; // Use hardcoded display name for consistency
     // Use app.getVersion() which works in both dev and production
     const version = app.getVersion() || 'Unknown';
     
@@ -676,23 +823,36 @@ const wireIpc = () => {
     };
   });
 
-  ipcMain.handle('settings:get', (_event, key) => settings.get(key));
+  ipcMain.handle('settings:get', (_event, key) => {
+    try {
+      const store = getStore();
+      return store.get(key);
+    } catch (error) {
+      console.error('[Main] Failed to get setting:', error.message);
+      return null;
+    }
+  });
   ipcMain.handle('settings:getAll', () => cachedSettings); // Return cached settings
   ipcMain.handle('settings:save', (_event, payload) => {
-    const saved = settings.save(payload || {});
-    cachedSettings = settings.getAll();
-    
-    if (payload.sip) {
-      logger.info(`💾 SIP: ${saved.sip?.server}:${saved.sip?.port || 5060} (${(saved.sip?.transport || 'udp').toUpperCase()})`);
-      sipManager?.updateConfig(saved.sip).catch(e => logger.error(`SIP update failed: ${e.message}`));
+    try {
+      const store = getStore();
+      const saved = store.set(payload || {});
+      cachedSettings = store.getAll();
+      
+      if (payload.sip) {
+        logger.info(`💾 SIP: ${saved.sip?.server}:${saved.sip?.port || 5060} (${(saved.sip?.transport || 'udp').toUpperCase()})`);
+        sipManager?.updateConfig(saved.sip).catch(e => logger.error(`SIP update failed: ${e.message}`));
+      }
+      if (payload.callerId) logger.info(`💾 CallerID: ${saved.callerId?.enabled ? 'on' : 'off'}`);
+      if (payload.app) { applyAutoLaunch(); logger.info(`💾 Auto-launch: ${saved.app?.launchAtLogin ? 'on' : 'off'}`); }
+      if (payload.toast) logger.info(`💾 Toast timeout: ${(saved.toast?.autoDismissMs || 20000) / 1000}s`);
+      if (payload.updates) { logger.info(`💾 Updates: ${saved.updates?.enabled ? 'on' : 'off'}`); updateService?.restartAutoCheck(); }
+      
+      return saved;
+    } catch (error) {
+      console.error('[Main] Failed to save settings:', error.message);
+      return null;
     }
-    if (payload.acuity) logger.info(`💾 Acuity: ${saved.acuity?.userId || 'N/A'}`);
-    if (payload.callerId) logger.info(`💾 CallerID: ${saved.callerId?.enabled ? 'on' : 'off'}`);
-    if (payload.app) { applyAutoLaunch(); logger.info(`💾 Auto-launch: ${saved.app?.launchAtLogin ? 'on' : 'off'}`); }
-    if (payload.toast) logger.info(`💾 Toast timeout: ${(saved.toast?.autoDismissMs || 20000) / 1000}s`);
-    if (payload.updates) { logger.info(`💾 Updates: ${saved.updates?.enabled ? 'on' : 'off'}`); updateService?.restartAutoCheck(); }
-    
-    return saved;
   });
 
   ipcMain.handle('logs:tail', (_event, count) => getRecentLogs(count));
@@ -707,29 +867,6 @@ const wireIpc = () => {
     return false;
   });
 
-  ipcMain.handle('acuity:test', async () => {
-    logger.info('🧪 Acuity API connection test requested');
-    const acuityConfig = cachedSettings.acuity || {};
-    if (!acuityConfig?.enabled) {
-      return {
-        success: false,
-        message: 'Acuity Scheduler is disabled',
-        error: 'Enable Acuity Scheduler in settings to test connection'
-      };
-    }
-    try {
-      const { testConnection } = getAcuityClient();
-      const result = await testConnection();
-      return result;
-    } catch (error) {
-      logger.error(`❌ Acuity test error: ${error.message}`);
-      return {
-        success: false,
-        message: 'Test failed',
-        error: error.message
-      };
-    }
-  });
 
 
   ipcMain.handle('sip:test', async () => {
@@ -1042,34 +1179,15 @@ const boot = async () => {
     logger.info(`📞 Incoming SIP call received from ${call.displayName} (${call.number})`);
     logger.info(`🔍 Performing lookups for phone number: ${call.normalizedNumber}`);
 
-    // Use cached settings
-    const acuityConfig = cachedSettings.acuity || {};
-    const hasAcuity = acuityConfig?.enabled && acuityConfig?.userId && acuityConfig?.apiKey;
-
-    // Perform Acuity lookup
-    let acuity;
-    if (hasAcuity) {
-      const { lookupClientByPhone } = getAcuityClient();
-      acuity = await lookupClientByPhone(call.normalizedNumber);
-    } else {
-      acuity = { found: false, clientName: null, appointmentTime: null };
-    }
-
-    if (acuity.found) {
-      logger.info(`✅ Acuity lookup found: ${acuity.clientName} - Next appointment: ${acuity.appointmentTime || 'N/A'}`);
-    } else {
-      logger.info('❌ Acuity lookup: No client match found');
-    }
-
     logger.info('🔔 Showing toast notification');
 
     const toastPayload = {
       callerLabel: call.displayName || call.number,
       phoneNumber: call.number,
-      clientName: acuity.found ? acuity.clientName : null,
-      appointmentTime: acuity.appointmentTime,
-      lookupState: acuity.found ? 'match' : 'unknown',
-      acuityConfigured: hasAcuity, // Indicate if Acuity API is configured
+      clientName: null,
+      appointmentTime: null,
+      lookupState: 'unknown',
+      acuityConfigured: false,
       timestamp: call.timestamp
     };
 
@@ -1216,21 +1334,37 @@ app.whenReady().then(async () => {
   logger.info('📦 Initializing components...');
 
   // Set Windows app user model ID for proper taskbar behavior
-  app.setAppUserModelId('com.siptoast.app');
+  app.setAppUserModelId('com.sipcallerid.app');
+
+  // Wait for store to be fully initialized before proceeding
+  logger.info('⏳ Waiting for settings store to be fully initialized...');
+  await storeInitPromise;
+  logger.info('✅ Settings store fully initialized');
 
   // Check for and migrate settings from previous installations
   logger.info('🔄 Checking for previous installation settings...');
-  const migrated = settings.checkAndMigrate();
-  if (migrated) {
-    logger.info('✅ Settings migrated from previous installation');
-    // Refresh cached settings after migration
-    cachedSettings = settings.getAll();
-  } else {
-    logger.info('ℹ️  No previous installation settings found or migration not needed');
+  try {
+    const store = getStore();
+    const migrated = store.checkAndMigrate();
+    if (migrated) {
+      logger.info('✅ Settings migrated from previous installation');
+      // Refresh cached settings after migration
+      cachedSettings = store.getAll();
+    } else {
+      logger.info('ℹ️  No previous installation settings found or migration not needed');
+    }
+  } catch (error) {
+    logger.error('❌ Failed to check for settings migration:', error.message);
   }
 
   // Initialize flyoutWindow BEFORE creating tray
   // This ensures flyoutWindow exists when tray click handler runs
+  // But wait for store to be ready first
+  if (!storeInitialized) {
+    logger.warn('⚠️ Store not fully initialized, waiting...');
+    await storeInitPromise;
+  }
+  
   flyoutWindow = new TrayWindow();
   logger.info('✅ Control center window created');
 
@@ -1246,46 +1380,46 @@ app.whenReady().then(async () => {
     logger.info(`   Update service type: ${typeof updateService}`);
     logger.info(`   Update service on method: ${typeof updateService.on}`);
     logger.info(`   Update service instanceof EventEmitter: ${updateService instanceof EventEmitter}`);
+    
+    // Set up update status event listener to update tray icon and send to renderer
+    // Use explicit type checking for maximum safety
+    if (updateService && typeof updateService.on === 'function') {
+      try {
+        // Set up update-status event listener
+        updateService.on('update-status', (status) => {
+          // Early exit if app is shutting down
+          if (isAppQuitting) return;
+
+          try {
+            // Update tray icon with both SIP status and update status
+            updateTrayIcon(latestSipStatus, status);
+          } catch (e) { /* Ignore tray errors during shutdown */ }
+
+          // Send status to renderer (including when update is downloaded)
+          try {
+            // Check if window exists and is not destroyed before sending
+            if (flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
+              flyoutWindow.send('update:status', status);
+            }
+          } catch (e) { /* Ignore window errors during shutdown */ }
+        });
+
+        // Set up installing event listener
+        updateService.on('installing', () => {
+          isAppQuitting = true; 
+        });
+        
+        logger.info('✅ Update service event listeners registered');
+      } catch (error) {
+        logger.error(`Failed to set up update service listeners: ${error.message}`);
+      }
+    } else {
+      logger.warn('Update service on method not available - skipping event listener setup');
+    }
   } catch (error) {
     logger.error(`Failed to create update service: ${error.message}`);
     logger.error(error.stack);
     updateService = null;
-  }
-
-  // Set up update status event listener to update tray icon and send to renderer
-  // Use optional chaining for maximum safety
-  if (updateService?.on) {
-    try {
-      // Set up update-status event listener
-      updateService.on('update-status', (status) => {
-        // Early exit if app is shutting down
-        if (isAppQuitting) return;
-
-        try {
-          // Update tray icon with both SIP status and update status
-          updateTrayIcon(latestSipStatus, status);
-        } catch (e) { /* Ignore tray errors during shutdown */ }
-
-        // Send status to renderer (including when update is downloaded)
-        try {
-          // Check if window exists and is not destroyed before sending
-          if (flyoutWindow && flyoutWindow.window && !flyoutWindow.window.isDestroyed()) {
-            flyoutWindow.send('update:status', status);
-          }
-        } catch (e) { /* Ignore window errors during shutdown */ }
-      });
-
-      // Set up installing event listener
-      updateService.on('installing', () => { 
-        isAppQuitting = true; 
-      });
-      
-      logger.info('✅ Update service event listeners registered');
-    } catch (error) {
-      logger.error(`Failed to set up update service listeners: ${error.message}`);
-    }
-  } else {
-    logger.warn('Update service on method not available - skipping event listener setup');
   }
 
   // Start auto-check (this will also check on app load)
@@ -1382,7 +1516,12 @@ let memoryCleanupInterval = setInterval(() => {
   // Clear any stale references
   if (cachedSettings && Object.keys(cachedSettings).length > 10) {
     // Rebuild cache to remove stale entries
-    cachedSettings = settings.getAll();
+    try {
+      const store = getStore();
+      cachedSettings = store.getAll();
+    } catch (error) {
+      console.error('[Main] Failed to rebuild settings cache:', error.message);
+    }
   }
 }, MEMORY_CLEANUP_INTERVAL);
 
@@ -1422,4 +1561,3 @@ logEmitter.on('entry', (entry) => {
   }
 });
 app.on('before-quit', () => { isAppQuitting = true; });
-

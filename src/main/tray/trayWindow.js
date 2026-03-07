@@ -11,7 +11,14 @@ class TrayWindow {
   }
 
   createWindow() {
-    const savedBounds = settings.getWindowBounds('tray');
+    let savedBounds;
+    try {
+      savedBounds = settings.getWindowBounds('tray');
+    } catch (error) {
+      // Store not initialized yet, use defaults
+      savedBounds = null;
+    }
+    
     const defaultWidth = 800;
     const defaultHeight = 550;
     
@@ -148,7 +155,14 @@ class TrayWindow {
       }
     }
     
-    const savedBounds = settings.getWindowBounds('tray');
+    let savedBounds;
+    try {
+      savedBounds = settings.getWindowBounds('tray');
+    } catch (error) {
+      // Store not initialized yet, use defaults
+      savedBounds = null;
+    }
+    
     const hasValidX = savedBounds && typeof savedBounds.x === 'number' && !isNaN(savedBounds.x);
     const hasValidY = savedBounds && typeof savedBounds.y === 'number' && !isNaN(savedBounds.y);
     const hasValidWidth = savedBounds && typeof savedBounds.width === 'number' && savedBounds.width > 0;

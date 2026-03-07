@@ -1,6 +1,6 @@
 {
   "name": "sip-caller-id",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "SIP Caller ID application",
   "author": "Jayden Russell",
   "main": "src/main/main.js",
@@ -13,27 +13,38 @@
     "create-nuget-packages": "node scripts/create-nuget-packages.js",
     "build-and-release": "node scripts/build-and-release.js",
     "build:electron-builder": "electron-builder --win --x64 --publish never",
-    "clean": "rm -rf build dist"
+    "clean": "rm -rf build dist",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "build:squirrel": "node scripts/build-squirrel.js",
+    "package:squirrel": "npm run build:squirrel"
   },
   "build": {
-    "appId": "com.siptoast.app",
+    "appId": "com.sipcallerid.app",
     "productName": "SIP Caller ID",
     "directories": {
       "output": "dist"
     },
     "files": [
       "src/**/*",
-      "Images/**/*",
       "package.json",
       "!**/*.map",
       "!**/test/**/*",
       "!**/__tests__/**/*",
       "!**/tests/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "Images",
+        "to": "Images",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "win": {
       "target": "squirrel",
-      "icon": "Images/app.ico",
-      "artifactName": "SIPCallerID-Setup-${version}.exe"
+      "icon": "Images/app.ico"
     }
   },
   "dependencies": {
@@ -44,9 +55,12 @@
   },
   "devDependencies": {
     "adm-zip": "^0.5.16",
-    "electron": "^28.0.0",
+    "electron": "^40.8.0",
     "electron-builder": "^26.8.1",
     "electron-packager": "^17.1.2",
+    "electron-forge": "^7.0.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-winstaller": "^6.0.1",
     "mocha": "^11.7.5"
   },
   "buildDate": "2026-03-05T05:21:19.383Z"

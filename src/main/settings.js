@@ -3,26 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
 
-// electron-store v11 uses ES modules, need to handle the import differently
+// electron-store v11 is an ES Module, need to use dynamic import
 let Store;
-try {
-  // Try default export first (v11+)
-  Store = require('electron-store').default;
-} catch (e) {
-  // Fallback to commonjs export (v8-10)
-  Store = require('electron-store');
-}
+let storeInstance;
 
-// Previous application names that we should migrate from
-const PREVIOUS_APP_NAMES = ['SIPToast', 'sip-toast', 'SIP-Toast', 'SIP Caller ID'];
-
-// Fields that should be encrypted at rest
-const ENCRYPTED_FIELDS = [
-  'sip.password',
-  'acuity.apiKey',
-  'acuity.userId' // Also encrypt userId for additional security
-];
-
+// Schema definition
 const schema = {
   sip: {
     type: 'object',
@@ -45,19 +30,6 @@ const schema = {
       password: null,
       uri: null,
       displayName: null
-    }
-  },
-  acuity: {
-    type: 'object',
-    properties: {
-      enabled: { type: 'boolean', default: false },
-      userId: { type: ['string', 'null'] },
-      apiKey: { type: ['string', 'null'] },
-    },
-    default: {
-      enabled: false,
-      userId: null,
-      apiKey: null,
     }
   },
   toast: {
@@ -131,11 +103,25 @@ const schema = {
   }
 };
 
-const store = new Store({
-  name: 'sip-toast',
-  projectName: 'sip-toast',
-  schema
-});
+// Previous application names and folder names that we should migrate from
+// These represent different naming conventions used in previous versions
+const PREVIOUS_APP_NAMES = [
+  'SIPToast',           // Original name
+  'sip-toast',          // Previous project name
+  'SIP-Toast',          // Capitalized variant
+  'Sip-Toast',          // Previous standard name
+  'sip-callerid',       // Alternative folder naming (no hyphen)
+  'sip-caller-id',      // Alternative with hyphen
+  'sip-toast-nodejs'    // Node.js specific variant
+];
+
+// The standard folder name to use moving forward
+const CURRENT_APP_NAME = 'SIP Caller ID';
+
+// Fields that should be encrypted at rest
+const ENCRYPTED_FIELDS = [
+  'sip.password'
+];
 
 // Encrypt sensitive fields before storing
 const encryptSensitiveFields = (section, data) => {
@@ -175,7 +161,8 @@ const decryptSensitiveFields = (section, data) => {
   return decrypted;
 };
 
-const mergeSection = (section, patch = {}) => {
+const mergeSection = async (section, patch = {}) => {
+  const store = getStore();
   const existing = store.get(section);
   const decrypted = decryptSensitiveFields(section, existing);
   
@@ -192,34 +179,38 @@ const mergeSection = (section, patch = {}) => {
   };
 };
 
-const save = (payload = {}) => {
+const save = async (payload = {}) => {
+  const store = getStore();
   if (payload.sip) {
-    const merged = mergeSection('sip', payload.sip);
+    const merged = await mergeSection('sip', payload.sip);
     store.set('sip', encryptSensitiveFields('sip', merged));
   }
 
-  if (payload.acuity) {
-    const merged = mergeSection('acuity', payload.acuity);
-    store.set('acuity', encryptSensitiveFields('acuity', merged));
-  }
-
   if (payload.toast) {
-    store.set('toast', mergeSection('toast', payload.toast));
+    const merged = await mergeSection('toast', payload.toast);
+    store.set('toast', merged);
   }
 
   if (payload.app) {
-    store.set('app', mergeSection('app', payload.app));
+    const merged = await mergeSection('app', payload.app);
+    store.set('app', merged);
   }
 
-if (payload.updates) {
-    store.set('updates', mergeSection('updates', payload.updates));
+  if (payload.updates) {
+    const merged = await mergeSection('updates', payload.updates);
+    store.set('updates', merged);
   }
 
   return getAll(); // Return decrypted data
 };
 
-const getWindowBounds = (name) => store.get(`windows.${name}`, null);
+const getWindowBounds = (name) => {
+  const store = getStore();
+  return store.get(`windows.${name}`, null);
+};
+
 const setWindowBounds = (name, bounds) => {
+  const store = getStore();
   if (bounds && typeof bounds.x === 'number' && typeof bounds.y === 'number') {
     // Save position (x, y) and optionally size (width, height)
     const boundsToSave = {
@@ -277,8 +268,14 @@ const findPreviousConfig = () => {
  * @returns {boolean} True if SIP is configured
  */
 const hasSipConfig = () => {
-  const sip = store.get('sip');
-  return !!(sip && sip.server && sip.username && sip.password);
+  try {
+    const store = getStore();
+    const sip = store.get('sip');
+    return !!(sip && sip.server && sip.username && sip.password);
+  } catch (error) {
+    console.error('[Settings] Error checking SIP config:', error.message);
+    return false;
+  }
 };
 
 /**
@@ -287,6 +284,7 @@ const hasSipConfig = () => {
  */
 const migrateFromPreviousVersion = () => {
   try {
+    const store = getStore();
     // Check if we already have SIP configuration
     if (hasSipConfig()) {
       console.log('[Settings] Already have SIP configuration, skipping migration');
@@ -353,43 +351,6 @@ const migrateFromPreviousVersion = () => {
       }
     }
     
-    // Migrate Acuity settings
-    if (oldConfig.acuity) {
-      const acuityConfig = oldConfig.acuity;
-      
-      if (acuityConfig.userId || acuityConfig.apiKey) {
-        console.log('[Settings] Migrating Acuity configuration...');
-        
-        // Handle encrypted fields
-        let userId = acuityConfig.userId;
-        let apiKey = acuityConfig.apiKey;
-        
-        if (typeof userId === 'string' && userId.includes(':')) {
-          try {
-            userId = decrypt(userId);
-          } catch (e) {
-            console.log('[Settings] Could not decrypt userId from old config');
-          }
-        }
-        
-        if (typeof apiKey === 'string' && apiKey.includes(':')) {
-          try {
-            apiKey = decrypt(apiKey);
-          } catch (e) {
-            console.log('[Settings] Could not decrypt apiKey from old config');
-          }
-        }
-        
-        const migratedAcuity = {
-          enabled: acuityConfig.enabled || false,
-          userId: userId || null,
-          apiKey: apiKey || null
-        };
-        
-        store.set('acuity', encryptSensitiveFields('acuity', migratedAcuity));
-        console.log('[Settings] ✅ Acuity configuration migrated successfully');
-      }
-    }
     
     // Migrate toast settings
     if (oldConfig.toast) {
@@ -419,11 +380,96 @@ const migrateFromPreviousVersion = () => {
 };
 
 /**
+ * Clean up old configuration folders after successful migration
+ * Only removes folders if current app has SIP configuration (meaning user has set up the app)
+ */
+const cleanupOldFolders = () => {
+  try {
+    const userDataPath = app.getPath('userData');
+    const parentDir = path.dirname(userDataPath);
+    let cleanedFolders = [];
+    
+    // Check if we have SIP configuration - only clean if user has configured SIP
+    const hasSip = hasSipConfig();
+    if (!hasSip) {
+      console.log('[Settings] No SIP configuration found, skipping folder cleanup (preserving old data for potential migration)');
+      return cleanedFolders;
+    }
+    
+    console.log('[Settings] SIP configuration exists, cleaning up old configuration folders...');
+    
+    // Check each possible old app name folder
+    for (const oldAppName of PREVIOUS_APP_NAMES) {
+      // Skip the current app name
+      if (oldAppName === CURRENT_APP_NAME) continue;
+      
+      const oldFolderPath = path.join(parentDir, oldAppName);
+      
+      // Check if the folder exists
+      if (fs.existsSync(oldFolderPath)) {
+        try {
+          // Check if it's a directory
+          const stat = fs.statSync(oldFolderPath);
+          if (stat.isDirectory()) {
+            // Remove the entire folder and its contents
+            fs.rmSync(oldFolderPath, { recursive: true, force: true });
+            console.log(`[Settings] ✅ Removed old configuration folder: ${oldFolderPath}`);
+            cleanedFolders.push(oldFolderPath);
+          }
+        } catch (error) {
+          console.error(`[Settings] Failed to remove folder ${oldFolderPath}:`, error.message);
+        }
+      }
+    }
+    
+    // Also check for variations with different casing/hyphens
+    const variationsToCheck = [
+      'SIPToast',
+      'SIP-Toast',
+      'SIP Caller ID',
+      'sip-callerid',
+      'sip-caller-id',
+      'sip-toast-nodejs'
+    ];
+    
+    for (const variation of variationsToCheck) {
+      if (variation === CURRENT_APP_NAME) continue;
+      
+      const variationPath = path.join(parentDir, variation);
+      if (fs.existsSync(variationPath) && !cleanedFolders.includes(variationPath)) {
+        try {
+          const stat = fs.statSync(variationPath);
+          if (stat.isDirectory()) {
+            fs.rmSync(variationPath, { recursive: true, force: true });
+            console.log(`[Settings] ✅ Removed old configuration folder: ${variationPath}`);
+            cleanedFolders.push(variationPath);
+          }
+        } catch (error) {
+          console.error(`[Settings] Failed to remove folder ${variationPath}:`, error.message);
+        }
+      }
+    }
+    
+    if (cleanedFolders.length > 0) {
+      console.log(`[Settings] 🗑️ Cleaned up ${cleanedFolders.length} old configuration folder(s)`);
+    } else {
+      console.log('[Settings] No old configuration folders found to clean up');
+    }
+    
+    return cleanedFolders;
+  } catch (error) {
+    console.error('[Settings] Error during folder cleanup:', error.message);
+    return [];
+  }
+};
+
+/**
  * Check for and perform migration if needed
  * Should be called early in app initialization
  */
 const checkAndMigrate = () => {
   try {
+    const store = getStore();
     // Check if we've already attempted migration
     const migrationAttempted = store.get('migration.attempted', false);
     
@@ -436,86 +482,141 @@ const checkAndMigrate = () => {
     store.set('migration.attempted', true);
     
     // Attempt migration
-    return migrateFromPreviousVersion();
+    const migrated = migrateFromPreviousVersion();
+    
+    // If migration was successful or we already have SIP config, clean up old folders
+    if (migrated || hasSipConfig()) {
+      cleanupOldFolders();
+    }
+    
+    return migrated;
   } catch (error) {
     console.error('[Settings] Error during migration check:', error.message);
     return false;
   }
 };
 
+// Async function to initialize the store
+async function initStore() {
+  if (!Store) {
+    // Dynamic import for ES Module
+    const electronStoreModule = await import('electron-store');
+    Store = electronStoreModule.default;
+  }
+  
+  if (!storeInstance) {
+    storeInstance = new Store({
+      name: 'SIP Caller ID',
+      projectName: 'SIP Caller ID',
+      schema
+    });
+  }
+  
+  return storeInstance;
+}
+
+// Export a getter function that ensures the store is initialized
+function getStore() {
+  if (!storeInstance) {
+    throw new Error('Store not initialized. Call initStore() first.');
+  }
+  return storeInstance;
+}
+
+// Export functions
 module.exports = {
-  store,
+  initStore,
+  getStore,
   checkAndMigrate,
   hasSipConfig,
   findPreviousConfig,
   get(key, fallback) {
-    const value = store.get(key, fallback);
-    
-    // Handle null/undefined
-    if (value === null || value === undefined) {
+    try {
+      const store = getStore();
+      const value = store.get(key, fallback);
+      
+      // Handle null/undefined
+      if (value === null || value === undefined) {
+        return fallback;
+      }
+      
+      // Decrypt if this is a sensitive field (e.g., 'sip.password')
+      if (typeof key === 'string' && key.includes('.')) {
+        const [section, ...fieldParts] = key.split('.');
+        const fieldKey = fieldParts.join('.');
+        const fieldPath = `${section}.${fieldKey}`;
+        
+        if (ENCRYPTED_FIELDS.includes(fieldPath) && typeof value === 'string') {
+          try {
+            return decrypt(value);
+          } catch (e) {
+            // If decryption fails, value might not be encrypted (legacy)
+            return value;
+          }
+        }
+        return value;
+      }
+      
+      // If getting a section (e.g., 'sip'), decrypt sensitive fields
+      if (typeof key === 'string' && !key.includes('.') && typeof value === 'object') {
+        return decryptSensitiveFields(key, value);
+      }
+      
+      // If getting all settings (no key or root), decrypt all sections
+      if (typeof key !== 'string' && value && typeof value === 'object') {
+        const decrypted = { ...value };
+        if (decrypted.sip) decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
+        return decrypted;
+      }
+      
+      return value;
+    } catch (error) {
+      console.error(`[Settings] Error getting value for key ${key}:`, error.message);
       return fallback;
     }
-    
-    // Decrypt if this is a sensitive field (e.g., 'sip.password')
-    if (typeof key === 'string' && key.includes('.')) {
-      const [section, ...fieldParts] = key.split('.');
-      const fieldKey = fieldParts.join('.');
-      const fieldPath = `${section}.${fieldKey}`;
-      
-      if (ENCRYPTED_FIELDS.includes(fieldPath) && typeof value === 'string') {
-        try {
-          return decrypt(value);
-        } catch (e) {
-          // If decryption fails, value might not be encrypted (legacy)
-          return value;
-        }
-      }
-      return value;
-    }
-    
-    // If getting a section (e.g., 'sip'), decrypt sensitive fields
-    if (typeof key === 'string' && !key.includes('.') && typeof value === 'object') {
-      return decryptSensitiveFields(key, value);
-    }
-    
-    // If getting all settings (no key or root), decrypt all sections
-    if (typeof key !== 'string' && value && typeof value === 'object') {
-      const decrypted = { ...value };
-      if (decrypted.sip) decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
-      if (decrypted.acuity) decrypted.acuity = decryptSensitiveFields('acuity', decrypted.acuity);
-      return decrypted;
-    }
-    
-    return value;
   },
   getAll() {
-    const all = store.store;
-    // Decrypt all sensitive fields
-    const decrypted = { ...all };
-    if (decrypted.sip) {
-      decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
+    try {
+      const store = getStore();
+      const all = store.store;
+      // Decrypt all sensitive fields
+      const decrypted = { ...all };
+      if (decrypted.sip) {
+        decrypted.sip = decryptSensitiveFields('sip', decrypted.sip);
+      }
+      return decrypted;
+    } catch (error) {
+      console.error('[Settings] Error getting all values:', error.message);
+      return {};
     }
-    if (decrypted.acuity) {
-      decrypted.acuity = decryptSensitiveFields('acuity', decrypted.acuity);
-    }
-    return decrypted;
   },
   set(key, value) {
-    // Encrypt if this is a sensitive field
-    let valueToStore = value;
-    if (typeof key === 'string' && key.includes('.')) {
-      const [section, fieldKey] = key.split('.');
-      const fieldPath = `${section}.${fieldKey}`;
-      if (ENCRYPTED_FIELDS.includes(fieldPath) && value && value !== null) {
-        valueToStore = encrypt(value);
+    try {
+      const store = getStore();
+      // Encrypt if this is a sensitive field
+      let valueToStore = value;
+      if (typeof key === 'string' && key.includes('.')) {
+        const [section, fieldKey] = key.split('.');
+        const fieldPath = `${section}.${fieldKey}`;
+        if (ENCRYPTED_FIELDS.includes(fieldPath) && value && value !== null) {
+          valueToStore = encrypt(value);
+        }
       }
+      store.set(key, valueToStore);
+    } catch (error) {
+      console.error(`[Settings] Error setting value for key ${key}:`, error.message);
     }
-    store.set(key, valueToStore);
   },
   save,
   reset() {
-    store.clear();
-    return getAll(); // Return decrypted data
+    try {
+      const store = getStore();
+      store.clear();
+      return getAll(); // Return decrypted data
+    } catch (error) {
+      console.error('[Settings] Error resetting store:', error.message);
+      return {};
+    }
   },
   getWindowBounds,
   setWindowBounds

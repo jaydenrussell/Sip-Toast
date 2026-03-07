@@ -19,6 +19,7 @@ class SipManager extends EventEmitter {
     this.serverPort = null;
     this._incomingRequestHandler = null;
     this._isDestroyed = false;
+    return this;
   }
 
   async start() {
