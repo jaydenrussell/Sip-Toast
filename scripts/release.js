@@ -1,7 +1,6 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const AdmZip = require('adm-zip');
 
 console.log('Starting SIP Caller ID release process...');
 
@@ -24,43 +23,70 @@ function buildApplication() {
   execSync('npm run package:squirrel', { stdio: 'inherit' });
 }
 
-// Step 3: Create NuGet packages
+// Step 3: Create NuGet packages using existing setup executable
 function createNuGetPackages(version) {
   console.log('Creating NuGet packages...');
-  const packagesDir = path.join(__dirname, '..', 'packages');
-  if (!fs.existsSync(packagesDir)) {
-    fs.mkdirSync(packagesDir, { recursive: true });
+  
+  // Get the setup executable created by electron-builder
+  const setupExePath = path.join(__dirname, '..', 'dist', 'squirrel-windows', `SIPCallerID-Setup-${version}.exe`);
+  
+  if (!fs.existsSync(setupExePath)) {
+    console.error(`Setup executable not found: ${setupExePath}`);
+    throw new Error('Setup executable not found');
   }
-
-  // Create full package
-  const fullPackage = `sip-caller-id-${version}-full.nupkg`;
-  const fullPackagePath = path.join(packagesDir, fullPackage);
-
-  // Create delta package (if previous version exists)
-  const previousVersion = getPreviousVersion(version);
-  let deltaPackage = null;
-  if (previousVersion) {
-    deltaPackage = `sip-caller-id-${previousVersion}-delta.nupkg`;
+  
+  // Create the NuGet package using the existing setup executable
+  const nupkgName = `SIPCallerID-${version}-full.nupkg`;
+  const nupkgPath = path.join(__dirname, '..', 'dist', 'squirrel-windows', nupkgName);
+  
+  // Create the NuGet package structure
+  const zip = require('adm-zip');
+  const nuspecContent = `<?xml version="1.0"?>
+<package>
+  <metadata>
+    <id>SIPCallerID</id>
+    <version>${version}</version>
+    <authors>Jayden Russell</authors>
+    <description>SIP Caller ID Application</description>
+    <framework targetFramework="net461" />
+  </metadata>
+  <files>
+    <file src="tools\\${path.basename(setupExePath)}" target="tools" />
+    <file src="RELEASES" target="" />
+  </files>
+</package>`;
+  
+  const nupkg = new zip();
+  nupkg.addLocalFile(setupExePath, 'tools');
+  
+  // Add RELEASES file if it exists
+  const releasesPath = path.join(__dirname, '..', 'dist', 'squirrel-windows', 'RELEASES');
+  if (fs.existsSync(releasesPath)) {
+    nupkg.addLocalFile(releasesPath, '');
   }
-
-  // Create full package
-  createFullPackage(fullPackagePath);
-
-  // Create RELEASES file
-  const releasesPath = path.join(packagesDir, 'RELEASES');
-  const releasesContent = createReleasesContent(version, fullPackage, deltaPackage);
-  fs.writeFileSync(releasesPath, releasesContent);
-
+  
+  nupkg.addFile('SIPCallerID.nuspec', Buffer.from(nuspecContent));
+  nupkg.writeZip(nupkgPath);
+  
+  console.log(`Created NuGet package: ${nupkgPath}`);
+  
+  // Create RELEASES file with proper SHA1 hash
+  const crypto = require('crypto');
+  const fileBuffer = fs.readFileSync(nupkgPath);
+  const sha1Hash = crypto.createHash('sha1').update(fileBuffer).digest('hex');
+  const fullPackageSize = fs.statSync(nupkgPath).size;
+  
+  const releasesContent = `${version}|${nupkgName}|${fullPackageSize}|${sha1Hash}`;
+  const releasesPathFinal = path.join(__dirname, '..', 'dist', 'squirrel-windows', 'RELEASES');
+  fs.writeFileSync(releasesPathFinal, releasesContent);
+  
   console.log('NuGet packages created successfully!');
-  console.log(`Full package: ${fullPackagePath}`);
-  console.log(`RELEASES file: ${releasesPath}`);
+  console.log(`Full package: ${nupkgPath}`);
 }
 
 // Step 4: Create GitHub release
 function createGitHubRelease(version) {
-  // Create release notes
-  const releaseNotes = `
-SIP Caller ID Release v${version}
+  const releaseNotes = `SIP Caller ID Release v${version}
 
 This release includes:
 - Complete update installer with seamless update flow
@@ -76,7 +102,7 @@ Installation:
 
 Release artifacts:
 - SIPCallerID-Setup-${version}.exe (Setup package)
-- sip-caller-id-${version}-full.nupkg (Full NuGet package)
+- SIPCallerID-${version}-full.nupkg (Full NuGet package)
 - RELEASES (Release manifest)
 
 Changelog:
@@ -86,28 +112,31 @@ Changelog:
 - Added automatic restart functionality
 - Created NuGet packages for distribution
 
-For more information, see the documentation.
-`;
+For more information, see the documentation.`;
 
-  // Create release notes file
   const releaseNotesPath = path.join(__dirname, '..', 'release-notes.md');
   fs.writeFileSync(releaseNotesPath, releaseNotes);
 
-  // Create release
   console.log('Creating GitHub release...');
   execSync(`gh release create v${version} --title "Release v${version}" --notes-file "${releaseNotesPath}"`, { stdio: 'inherit' });
 
-  // Upload artifacts
   const artifacts = [
-    `../dist/squirrel-windows/SIPCallerID-Setup-${version}.exe`,
-    `../packages/sip-caller-id-${version}-full.nupkg`,
-    `../packages/RELEASES`
+    `dist/squirrel-windows/SIPCallerID-Setup-${version}.exe`,
+    `dist/squirrel-windows/SIPCallerID-${version}-full.nupkg`,
+    `dist/squirrel-windows/RELEASES`
   ];
 
   for (const artifact of artifacts) {
     if (fs.existsSync(artifact)) {
       console.log(`Uploading artifact: ${artifact}`);
-      execSync(`gh release upload v${version} ${artifact}`, { stdio: 'inherit' });
+      try {
+        execSync(`gh release upload v${version} ${artifact}`, { stdio: 'inherit' });
+      } catch (error) {
+        console.error(`Failed to upload ${artifact}: ${error.message}`);
+        throw error;
+      }
+    } else {
+      console.warn(`Artifact not found: ${artifact}`);
     }
   }
 
@@ -124,86 +153,15 @@ function commitAndPush(version) {
   execSync('git push origin main', { stdio: 'inherit' });
 }
 
-// Helper functions
-function getPreviousVersion(currentVersion) {
-  try {
-    const tags = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
-      .split('\n')
-      .filter(tag => tag.startsWith('v') && tag !== `v${currentVersion}`);
-    return tags[0]?.replace('v', '');
-  } catch (error) {
-    console.warn('Could not get previous version from Git tags');
-    return null;
-  }
-}
-
-function createFullPackage(packagePath) {
-  // Create a simple archive by copying files instead of zipping
-  // This avoids the size limitations of adm-zip
-  const buildPath = path.join(__dirname, '..', 'dist', 'squirrel-windows');
-  const packagesDir = path.join(__dirname, '..', 'packages');
-
-  // Create a directory with the package name
-  const packageDir = path.join(packagesDir, `sip-caller-id-${packagePath.split('-').pop().replace('.nupkg', '')}`);
-  if (fs.existsSync(packageDir)) {
-    fs.rmSync(packageDir, { recursive: true, force: true });
-  }
-  fs.mkdirSync(packageDir, { recursive: true });
-
-  // Copy all files from build directory
-  const buildFiles = fs.readdirSync(buildPath);
-  for (const file of buildFiles) {
-    const srcPath = path.join(buildPath, file);
-    const destPath = path.join(packageDir, file);
-    if (fs.statSync(srcPath).isFile()) {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-
-  // Copy RELEASES file
-  const releasesPath = path.join(packagesDir, 'RELEASES');
-  if (fs.existsSync(releasesPath)) {
-    fs.copyFileSync(releasesPath, path.join(packageDir, 'RELEASES'));
-  }
-
-  // Create a simple manifest file
-  const manifest = {
-    name: 'sip-caller-id',
-    version: packagePath.split('-').pop().replace('.nupkg', ''),
-    files: buildFiles
-  };
-  fs.writeFileSync(path.join(packageDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
-
-  console.log(`Created package directory: ${packageDir}`);
-}
-
-function createReleasesContent(version, fullPackage, deltaPackage) {
-  const content = [];
-  content.push(`${version}|${fullPackage}|100000|1234567890`);
-  if (deltaPackage) {
-    content.push(`${version}|${deltaPackage}|50000|1234567891`);
-  }
-  return content.join('\n');
-}
-
 // Main execution
 async function main() {
   console.log('SIP Caller ID Release Script');
   console.log('================================');
 
-  // Step 1: Auto-increment version
   const newVersion = incrementVersion();
-
-  // Step 2: Build the application
   buildApplication();
-
-  // Step 3: Create NuGet packages
   createNuGetPackages(newVersion);
-
-  // Step 4: Create GitHub release
   createGitHubRelease(newVersion);
-
-  // Step 5: Commit and push changes
   commitAndPush(newVersion);
 
   console.log('================================');
@@ -213,5 +171,4 @@ async function main() {
   console.log('Changes committed and pushed to repository');
 }
 
-// Run the main function
 main();

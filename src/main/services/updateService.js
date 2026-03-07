@@ -424,13 +424,19 @@ async installUpdate() {
         return;
       }
 
-      // Find the full package (case-insensitive)
+      // Find the full package (case-insensitive, supports both naming formats)
       let fullPackagePath = null;
       const files = fs.readdirSync(packagesDir);
+      const version = this.state.version;
       for (const file of files) {
-        if (file.toLowerCase().includes(`sip-caller-id-${this.state.version}-full.nupkg`) || 
-            file.toLowerCase().includes(`sipcallerid-${this.state.version}-full.nupkg`)) {
+        const lowerFile = file.toLowerCase();
+        // Check for both naming conventions: sip-caller-id-{version}-full.nupkg and SIPCallerID-{version}-full.nupkg
+        if (lowerFile.includes(`sip-caller-id-${version}-full.nupkg`) || 
+            lowerFile.includes(`sipcallerid-${version}-full.nupkg`) ||
+            lowerFile.includes(`sipcallerid-${version}-full.nupkg`) ||
+            file.includes(`SIPCallerID-${version}-full.nupkg`)) {
           fullPackagePath = path.join(packagesDir, file);
+          logger.info(`Found package: ${file}`);
           break;
         }
       }
