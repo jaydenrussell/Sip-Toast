@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "adm-zip": "^0.5.16",
-    "electron": "^40.8.0",
+    "electron": "^40.8.5",
     "electron-builder": "^26.8.1",
     "electron-packager": "^17.1.2",
     "electron-forge": "^5.2.4",
